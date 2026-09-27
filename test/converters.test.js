@@ -284,14 +284,15 @@ test('OceanofPDF.com watermarks are removed whatever the markup around them', ()
 });
 
 test('epub stamped with OceanofPDF.com converts exactly like the clean book', async () => {
-  const stamp = '<p class="calibre3"><a href="https://oceanofpdf.com"><i>OceanofPDF.com</i></a></p>';
+  // As found in a real OceanofPDF book, at the end of every chapter file.
+  const stamp = '<div style="float: none; margin: 10px 0px 10px 0px; text-align: center;"><p><a href="https://oceanofpdf.com"><i>OceanofPDF.com</i></a></p></div>';
   const chapters = [
-    { id: 'ch1', file: 'ch1.xhtml', title: 'Chapter One', body: '<div class="calibre1"><h1>Chapter One</h1><p>It begins.</p></div>' },
+    { id: 'ch1', file: 'ch1.xhtml', title: 'Chapter One', body: '<h1 class="calibre2">Chapter One</h1><div class="calibre10"> </div>\n' },
     { id: 'ch2', file: 'ch2.xhtml', title: 'Chapter Two', body: '<div class="calibre1"><h1>Chapter Two</h1><p>It ends.</p></div>' },
   ];
   const stamped = [
-    { ...chapters[0], body: chapters[0].body.replace('</div>', `${stamp}</div>`) },
-    { ...chapters[1], body: stamp + chapters[1].body },
+    { ...chapters[0], body: chapters[0].body + stamp },
+    { ...chapters[1], body: chapters[1].body.replace('</div>', `${stamp}</div>`) },
   ];
   const clean = await convertEpub(makeEpub({ chapters }), { filename: 'f.epub' });
   const book = await convertEpub(makeEpub({ chapters: stamped }), { filename: 'f.epub' });
