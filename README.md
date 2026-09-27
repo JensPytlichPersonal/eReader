@@ -111,7 +111,7 @@ Wide windows show two columns; switch to one column in the display settings if y
 | --- | --- |
 | EPUB 2 and 3 | Chapters, images, table of contents (nav or NCX), footnote links. Publisher CSS is reduced to a few typographic hints so every book follows your settings. |
 | MOBI, PRC, AZW, AZW3/KF8 | PalmDOC and HUFF/CDIC compression, images, table of contents from the NCX index, hybrid MOBI7+KF8 files. DRM-protected files are rejected. |
-| PDF | Text is extracted per page into paragraphs (running headers, page numbers and hyphenation are cleaned up); each PDF page is one section so the reflowed view and the *Original pages* view share the same position. Scanned PDFs without text can still be read in the page view. |
+| PDF | Text is extracted per page into paragraphs. Running headers and footers repeated across pages, page numbers and line-break hyphenation are removed; bulleted lists, footnotes (as small print with superscript markers) and italic/bold runs are kept. Each PDF page is one section so the reflowed view and the *Original pages* view share the same position. In the dark theme the page view inverts the page but leaves photographs as printed. Scanned PDFs without text can still be read in the page view. |
 | Markdown | CommonMark + GitHub tables, YAML front matter for title/author, headings become the table of contents. |
 | Text | Paragraph and heading detection, including hard-wrapped Gutenberg-style text; UTF-8, UTF-16 and Latin-1. |
 

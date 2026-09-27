@@ -14,7 +14,8 @@ import { textToHtml, convertText } from '../server/converters/text.js';
 import { convertMarkdown } from '../server/converters/markdown.js';
 import { convertEpub } from '../server/converters/epub.js';
 import { convertMobi } from '../server/converters/mobi.js';
-import { convertPdf, pageItemsToBlocks } from '../server/converters/pdf.js';
+import { convertPdf, pageItemsToBlocks, pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml } from '../server/converters/pdf.js';
+const pdfInternals = { pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml };
 import { convert, detectFormat } from '../server/converters/index.js';
 import { writeBundle } from '../server/converters/bundle.js';
 import { makePdf } from './helpers/make-pdf.mjs';
@@ -204,4 +205,38 @@ test('mobi with DRM is rejected clearly', async () => {
   const rec0 = buf.readUInt32BE(78);
   buf.writeUInt16BE(2, rec0 + 12);
   await assert.rejects(convertMobi(buf, { filename: 'drm.mobi' }), /DRM/);
+});
+
+test('pdf reflow: running headers, hanging-indent lists, footnotes, hyphens, superscripts', () => {
+  const { pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml } = pdfInternals;
+  const item = (str, x, y, size, w, font = 'f1') => ({ str, transform: [size, 0, 0, size, x, y], width: w, height: size, hasEOL: false, fontName: font });
+  const vp = { width: 531, height: 657 };
+  const items = [
+    item('Introduction to Virtual Worlds', 287, 612, 12, 160), item('31', 461, 612, 12, 14),
+    item('•', 85, 570, 12, 6), item('It was a victim of its own success. Although OSI was', 103, 570, 12, 269),
+    item('expecting tens of thousands of players, they were not', 103, 556, 12, 268),
+    item('expecting hundreds of thousands of them. The sheer end.', 103, 541, 12, 271),
+    item('All in all, this was a game ahead of its time in Multi-', 85, 512, 12, 300),
+    item('User terms, but not so far ahead as to be a total fail-', 85, 498, 12, 300),
+    item('ure as such things go in the industry at large.', 85, 484, 12, 200),
+    item('The same could not be said of Meridian', 85, 455, 12, 250), item('59', 85, 441, 12, 12), item('.', 97, 441, 12, 3),
+    item('respect of any computer game', 85, 412, 12, 157), item('21', 242, 416, 7.9, 7), item('.', 249, 412, 12, 3),
+    item('21', 85, 75, 6.5, 6), item('Actually, it used a', 93, 71, 10.1, 76), item('DOOM', 171, 71, 10.1, 30, 'fi'),
+    item('-like engine.', 201, 71, 10.1, 60),
+  ];
+  const styles = { f1: { fontFamily: 'serif', realName: 'ZillaSlab-Regular' }, fi: { fontFamily: 'serif', realName: 'ZillaSlab-Italic' } };
+  const { lines, bodySize } = pageLines(items, vp, styles);
+  assert.equal(bodySize, 12);
+  const header = lines[0];
+  assert.equal(header.text, 'Introduction to Virtual Worlds 31');
+  assert.equal(edgeBand(header), 'top');
+  assert.equal(lineKey(header), 'introduction to virtual worlds #');
+  const blocks = linesToBlocks(lines, { bodySize, isRunning: (l) => lineKey(l) === 'introduction to virtual worlds #' });
+  const html = blocksToHtml(blocks);
+  assert.doesNotMatch(html, /Introduction to Virtual Worlds 31/);
+  assert.match(html, /<p class="list-item">• It was a victim of its own success\. Although OSI was expecting tens of thousands of players, they were not expecting hundreds of thousands of them\. The sheer end\.<\/p>/);
+  assert.match(html, /<p>All in all, this was a game ahead of its time in Multi-User terms, but not so far ahead as to be a total failure as such things go in the industry at large\.<\/p>/);
+  assert.match(html, /<p>The same could not be said of Meridian 59\.<\/p>/);
+  assert.match(html, /<p>respect of any computer game<sup>21<\/sup>\.<\/p>/);
+  assert.match(html, /<p class="footnote"><sup>21<\/sup> Actually, it used a <i>DOOM<\/i>-like engine\.<\/p>/);
 });
