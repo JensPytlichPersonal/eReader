@@ -40,17 +40,21 @@ async function cacheFirst(req, cacheName) {
   return res;
 }
 
+// Every book opens in the same reader page (the book id comes from the address), so it is kept once, as the newest
+// copy, which goes with the newest scripts. A copy per book would keep the page from the last time that book opened.
+const cacheKey = (req) => (req.mode === 'navigate' && new URL(req.url).pathname.startsWith('/read/') ? '/read/' : req);
+
 async function networkFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     const res = await fetch(req);
-    if (res.ok && res.type === 'basic') cache.put(req, res.clone()).catch(() => {});
+    if (res.ok && res.type === 'basic') cache.put(cacheKey(req), res.clone()).catch(() => {});
     return res;
   } catch (err) {
-    const hit = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
+    const hit = await cache.match(cacheKey(req), { ignoreSearch: req.mode === 'navigate' });
     if (hit) return hit;
     if (req.mode === 'navigate') {
-      // Any cached reader page serves any book (the page is the same; the book id comes from the URL).
+      // Any cached reader page serves any book, such as one kept per book by an earlier version of this worker.
       const wantReader = new URL(req.url).pathname.startsWith('/read/');
       for (const key of await cache.keys()) {
         const p = new URL(key.url).pathname;

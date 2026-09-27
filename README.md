@@ -44,8 +44,9 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   the ☰ button so the books fill the screen.
 - **Table of contents, bookmarks, progress slider, chapter titles** and a "who else is reading" peek.
 - **Upload from the app** (button or drag and drop). Conversion runs in the background.
-- **Installable.** Add it to the home screen on iOS or Android for a full-screen app. Books you have
-  opened are cached for offline reading when served over https.
+- **Installable, and readable offline.** Add it to the home screen on iOS or Android for a full-screen
+  app. When served over https, every book you open is kept on the device, all of it, so it can be read
+  without a connection.
 
 ## Quick start
 
@@ -184,6 +185,12 @@ book, *Reload* in the **Aa** panel reopens it where you are, and *Reload the app
 again from the library. A book that can't be shown offers *Reload* and the way back to the library.
 After an update, the new version arrives with the next page the app loads: scripts and styles are
 checked for changes every time, like the pages.
+
+**Offline.** Every book you open is kept on the device, with all its chapters and pictures, so it opens
+and reads without a connection (this needs https). Offline, the library shows the books from the last
+time it was online, and fades the ones this device doesn't have. Books opened before this was added are
+kept the next time they open online. Reading positions sync when the connection is back. A PDF's
+*Original pages* view needs a connection.
 
 **Laptop.** Arrow keys, space, Page Up/Down turn pages; `t` opens the contents, `b` bookmarks, `s`
 the display settings, `m` the menu, `+`/`-` change the text size, Home/End jump to the start or end.

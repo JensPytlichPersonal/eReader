@@ -145,6 +145,8 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 }
 .card { position: relative; display: flex; flex-direction: column; border: 2px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); text-decoration: none; }
 .card:focus-within, .card:hover { border-color: var(--fg); }
+/* Offline: a book this device doesn't keep, so it needs a connection (see showOffline in library.js). */
+.card.unavailable, .list-row.unavailable { opacity: .4; }
 .card .cover { display: block; aspect-ratio: 2 / 3; width: 100%; object-fit: cover; background: var(--panel); border-bottom: 2px solid var(--line); }
 .card .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 12px; gap: 6px; font-weight: 700; }
 .card .cover.placeholder .t { font-size: var(--ph-title, 16px); line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
