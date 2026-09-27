@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rReader</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="rReader">
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<script>try{var s=JSON.parse(localStorage.getItem('rreader.settings')||'{}');var t=s.theme||'light';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="app-header">
+  <a class="brand" href="/">rReader</a>
+  <span class="spacer"></span>
+  <nav>
+    <a class="btn small hidden" id="nav-users" href="/users">Users</a>
+    <a class="btn small" href="/settings">Settings</a>
+    <button class="btn small" id="btn-logout">Sign out</button>
+  </nav>
+</header>
+<main class="page">
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Search title or author" autocomplete="off">
+    <select id="filter" aria-label="Filter">
+      <option value="all">All books</option>
+      <option value="reading">Reading</option>
+      <option value="unread">Not started</option>
+      <option value="finished">Finished</option>
+    </select>
+    <select id="sort" aria-label="Sort">
+      <option value="recent">Recently read</option>
+      <option value="added">Recently added</option>
+      <option value="title">Title</option>
+      <option value="author">Author</option>
+    </select>
+    <button class="btn primary" id="btn-upload">Upload books</button>
+    <input type="file" id="file-input" class="hidden" multiple accept=".epub,.mobi,.prc,.azw,.azw3,.pdf,.md,.markdown,.txt,.text,application/epub+zip,application/pdf,text/plain,text/markdown">
+  </div>
+  <div class="dropzone" id="dropzone">Drop EPUB, MOBI, PDF, Markdown or text files here to add them to the library</div>
+  <div class="uploads" id="uploads"></div>
+  <div id="library"></div>
+</main>
+<div id="dialog-root"></div>
+<script type="module" src="/js/library.js"></script>
+</body>
+</html>

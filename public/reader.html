@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rReader</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<script>try{var s=JSON.parse(localStorage.getItem('rreader.settings')||'{}');var t=s.theme||'light';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/reader.css">
+<link rel="stylesheet" id="book-styles" href="" disabled>
+</head>
+<body class="reader">
+<div id="viewport"><div id="content" class="book-content loading"></div></div>
+<div id="pdfview"><div class="scroller"><canvas id="pdfcanvas"></canvas></div></div>
+<div id="statusline"><span id="status-left"></span><span id="status-right"></span></div>
+
+<header id="topbar" class="bar hidden">
+  <a class="btn icon" href="/" id="btn-back" aria-label="Back to library">&#8592;</a>
+  <div class="title" id="title"></div>
+  <button class="btn icon" id="btn-bookmark" aria-label="Bookmarks">&#9733;</button>
+  <button class="btn icon" id="btn-toc" aria-label="Contents">&#9776;</button>
+  <button class="btn icon" id="btn-settings" aria-label="Display settings"><b>Aa</b></button>
+</header>
+<footer id="bottombar" class="bar hidden">
+  <input type="range" id="slider" min="0" max="1000" value="0" aria-label="Position in book">
+  <div class="row">
+    <button class="btn small" id="btn-prev-chapter" aria-label="Previous chapter">&#171;</button>
+    <div class="pos" id="pos"></div>
+    <button class="btn small" id="btn-next-chapter" aria-label="Next chapter">&#187;</button>
+  </div>
+</footer>
+
+<div id="panel-backdrop" class="panel-backdrop hidden"></div>
+<aside id="panel-toc" class="panel hidden" aria-label="Contents">
+  <header><span>Contents</span><button class="btn small" data-close>Close</button></header>
+  <div class="body"><ul class="toc" id="toc"></ul></div>
+</aside>
+<aside id="panel-bookmarks" class="panel bookmarks hidden" aria-label="Bookmarks">
+  <header><span>Bookmarks</span><button class="btn small" data-close>Close</button></header>
+  <div class="body">
+    <button class="btn primary" id="btn-add-bookmark" style="width:100%;margin-bottom:12px">Bookmark this page</button>
+    <div id="bookmarks"></div>
+  </div>
+</aside>
+<aside id="panel-settings" class="panel settings hidden" aria-label="Display settings">
+  <header><span>Display</span><button class="btn small" data-close>Close</button></header>
+  <div class="body">
+    <div class="group"><span class="lbl">Theme</span>
+      <div class="seg" id="theme-seg">
+        <button data-v="light">Light</button><button data-v="sepia">Sepia</button><button data-v="dark">Dark</button><button data-v="auto">System</button>
+      </div>
+      <label class="check" style="margin-top:8px"><input type="checkbox" id="opt-eink"> High contrast (e-ink)</label>
+    </div>
+    <div class="group"><label for="font">Font</label><select id="font"></select></div>
+    <div class="group"><span class="lbl">Text size</span>
+      <div class="stepper"><button id="size-minus" aria-label="Smaller">&minus;</button><output id="size-out"></output><button id="size-plus" aria-label="Larger">+</button></div>
+    </div>
+    <div class="group"><span class="lbl">Line spacing</span>
+      <div class="seg" id="lh-seg"><button data-v="1.3">Tight</button><button data-v="1.5">Normal</button><button data-v="1.75">Loose</button><button data-v="2">Wide</button></div>
+    </div>
+    <div class="group"><span class="lbl">Margins</span>
+      <div class="seg" id="margin-seg"><button data-v="s">Narrow</button><button data-v="m">Normal</button><button data-v="l">Wide</button></div>
+    </div>
+    <div class="group"><span class="lbl">Alignment</span>
+      <div class="seg" id="align-seg"><button data-v="justify">Justified</button><button data-v="left">Left</button></div>
+      <label class="check" style="margin-top:8px"><input type="checkbox" id="opt-hyphens"> Hyphenation</label>
+    </div>
+    <div class="group hidden" id="pdf-group"><span class="lbl">PDF view</span>
+      <div class="seg" id="pdfmode-seg"><button data-v="text">Text (reflow)</button><button data-v="pages">Original pages</button></div>
+      <label class="check" style="margin-top:8px"><input type="checkbox" id="opt-pdf-invert"> Invert pages in dark theme</label>
+    </div>
+    <div class="group"><span class="lbl">Page turning</span>
+      <label class="check"><input type="checkbox" id="opt-swipe"> Swipe to turn pages</label>
+      <label class="check"><input type="checkbox" id="opt-tapzones"> Tap left/right edge to turn pages</label>
+      <button class="btn small" id="btn-show-zones" style="margin-top:6px">Show tap zones</button>
+    </div>
+    <div class="group"><label for="device-name">This device's name</label><input type="text" id="device-name" placeholder="e.g. Boox, iPhone, Laptop"></div>
+    <div class="group"><span class="lbl">Book</span>
+      <div class="row"><a class="btn small" id="btn-download" href="#" download>Download original</a><button class="btn small" id="btn-readers">Who else is reading</button></div>
+      <p class="muted" id="book-info" style="font-size:13px"></p>
+    </div>
+  </div>
+</aside>
+<div id="tap-hint" class="hidden"><div><span>Previous page</span></div><div><span>Menu</span></div><div><span>Next page</span></div></div>
+<div id="loading">Loading…</div>
+<script type="module" src="/js/reader.js"></script>
+</body>
+</html>

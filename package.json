@@ -1,0 +1,25 @@
+{
+  "name": "rreader",
+  "version": "0.1.0",
+  "description": "Self-hosted multi-user web eReader for EPUB, MOBI, PDF, Markdown and text - built for e-ink, phones and laptops.",
+  "type": "module",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning server/index.js",
+    "dev": "node --no-warnings=ExperimentalWarning --watch server/index.js",
+    "test": "node --no-warnings=ExperimentalWarning --test \"test/*.test.js\"",
+    "reprocess": "node --no-warnings=ExperimentalWarning server/cli/reprocess.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "dom-serializer": "^2.0.0",
+    "domutils": "^3.2.2",
+    "express": "^5.2.1",
+    "htmlparser2": "^10.0.0",
+    "marked": "^18.0.14",
+    "pdfjs-dist": "^5.3.31"
+  }
+}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings - rReader</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<script>try{var s=JSON.parse(localStorage.getItem('rreader.settings')||'{}');var t=s.theme||'light';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="app-header">
+  <a class="brand" href="/">rReader</a>
+  <span class="spacer"></span>
+  <nav><a class="btn small" href="/">Library</a></nav>
+</header>
+<main class="page narrow">
+  <h1>Settings</h1>
+  <h2>This device</h2>
+  <p class="muted">Appearance and font settings are stored on each device separately, so your e-reader, phone and laptop can each look the way you want.</p>
+  <div class="field"><label for="device">Device name</label><input id="device"></div>
+  <div class="field"><label for="theme">Theme</label>
+    <select id="theme"><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option><option value="auto">Follow system</option></select></div>
+  <div class="field"><label class="row" style="font-weight:600"><input type="checkbox" id="eink" style="width:22px;height:22px"> High contrast (e-ink)</label></div>
+  <p class="muted">Font, size, margins and line spacing are changed from inside the reader (the <b>Aa</b> button).</p>
+  <h2>Account</h2>
+  <p id="who" class="muted"></p>
+  <form id="pw-form">
+    <div class="field"><label for="cur">Current password</label><input id="cur" type="password" required></div>
+    <div class="field"><label for="new">New password</label><input id="new" type="password" required></div>
+    <p class="error hidden" id="error"></p>
+    <p class="notice hidden" id="ok">Password changed.</p>
+    <button class="btn primary" type="submit">Change password</button>
+  </form>
+  <h2>Offline</h2>
+  <p class="muted">Books you have opened are cached on this device for offline reading. Reading positions sync when you are back online.</p>
+  <button class="btn" id="clear-cache">Clear cached books on this device</button>
+</main>
+<script type="module" src="/js/settings-page.js"></script>
+</body>
+</html>
