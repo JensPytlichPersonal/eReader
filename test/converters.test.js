@@ -17,7 +17,7 @@ import { convertMobi } from '../server/converters/mobi.js';
 import { convertPdf, pageItemsToBlocks, pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml, joinHyphenated, mergePages } from '../server/converters/pdf.js';
 const pdfInternals = { pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml, joinHyphenated, mergePages };
 import { convert, detectFormat } from '../server/converters/index.js';
-import { writeBundle } from '../server/converters/bundle.js';
+import { writeBundle, sniffImage, imageExt } from '../server/converters/bundle.js';
 import { makePdf } from './helpers/make-pdf.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ereader-conv-'));
@@ -315,4 +315,16 @@ test('pdf: OceanofPDF.com lines are dropped before paragraphs are built', async 
   // A page holding only the stamp gets the page-view hint rather than coming out blank.
   assert.match(html, /<span class="pg" id="pg3"><\/span>\n<p><span class="pdf-empty">\[Page 3 has no extractable text/);
   assert.equal(book.extra.textPages, 2);
+});
+
+test('images are told apart by their first bytes, and only file names fill the gaps', () => {
+  assert.equal(sniffImage(TINY_PNG), 'png');
+  assert.equal(sniffImage(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10])), 'jpg');
+  assert.equal(sniffImage(Buffer.from('GIF89a\x01\x00', 'latin1')), 'gif');
+  assert.equal(sniffImage(Buffer.from('RIFF\x10\x00\x00\x00WEBPVP8 ', 'latin1')), 'webp');
+  assert.equal(sniffImage(Buffer.from('  <svg xmlns="http://www.w3.org/2000/svg"/>')), 'svg');
+  for (const data of [Buffer.from('plain text'), Buffer.from('RIFF\x10\x00\x00\x00WAVE', 'latin1'), Buffer.from([0xff]), null]) assert.equal(sniffImage(data), null);
+  assert.equal(imageExt('images/photo.jpeg', Buffer.from('plain text')), 'jpg');
+  assert.equal(imageExt('image/webp', null), 'webp');
+  assert.equal(imageExt('', TINY_PNG), 'png');
 });

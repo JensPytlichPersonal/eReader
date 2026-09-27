@@ -39,7 +39,7 @@ export function createApp(overrides = {}) {
   app.use('/api/users', userRoutes(db, auth));
   app.use('/api/books', bookRoutes(db, auth, config, processor, series));
   app.use('/api/series', seriesRoutes(auth, series));
-  app.use('/books', bookFiles(auth, config));
+  app.use('/books', bookFiles(db, auth, config));
   app.get('/api/health', (req, res) => res.json({ ok: true, processing: processor.isBusy() }));
 
   // Third-party client libraries served straight from node_modules.
@@ -64,7 +64,7 @@ export function createApp(overrides = {}) {
   // Errors
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    if (err?.type === 'entity.too.large') return res.status(413).json({ error: `File is too large (limit ${Math.round(config.maxUploadBytes / 1048576)} MB)` });
+    if (err?.type === 'entity.too.large') return res.status(413).json({ error: `File is too large (limit ${Math.round((err.limit ?? config.maxUploadBytes) / 1048576)} MB)` });
     if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'Malformed JSON' });
     log.error?.(err);
     res.status(500).json({ error: 'Internal server error' });

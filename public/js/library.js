@@ -26,6 +26,7 @@ const els = {
 let me = null;
 let books = [];
 let pollTimer = null;
+let coverEditor = null; // the cover dialog, which takes images pasted or dropped on the page while it is open
 const prefs = JSON.parse(localStorage.getItem('ereader.library') || '{}');
 els.sort.value = prefs.sort || 'recent';
 els.filter.value = prefs.filter || 'all';
@@ -100,8 +101,9 @@ function visible() {
   return list.sort(sorter());
 }
 
-const coverHtml = (b) => (b.hasCover && b.status === 'ready'
-  ? `<img class="cover" loading="lazy" alt="" src="/books/${b.id}/cover?v=${b.convertedAt || b.addedAt}">`
+// Converting a book again rewrites its own cover, but leaves one picked by hand in place.
+const coverHtml = (b) => (b.hasCover && (b.status === 'ready' || b.coverSource === 'custom')
+  ? `<img class="cover" loading="lazy" alt="" src="/books/${b.id}/cover?v=${b.coverVersion}">`
   : `<div class="cover placeholder"><div class="t">${escapeHtml(b.title)}</div><div class="a">${escapeHtml(b.author)}</div></div>`);
 
 /** A book card. In a series view (`ctx.seriesId`) the cover shows the book's number in that series. */
@@ -403,9 +405,23 @@ async function uploadFiles(files) {
 }
 els.upload.addEventListener('click', () => { setMenu(false); els.file.click(); });
 els.file.addEventListener('change', () => { uploadFiles(els.file.files); els.file.value = ''; });
-for (const ev of ['dragenter', 'dragover']) document.addEventListener(ev, (e) => { e.preventDefault(); els.drop.classList.add('active'); });
+// While the cover dialog is open, an image dropped or pasted on the page becomes the cover instead.
+const coverOpen = () => !!coverEditor?.root.isConnected;
+for (const ev of ['dragenter', 'dragover']) document.addEventListener(ev, (e) => { e.preventDefault(); if (!coverOpen()) els.drop.classList.add('active'); });
 for (const ev of ['dragleave', 'drop']) document.addEventListener(ev, (e) => { e.preventDefault(); if (ev === 'drop' || e.target === document.documentElement) els.drop.classList.remove('active'); });
-document.addEventListener('drop', (e) => { if (e.dataTransfer?.files?.length) uploadFiles(e.dataTransfer.files); });
+document.addEventListener('drop', (e) => {
+  const files = e.dataTransfer?.files;
+  if (!files?.length) return;
+  if (coverOpen()) coverEditor.useFile(files[0]);
+  else uploadFiles(files);
+});
+document.addEventListener('paste', (e) => {
+  if (!coverOpen()) return;
+  const file = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+  if (!file) return;
+  e.preventDefault();
+  coverEditor.useFile(file);
+});
 
 // ---- dialogs ----
 function dialog(html) {
@@ -432,6 +448,7 @@ function bookMenu(b) {
       <button class="btn" data-act="readers">Who is reading this</button>
       <a class="btn" href="/books/${b.id}/original" download="${escapeHtml(b.originalName)}">Download original file</a>
       ${canEdit ? '<button class="btn" data-act="edit">Edit details and series</button>' : ''}
+      ${canEdit ? `<button class="btn" data-act="cover">${b.hasCover ? 'Change cover' : 'Add a cover'}</button>` : ''}
       ${canEdit ? '<button class="btn" data-act="reprocess">Convert again</button>' : ''}
       ${canEdit ? '<button class="btn danger" data-act="delete">Delete from library</button>' : ''}
       <button class="btn" data-close>Close</button>
@@ -443,6 +460,7 @@ function bookMenu(b) {
     if (!act) return;
     try {
       if (act === 'edit') { editDetails(b); return; }
+      if (act === 'cover') { editCover(b); return; }
       if (act === 'delete') {
         if (!confirm(`Delete "${b.title}" for everyone? This cannot be undone.`)) return;
         await api(`/api/books/${b.id}`, { method: 'DELETE' });
@@ -515,6 +533,119 @@ function editDetails(b) {
       close();
       await load();
     } catch (err) { fail(err.message); }
+  });
+}
+
+// Covers are shown small, so a larger image is scaled down to this many pixels on its longer side and sent as a JPEG.
+const COVER_SIDE = 1200;
+const COVER_BYTES = 500 * 1024;
+
+const toJpeg = (canvas) => new Promise((resolve, reject) => {
+  canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not prepare the image'))), 'image/jpeg', 0.85);
+});
+
+/** An image file ready to send as a cover: a small JPEG or PNG as it is, anything else redrawn as a JPEG. */
+async function coverImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    const readable = await img.decode().then(() => img.naturalWidth > 0 && img.naturalHeight > 0, () => false);
+    if (!readable) throw new Error(`${file.name ? `"${file.name}" is` : 'That is'} not an image this browser can read. Try a JPEG or PNG.`);
+    const scale = Math.min(1, COVER_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    if (scale === 1 && file.size <= COVER_BYTES && /^image\/(jpeg|png)$/.test(file.type)) return file;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; // see-through parts turn white, not black
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return await toJpeg(canvas);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** The cover the library shows: an image, a page of the PDF, the book's own cover or none. Each change is saved at once. */
+function editCover(b) {
+  const { root } = dialog(`
+    <h2>Cover</h2>
+    <p class="muted">${escapeHtml(b.title)}</p>
+    <div class="cover-edit">
+      <div class="cover-preview"></div>
+      <div class="menu">
+        <button type="button" class="btn" data-pick>Choose an image</button>
+        ${b.format === 'pdf' ? `<form class="cover-page" novalidate>
+          <button type="submit" class="btn">Use page</button>
+          <input type="number" name="page" value="1" min="1"${b.pageCount ? ` max="${b.pageCount}"` : ''} aria-label="Page of the PDF">
+          ${b.pageCount ? `<span class="muted">of ${b.pageCount}</span>` : ''}
+        </form>` : ''}
+        <button type="button" class="btn" data-source="file">Use the original cover</button>
+        <button type="button" class="btn" data-source="none">Remove cover</button>
+        <button type="button" class="btn" data-close>Done</button>
+      </div>
+    </div>
+    <input type="file" accept="image/*" class="hidden" data-file>
+    ${matchMedia('(pointer: fine)').matches ? '<p class="muted hint">You can also paste an image, or drop one on the page.</p>' : ''}
+    <p class="muted hint hidden" data-busy></p>
+    <p class="error hidden" data-error></p>`);
+  const preview = root.querySelector('.cover-preview');
+  const busyNote = root.querySelector('[data-busy]');
+  const error = root.querySelector('[data-error]');
+  const fileInput = root.querySelector('[data-file]');
+  const controls = [...root.querySelectorAll('.menu button:not([data-close]), .menu input')];
+  const show = () => {
+    preview.innerHTML = coverHtml(b);
+    root.querySelector('[data-source="file"]').classList.toggle('hidden', b.coverSource === 'file' || !b.fileHasCover);
+    root.querySelector('[data-source="none"]').classList.toggle('hidden', !b.hasCover);
+  };
+  let busy = false;
+  const save = async (doing, work) => {
+    if (busy) return;
+    busy = true;
+    controls.forEach((el) => { el.disabled = true; });
+    error.classList.add('hidden');
+    busyNote.textContent = doing;
+    busyNote.classList.remove('hidden');
+    try {
+      ({ book: b } = await work());
+      show();
+      load();
+    } catch (err) {
+      error.textContent = err.message;
+      error.classList.remove('hidden');
+    } finally {
+      busy = false;
+      controls.forEach((el) => { el.disabled = false; });
+      busyNote.classList.add('hidden');
+    }
+  };
+  const send = (body) => api(`/api/books/${b.id}/cover`, body instanceof Blob
+    ? { method: 'PUT', raw: true, body, headers: { 'Content-Type': body.type || 'application/octet-stream' } }
+    : { method: 'PUT', body });
+  const useFile = (file) => save('Saving the cover…', async () => send(await coverImage(file)));
+  coverEditor = { root, useFile };
+  show();
+
+  root.querySelector('[data-pick]').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const [file] = fileInput.files;
+    fileInput.value = '';
+    if (file) useFile(file);
+  });
+  for (const btn of root.querySelectorAll('[data-source]')) btn.addEventListener('click', () => save('Saving…', () => send({ source: btn.dataset.source })));
+  // Most PDFs have no cover image, but their first page usually is the cover.
+  root.querySelector('.cover-page')?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const input = ev.target.elements.page;
+    save(`Preparing page ${input.value || 1}…`, async () => {
+      const { renderPdfPage } = await import('./pdf-view.js');
+      const { canvas, page } = await renderPdfPage(`/books/${b.id}/original`, Number(input.value), COVER_SIDE);
+      input.value = page;
+      return send(await toJpeg(canvas));
+    });
   });
 }
 
