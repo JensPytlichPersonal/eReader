@@ -6,15 +6,16 @@ const KEY = 'ereader.settings';
 // 2: settings saved from here on carry this, so a stored light theme or serif font is a choice, not an old default.
 const VERSION = 2;
 
-// Bundled fonts come with the app (see server/fonts.js) and look the same on every device. The
-// others are whatever the device has installed, so they vary between devices.
+// Bundled fonts come with the app (see server/fonts.js) and look the same on every device; `bundled`
+// names their @fontsource package. Those marked `weights` come in every weight from regular to bold.
+// The others are whatever the device has installed, so they vary between devices.
 export const FONTS = [
-  { id: 'literata', label: 'Literata', stack: 'Literata, Georgia, serif', bundled: true },
-  { id: 'merriweather', label: 'Merriweather', stack: 'Merriweather, Georgia, serif', bundled: true },
-  { id: 'baskerville', label: 'Libre Baskerville', stack: '"Libre Baskerville", Baskerville, Georgia, serif', bundled: true },
-  { id: 'bitter', label: 'Bitter', stack: 'Bitter, Georgia, serif', bundled: true },
-  { id: 'atkinson', label: 'Atkinson Hyperlegible', stack: '"Atkinson Hyperlegible", system-ui, sans-serif', bundled: true },
-  { id: 'opendyslexic', label: 'OpenDyslexic', stack: 'OpenDyslexic, "Comic Sans MS", sans-serif', bundled: true },
+  { id: 'literata', label: 'Literata', stack: 'Literata, Georgia, serif', bundled: 'literata', weights: true },
+  { id: 'merriweather', label: 'Merriweather', stack: 'Merriweather, Georgia, serif', bundled: 'merriweather', weights: true },
+  { id: 'baskerville', label: 'Libre Baskerville', stack: '"Libre Baskerville", Baskerville, Georgia, serif', bundled: 'libre-baskerville', weights: true },
+  { id: 'bitter', label: 'Bitter', stack: 'Bitter, Georgia, serif', bundled: 'bitter', weights: true },
+  { id: 'atkinson', label: 'Atkinson Hyperlegible', stack: '"Atkinson Hyperlegible", system-ui, sans-serif', bundled: 'atkinson-hyperlegible' },
+  { id: 'opendyslexic', label: 'OpenDyslexic', stack: 'OpenDyslexic, "Comic Sans MS", sans-serif', bundled: 'opendyslexic' },
   { id: 'serif', label: 'Serif (device default)', stack: 'serif' },
   { id: 'georgia', label: 'Georgia', stack: 'Georgia, "Noto Serif", "DejaVu Serif", serif' },
   { id: 'charter', label: 'Charter / Iowan', stack: 'Charter, "Bitstream Charter", "Iowan Old Style", "Noto Serif", Georgia, serif' },
@@ -32,6 +33,30 @@ export function fontOptions() {
   return group('Same on every device', FONTS.filter((f) => f.bundled)) + group('Installed on this device', FONTS.filter((f) => !f.bundled));
 }
 
+// Text weights, from the font's regular to its bold. Fonts marked `weights` are drawn with their own
+// heavier faces. Other fonts get an outline instead, measured to add about as much ink per step;
+// bold text is outlined too, so it stays bolder than the rest.
+const WEIGHTS = [400, 500, 600, 700];
+const OUTLINE = 0.015; // em per 100 of weight
+const weightOf = (s) => (WEIGHTS.includes(s.weight) ? s.weight : DEFAULTS.weight);
+
+/** The family that draws a font heavier ('Literata 600', see server/fonts.js), or null. */
+function heavierFamily(font, weight) {
+  return font.weights && weight > 400 ? `${font.stack.split(',')[0].replaceAll('"', '')} ${weight}` : null;
+}
+
+const sheets = new Map();
+/** Adds the stylesheet with a heavier family, once. Resolves when it has loaded or failed. */
+function heavierSheet(font, weight) {
+  const href = `/css/fonts/${font.bundled}-${weight}.css`;
+  if (!sheets.has(href)) {
+    sheets.set(href, new Promise((resolve) => {
+      document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href, onload: resolve, onerror: resolve }));
+    }));
+  }
+  return sheets.get(href);
+}
+
 /**
  * Waits for a bundled font's files (a few seconds at most), so pages are measured in the font they
  * are shown in. Once downloaded they are kept for offline use.
@@ -39,8 +64,10 @@ export function fontOptions() {
 export function fontReady(s) {
   const font = FONTS.find((f) => f.id === s.font);
   if (!font?.bundled || !document.fonts?.load) return Promise.resolve();
-  const family = font.stack.split(',')[0];
-  const loads = Promise.all(['400', 'italic 400', '700'].map((style) => document.fonts.load(`${style} 16px ${family}`)));
+  const heavier = heavierFamily(font, weightOf(s));
+  const family = heavier ? `"${heavier}"` : font.stack.split(',')[0];
+  const sheet = heavier ? heavierSheet(font, weightOf(s)) : Promise.resolve();
+  const loads = sheet.then(() => Promise.all(['400', 'italic 400', '700'].map((style) => document.fonts.load(`${style} 16px ${family}`))));
   return Promise.race([loads, new Promise((resolve) => setTimeout(resolve, 3000))]).catch(() => {});
 }
 
@@ -49,6 +76,7 @@ export const DEFAULTS = {
   eink: false,
   font: 'literata',     // bundled with the app, so a new device looks like the others
   fontSize: 18,
+  weight: 400,          // 400 normal | 500 medium | 600 semibold | 700 bold: heavier text reads darker on e-ink
   lineHeight: 1.5,
   margin: 'm',          // s | m | l
   align: 'justify',
@@ -115,7 +143,11 @@ export function applyTheme(s) {
 export function applyTypography(s) {
   const root = document.documentElement.style;
   const font = FONTS.find((f) => f.id === s.font) || FONTS.find((f) => f.id === DEFAULTS.font);
-  root.setProperty('--font-family', font.stack);
+  const weight = weightOf(s);
+  const heavier = heavierFamily(font, weight);
+  if (heavier) heavierSheet(font, weight);
+  root.setProperty('--font-family', heavier ? `"${heavier}", ${font.stack}` : font.stack);
+  root.setProperty('--text-stroke', font.weights ? '0' : `${+((weight - 400) / 100 * OUTLINE).toFixed(3)}em`);
   root.setProperty('--font-size', `${s.fontSize}px`);
   root.setProperty('--line-height', String(s.lineHeight));
   const margins = { s: [12, 14], m: [24, 28], l: [44, 40] }[s.margin] || [24, 28];

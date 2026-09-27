@@ -21,10 +21,15 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   on all your devices. Six reading fonts come with the app, so they look the same on every device:
   Literata (the default), Merriweather, Libre Baskerville, Bitter, Atkinson Hyperlegible and
   OpenDyslexic, all under the SIL Open Font License. The fonts installed on a device can be picked
-  too. Text size, line spacing, margins, alignment, hyphenation, the theme (light, sepia, dark, or
-  following the device, which is the default) and a high-contrast e-ink switch are stored on each
-  device separately, so your Boox can be light and large while your phone is dark and small, both in
-  the same font.
+  too. Text size, text weight, line spacing, margins, alignment, hyphenation, the theme (light, sepia,
+  dark, or following the device, which is the default) and a high-contrast e-ink switch are stored on
+  each device separately, so your Boox can be light and large while your phone is dark and small,
+  both in the same font.
+- **Heavier text for e-ink.** E-ink screens draw thin strokes as light grey, so the text weight
+  (normal, medium, semibold or bold) makes letters darker. Literata, Merriweather, Libre Baskerville
+  and Bitter switch to their own heavier faces, bold text included, up to the heaviest each font has.
+  Atkinson Hyperlegible, OpenDyslexic and the fonts installed on a device get a thin outline instead,
+  which adds about as much ink.
 - **Any screen size.** Single column on phones and e-readers, two columns on wide screens (or force
   either). Turn pages by tapping the left/right edge, swiping, or with the keyboard.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're
@@ -164,7 +169,8 @@ of `public/js/api.js`.
 
 **Boox Go 6 (and other e-ink Android devices).** Open the address in the built-in browser or Chrome,
 sign in once (sessions last a year), then use the browser's "Add to home screen" so it opens full
-screen. In the reader's **Aa** panel pick *Light* and turn on *High contrast (e-ink)*. Tap the right
+screen. In the reader's **Aa** panel pick *Light* and turn on *High contrast (e-ink)*; if the letters
+still look thin, choose a heavier *Text weight* (*Medium* or *Semibold*). Tap the right
 third of the screen for the next page, the left third for the previous page, the middle for the menu.
 Swiping can be turned off there if your device registers accidental swipes.
 

@@ -240,3 +240,27 @@ test('the bundled fonts are served with the app', async () => {
     assert.equal(res.status, 200, url);
   }
 });
+
+test('the bundled fonts with every weight come drawn heavier, for the text weight setting', async () => {
+  const get = client();
+  const faces = (css) => [...css.matchAll(/font-family: '([^']+)';\s*font-style: (\w+);[^}]*?font-weight: (\d+);\s*src: url\(([^)]+)\)/g)]
+    .map(([, family, style, weight, url]) => ({ family, style, weight, url }));
+
+  const css = await get('/css/fonts/literata-600.css');
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /^text\/css/);
+  const literata = faces(css.data);
+  // A family of its own with the regular and bold styles, drawn with the semibold and the black faces.
+  assert.deepEqual(new Set(literata.map((f) => `${f.family} ${f.weight} ${f.style}`)), new Set(['Literata 600 400 normal', 'Literata 600 400 italic', 'Literata 600 700 normal', 'Literata 600 700 italic']));
+  for (const f of literata) assert.ok(f.url.endsWith(`-${f.weight === '400' ? 600 : 900}-${f.style}.woff2`), f.url);
+  for (const f of literata.filter((x) => x.url.includes('-latin-'))) assert.equal((await fetch(origin + f.url, { method: 'HEAD' })).status, 200, f.url);
+
+  // Libre Baskerville goes no heavier than bold, so at bold its bold text is the same face.
+  const baskerville = faces((await get('/css/fonts/libre-baskerville-700.css')).data);
+  assert.ok(baskerville.length && baskerville.every((f) => f.family === 'Libre Baskerville 700' && f.url.endsWith(`-700-${f.style}.woff2`)));
+
+  // Fonts with only a regular and a bold are outlined in the reader instead.
+  for (const file of ['atkinson-hyperlegible-500', 'opendyslexic-700', 'literata-400', 'literata-450', 'literata-1000', 'georgia-500']) {
+    assert.equal((await get(`/css/fonts/${file}.css`)).status, 404, file);
+  }
+});
