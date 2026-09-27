@@ -17,9 +17,10 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   on the server into the same normalised HTML, so the reader renders them all with one consistent
   look: your font, your size, your margins. PDFs get a reflowed text view plus an "original pages"
   view for figures, tables and scans.
-- **Per-device appearance.** Font, text size, line spacing, margins, alignment, hyphenation, light /
-  sepia / dark / system theme and a high-contrast e-ink switch are stored on each device
-  separately. Your Boox can be light, large and serif while your phone is dark and sans-serif.
+- **Your font everywhere, the rest per device.** The font you pick is saved to your account and used
+  on all your devices. Text size, line spacing, margins, alignment, hyphenation, light / sepia / dark
+  / system theme and a high-contrast e-ink switch are stored on each device separately, so your Boox
+  can be light and large while your phone is dark and small, both in the same font.
 - **Any screen size.** Single column on phones and e-readers, two columns on wide screens (or force
   either). Turn pages by tapping the left/right edge, swiping, or with the keyboard.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're

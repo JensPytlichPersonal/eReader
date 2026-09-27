@@ -203,3 +203,26 @@ test('conversion failure is reported on the book', async () => {
   assert.ok(detail.book.error.length > 0);
   await jens(`/api/books/${r.data.book.id}`, { method: 'DELETE' });
 });
+
+test('the font is kept on the account, so each device of a user gets the same one', async () => {
+  const laptop = client();
+  await laptop('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1', device: 'Laptop' } });
+  let r = await laptop('/api/auth/me');
+  assert.equal(r.data.user.font, '');
+  r = await laptop('/api/auth/me', { method: 'PATCH', body: { font: 'georgia' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.user.font, 'georgia');
+
+  const boox = client();
+  await boox('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1', device: 'Boox' } });
+  assert.equal((await boox('/api/auth/me')).data.user.font, 'georgia');
+  const anna = client();
+  await anna('/api/auth/login', { method: 'POST', body: { username: 'anna', password: 'newpass1' } });
+  assert.equal((await anna('/api/auth/me')).data.user.font, '', 'every reader has their own');
+
+  for (const font of ['<b>serif</b>', 12, 'x'.repeat(41)]) assert.equal((await boox('/api/auth/me', { method: 'PATCH', body: { font } })).status, 400);
+  assert.equal((await client()('/api/auth/me', { method: 'PATCH', body: { font: 'mono' } })).status, 401);
+  r = await boox('/api/auth/me', { method: 'PATCH', body: { font: '' } });
+  assert.equal(r.data.user.font, '');
+  assert.equal((await laptop('/api/auth/me')).data.user.font, '');
+});

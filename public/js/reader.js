@@ -2,7 +2,7 @@
 // (section, character offset) so it is stable across devices, fonts and screen sizes, and
 // keeps that position in sync with the server.
 import { api, toast, escapeHtml, guessDeviceName, registerServiceWorker, formatDate } from './api.js';
-import { loadSettings, saveSettings, applyTheme, applyTypography, FONTS } from './settings.js';
+import { loadSettings, saveSettings, applyTheme, applyTypography, FONTS, adoptAccountFont, saveAccountFont } from './settings.js';
 import { PdfPageView } from './pdf-view.js';
 
 registerServiceWorker();
@@ -854,7 +854,7 @@ function bindSettings() {
   const font = $('font');
   font.innerHTML = FONTS.map((f) => `<option value="${f.id}">${f.label}</option>`).join('');
   font.value = settings.font;
-  font.addEventListener('change', () => { settings.font = font.value; saveSettings(settings); typo(); });
+  font.addEventListener('change', () => { settings.font = font.value; saveSettings(settings); saveAccountFont(font.value); typo(); });
   const out = $('size-out');
   const showSize = () => { out.textContent = `${settings.fontSize}px`; };
   showSize();
@@ -983,7 +983,7 @@ function bindInput() {
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(settings));
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushSync({ keepalive: true });
-    else checkRemote();
+    else { checkRemote(); checkAccountFont(); }
   });
   window.addEventListener('pagehide', () => flushSync({ keepalive: true }));
   window.addEventListener('online', () => { if (state.dirty) flushSync(); });
@@ -1007,8 +1007,21 @@ async function dropStaleCache() {
 }
 
 // ---------------------------------------------------------------- start
+/** The font follows the reader's account: take it on when another device changed it. */
+async function checkAccountFont() {
+  try {
+    const { user } = await api('/api/auth/me', { noRedirect: true });
+    if (!adoptAccountFont(user)) return;
+    settings.font = user.font;
+    $('font').value = user.font;
+    relayout();
+  } catch { /* offline */ }
+}
+
 async function init() {
   applyTheme(settings);
+  // Asked for alongside the book, so the page is laid out in the account's font from the start.
+  const account = api('/api/auth/me', { noRedirect: true }).then((r) => r.user).catch(() => null);
   let data = null;
   try {
     data = await api(`/api/books/${bookId}`);
@@ -1035,6 +1048,8 @@ async function init() {
   state.book = book;
   state.manifest = manifest;
   state.bookmarks = bookmarks || [];
+  const user = await account;
+  if (adoptAccountFont(user)) settings.font = user.font;
   els.title.textContent = book.title || manifest.title;
   if (manifest.hasStyles) { const l = $('book-styles'); l.href = bookUrl('styles.css'); l.disabled = false; }
   dropStaleCache();

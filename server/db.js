@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   is_admin INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  -- The typeface the reader picked; it follows them to every device ('' until they pick one).
+  font TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -100,6 +102,8 @@ export function openDatabase(dbPath) {
 
 /** Adds columns introduced after the first release to databases created before them. */
 function migrate(db) {
+  const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name));
+  if (!userColumns.has('font')) db.exec("ALTER TABLE users ADD COLUMN font TEXT NOT NULL DEFAULT ''");
   const columns = new Set(db.prepare('PRAGMA table_info(books)').all().map((c) => c.name));
   if (!columns.has('converted_at')) db.exec('ALTER TABLE books ADD COLUMN converted_at INTEGER NOT NULL DEFAULT 0');
   if (!columns.has('edited_at')) db.exec('ALTER TABLE books ADD COLUMN edited_at INTEGER NOT NULL DEFAULT 0');

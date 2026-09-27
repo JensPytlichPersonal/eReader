@@ -1,4 +1,7 @@
-// Per-device display settings persisted in localStorage.
+// Display settings, kept per device in localStorage. The font is the exception: it belongs to the
+// reader's account and follows them to every device (the local copy lets pages start offline).
+import { api } from './api.js';
+
 const KEY = 'ereader.settings';
 
 export const FONTS = [
@@ -43,6 +46,26 @@ export function saveSettings(s) {
   const out = {};
   for (const k of Object.keys(DEFAULTS)) if (s[k] !== undefined) out[k] = s[k];
   localStorage.setItem(KEY, JSON.stringify(out));
+}
+
+/**
+ * Takes the account's font into this device's settings. Returns true when that changed the font.
+ * Until the account has a font, the first device with one of its own chosen passes it on.
+ */
+export function adoptAccountFont(user) {
+  const s = loadSettings();
+  if (!user?.font) {
+    if (user && s.font !== DEFAULTS.font) saveAccountFont(s.font);
+    return false;
+  }
+  if (user.font === s.font || !FONTS.some((f) => f.id === user.font)) return false;
+  saveSettings({ ...s, font: user.font });
+  return true;
+}
+
+/** Saves the font to the account, for every device. Offline, it waits for the next change. */
+export function saveAccountFont(font) {
+  return api('/api/auth/me', { method: 'PATCH', body: { font }, noRedirect: true }).catch(() => {});
 }
 
 export function effectiveTheme(s) {

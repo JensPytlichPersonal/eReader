@@ -1,5 +1,5 @@
 import { api, requireUser, escapeHtml, formatDate, toast, registerServiceWorker } from './api.js';
-import { loadSettings, applyTheme } from './settings.js';
+import { loadSettings, applyTheme, adoptAccountFont } from './settings.js';
 
 registerServiceWorker();
 applyTheme(loadSettings());
@@ -611,6 +611,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 requireUser().then((u) => {
   me = u;
+  adoptAccountFont(u); // so books open in the account's font without a second layout
   if (u.isAdmin) document.getElementById('nav-users').classList.remove('hidden');
   return load();
 }).catch(() => {});
