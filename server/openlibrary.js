@@ -19,7 +19,15 @@ export class LookupError extends Error {}
 const searchText = (s) => String(s ?? '').replace(/[+\-&|!(){}[\]^"~*?:\\/]/g, ' ').replace(/\s+/g, ' ').trim();
 
 const list = (v) => (Array.isArray(v) ? v : []);
-const words = (s) => new Set(String(s ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+// Too common to tell two titles apart: "The Hunted" is nothing like "The Encyclopedia of Arcade Video Games".
+const COMMON = new Set(['a', 'an', 'and', 'at', 'by', 'for', 'from', 'in', 'is', 'of', 'on', 'or', 'the', 'to', 'with', 'af', 'de', 'den', 'det', 'en', 'et', 'i', 'med', 'og', 'på', 'til']);
+
+/** The words that tell a title or name apart; all of them when there is nothing else ("It"). */
+function words(s) {
+  const all = String(s ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const telling = all.filter((w) => !COMMON.has(w));
+  return new Set(telling.length ? telling : all);
+}
 
 /** How alike two titles are, from 0 (no word in common) to 1 (the same words). */
 function likeness(a, b) {
@@ -28,6 +36,12 @@ function likeness(a, b) {
   let same = 0;
   for (const w of x) if (y.has(w)) same++;
   return same ? same / (x.size + y.size - same) : 0;
+}
+
+/** Whether two authors share a name: "Adler-Olsen, Jussi" and "Jussi Adler-Olsen". Initials do not count. */
+function sameAuthor(a, b) {
+  const x = words(a);
+  return [...words(b)].some((w) => w.length > 1 && x.has(w));
 }
 
 /**
@@ -96,7 +110,8 @@ export function createOpenLibrary({ url = SITE, interval = 1000, timeout = 10000
   /**
    * Books matching a book's ISBNs, which name its exact edition, and a title and author. The file's
    * own edition comes first, then the titles closest to the one typed; when some share words with
-   * it, those that share none are left out. At most five.
+   * it, those that share none are left out. A book sharing no word with the title is only offered
+   * when nothing else is and it has the author typed (a translation under another title). At most five.
    * @param {{title?: string, author?: string, isbns?: string[], language?: string}} book language as in the file ("da", "en-GB")
    * @returns {Promise<Array<{key: string, title: string, author: string, year: number|null, series: Array<{name: string, position: number|null}>, cover: string|null, coverId: number|null, url: string, byIsbn: boolean}>>}
    */
@@ -127,8 +142,10 @@ export function createOpenLibrary({ url = SITE, interval = 1000, timeout = 10000
       .filter((m) => !seen.has(m.key) && seen.add(m.key))
       .map((m, i) => ({ m, i, score: m.byIsbn ? 2 : likeness(m.title, title) }))
       .sort((a, b) => b.score - a.score || a.i - b.i);
+    // The search without the author finds books with those words anywhere, even in their subjects:
+    // "Omega Force: Hunted" turns up an encyclopedia of arcade games.
     const close = ranked[0]?.score > 0;
-    return ranked.filter((r) => !close || r.score > 0).slice(0, SHOWN).map((r) => r.m);
+    return ranked.filter((r) => r.score > 0 || (!close && sameAuthor(r.m.author, author))).slice(0, SHOWN).map((r) => r.m);
   }
 
   /**
