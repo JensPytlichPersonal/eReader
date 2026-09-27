@@ -33,7 +33,7 @@ export function validPassword(pw) {
 export function createAuth(db, config) {
   const stmts = {
     insertSession: db.prepare('INSERT INTO sessions (token, user_id, device, created_at, last_seen, expires_at) VALUES (?, ?, ?, ?, ?, ?)'),
-    findSession: db.prepare(`SELECT s.token, s.expires_at, s.last_seen, s.device, u.id AS user_id, u.username, u.display_name, u.is_admin
+    findSession: db.prepare(`SELECT s.token, s.expires_at, s.last_seen, s.device, u.id AS user_id, u.username, u.display_name, u.is_admin, u.font
       FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`),
     touchSession: db.prepare('UPDATE sessions SET last_seen = ?, expires_at = ? WHERE token = ?'),
     deleteSession: db.prepare('DELETE FROM sessions WHERE token = ?'),
@@ -97,7 +97,7 @@ export function createAuth(db, config) {
       const row = stmts.findSession.get(token);
       const t = now();
       if (row && row.expires_at > t) {
-        req.user = { id: row.user_id, username: row.username, displayName: row.display_name, isAdmin: !!row.is_admin };
+        req.user = { id: row.user_id, username: row.username, displayName: row.display_name, isAdmin: !!row.is_admin, font: row.font };
         req.sessionToken = token;
         req.device = row.device;
         // Slide the expiry forward at most once an hour to keep writes down.

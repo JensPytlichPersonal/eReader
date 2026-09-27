@@ -203,3 +203,40 @@ test('conversion failure is reported on the book', async () => {
   assert.ok(detail.book.error.length > 0);
   await jens(`/api/books/${r.data.book.id}`, { method: 'DELETE' });
 });
+
+test('the font is kept on the account, so each device of a user gets the same one', async () => {
+  const laptop = client();
+  await laptop('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1', device: 'Laptop' } });
+  let r = await laptop('/api/auth/me');
+  assert.equal(r.data.user.font, '');
+  r = await laptop('/api/auth/me', { method: 'PATCH', body: { font: 'georgia' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.user.font, 'georgia');
+
+  const boox = client();
+  await boox('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1', device: 'Boox' } });
+  assert.equal((await boox('/api/auth/me')).data.user.font, 'georgia');
+  const anna = client();
+  await anna('/api/auth/login', { method: 'POST', body: { username: 'anna', password: 'newpass1' } });
+  assert.equal((await anna('/api/auth/me')).data.user.font, '', 'every reader has their own');
+
+  for (const font of ['<b>serif</b>', 12, 'x'.repeat(41)]) assert.equal((await boox('/api/auth/me', { method: 'PATCH', body: { font } })).status, 400);
+  assert.equal((await client()('/api/auth/me', { method: 'PATCH', body: { font: 'mono' } })).status, 401);
+  r = await boox('/api/auth/me', { method: 'PATCH', body: { font: '' } });
+  assert.equal(r.data.user.font, '');
+  assert.equal((await laptop('/api/auth/me')).data.user.font, '');
+});
+
+test('the bundled fonts are served with the app', async () => {
+  const css = await client()('/css/fonts.css');
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /^text\/css/);
+  const families = new Set([...css.data.matchAll(/font-family: '([^']+)'/g)].map((m) => m[1]));
+  assert.deepEqual([...families], ['Literata', 'Merriweather', 'Libre Baskerville', 'Bitter', 'Atkinson Hyperlegible', 'OpenDyslexic']);
+  const urls = [...new Set([...css.data.matchAll(/url\(([^)]+)\)/g)].map((m) => m[1]))];
+  assert.ok(urls.length > 100 && urls.every((u) => u.startsWith('/vendor/fonts/')));
+  for (const url of urls.filter((u) => u.includes('-latin-'))) {
+    const res = await fetch(origin + url, { method: 'HEAD' });
+    assert.equal(res.status, 200, url);
+  }
+});

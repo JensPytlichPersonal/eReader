@@ -11,6 +11,7 @@ import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { bookRoutes, bookFiles } from './routes/books.js';
 import { seriesRoutes } from './routes/series.js';
+import { fontsCss, fontsDir } from './fonts.js';
 
 const require = createRequire(import.meta.url);
 
@@ -46,6 +47,9 @@ export function createApp(overrides = {}) {
   app.use('/vendor/pdfjs/legacy', express.static(path.join(pdfjsDir, 'legacy', 'build'), { immutable: true, maxAge: '30d' }));
   app.use('/vendor/pdfjs/cmaps', express.static(path.join(pdfjsDir, 'cmaps'), { immutable: true, maxAge: '30d' }));
   app.use('/vendor/pdfjs/standard_fonts', express.static(path.join(pdfjsDir, 'standard_fonts'), { immutable: true, maxAge: '30d' }));
+  app.use('/vendor/fonts', express.static(fontsDir, { immutable: true, maxAge: '30d' }));
+  const fonts = fontsCss();
+  app.get('/css/fonts.css', (req, res) => res.type('text/css').set('Cache-Control', 'no-cache').send(fonts));
 
   // App pages
   const page = (name) => (req, res) => res.sendFile(path.join(PUBLIC_DIR, name), { headers: { 'Cache-Control': 'no-cache' } });

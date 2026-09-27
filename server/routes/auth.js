@@ -4,10 +4,23 @@ import { validPassword, validUsername, hashPassword } from '../auth.js';
 export function authRoutes(db, auth, config) {
   const r = Router();
   const updatePassword = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+  const updateFont = db.prepare('UPDATE users SET font = ? WHERE id = ?');
 
   r.get('/me', (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Not signed in', setupRequired: auth.userCount() === 0, allowRegistration: config.allowRegistration });
     res.json({ user: req.user, device: req.device || '' });
+  });
+
+  // The reader's own settings that follow them to every device. So far: the typeface (a font id
+  // from public/js/settings.js; '' clears it).
+  r.patch('/me', auth.requireUser, (req, res) => {
+    const { font } = req.body || {};
+    if (font !== undefined) {
+      if (typeof font !== 'string' || !/^[a-z0-9-]{0,40}$/.test(font)) return res.status(400).json({ error: 'Unknown font' });
+      updateFont.run(font, req.user.id);
+      req.user.font = font;
+    }
+    res.json({ user: req.user });
   });
 
   r.post('/login', (req, res) => {

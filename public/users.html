@@ -5,7 +5,7 @@
 <title>Users - eReader</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
-<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=s.theme||'light';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
+<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=(s.v||s.theme!=='light')&&s.theme||'auto';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
 <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>

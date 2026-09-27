@@ -1,5 +1,5 @@
 import { api, requireUser, guessDeviceName } from './api.js';
-import { loadSettings, saveSettings, applyTheme } from './settings.js';
+import { loadSettings, saveSettings, applyTheme, fontOptions, adoptAccountFont, saveAccountFont } from './settings.js';
 
 const s = loadSettings();
 const device = document.getElementById('device');
@@ -16,9 +16,17 @@ function persist() {
 device.addEventListener('change', persist);
 theme.addEventListener('change', persist);
 eink.addEventListener('change', persist);
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(loadSettings()));
+
+// The font belongs to the account, so it is the same on every device.
+const font = document.getElementById('font');
+font.innerHTML = fontOptions();
+font.value = s.font;
+font.addEventListener('change', () => { saveSettings({ ...loadSettings(), font: font.value }); saveAccountFont(font.value); });
 
 requireUser().then((user) => {
   document.getElementById('who').textContent = `Signed in as ${user.displayName || user.username} (${user.username})${user.isAdmin ? ' - administrator' : ''}`;
+  if (adoptAccountFont(user)) font.value = user.font;
 });
 
 document.getElementById('pw-form').addEventListener('submit', async (e) => {
