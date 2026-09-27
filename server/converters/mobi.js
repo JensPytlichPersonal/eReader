@@ -3,6 +3,7 @@ import { readPdb, palmdocDecompress, HuffCdic, trailingSize, readIndex, fromBase
 import { normalizeDocument } from './html.js';
 import { filterStylesheet } from './css.js';
 import { assembleSections, imageExt, titleFromFilename } from './bundle.js';
+import { uniqueIsbns } from './isbn.js';
 
 const NONE = 0xffffffff;
 
@@ -217,9 +218,12 @@ function readImages(records, h) {
 
 function metaFrom(h, filename) {
   const title = exthString(h, 503) || h.fullName || titleFromFilename(filename);
-  const authors = (h.exth.get(100) || []).map((b) => decodeText(b, h.encoding).replace(/\0+$/, '').trim()).filter(Boolean);
+  const exthStrings = (type) => (h.exth.get(type) || []).map((b) => decodeText(b, h.encoding).replace(/\0+$/, '').trim()).filter(Boolean);
+  const authors = exthStrings(100);
   const language = exthString(h, 524);
-  return { title, author: authors.join(', '), language, format: 'mobi' };
+  // EXTH 104 is the ISBN; 112, the source, can name the printed book ("urn:isbn:…").
+  const isbns = uniqueIsbns([...exthStrings(104).map((value) => ({ value, isbn: true })), ...exthStrings(112).map((value) => ({ value }))]);
+  return { title, author: authors.join(', '), language, format: 'mobi', isbns };
 }
 
 // ---------------- MOBI7 ----------------

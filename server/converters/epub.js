@@ -5,6 +5,7 @@ import { normalizeDocument } from './html.js';
 import { filterStylesheet } from './css.js';
 import { assembleSections, imageExt, titleFromFilename } from './bundle.js';
 import { opfTitleAndSeries } from './series.js';
+import { uniqueIsbns } from './isbn.js';
 
 const HTML_TYPES = new Set(['application/xhtml+xml', 'text/html', 'application/x-dtbook+xml']);
 
@@ -37,13 +38,16 @@ function openPackage(zip) {
   return { opf: parseXml(zip.readText(opfPath)), opfPath };
 }
 
-/** Title, author, language and series from the package's <metadata>. */
+/** Title, author, language, series and ISBNs from the package's <metadata>. */
 function packageMetadata(opf, filename) {
   const metadata = findFirstLocal(opf, 'metadata') || opf;
   const { title, series } = opfTitleAndSeries(metadata);
   const creators = findAllLocal(metadata, 'creator').map(text).filter(Boolean);
   const language = text(findFirstLocal(metadata, 'language'));
-  return { title: title || titleFromFilename(filename), author: creators.join(', '), language, format: 'epub', series };
+  // The e-book's own ISBN first, then the printed book's (dc:source).
+  const isbns = uniqueIsbns([...findAllLocal(metadata, 'identifier'), ...findAllLocal(metadata, 'source')]
+    .map((el) => ({ value: text(el), isbn: /^isbn$/i.test(attr(el, 'scheme') || '') })));
+  return { title: title || titleFromFilename(filename), author: creators.join(', '), language, format: 'epub', series, isbns };
 }
 
 /** Reads only the book's details, without converting it. */

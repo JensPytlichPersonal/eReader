@@ -5,9 +5,10 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { now, transaction } from '../db.js';
-import { detectFormat, SUPPORTED_EXTENSIONS } from '../converters/index.js';
+import { detectFormat, readMetadata, SUPPORTED_EXTENSIONS } from '../converters/index.js';
 import { sniffImage, titleFromFilename } from '../converters/bundle.js';
-import { cleanSeriesName, parsePosition } from '../converters/series.js';
+import { cleanSeriesName, knownSeriesName, parsePosition } from '../converters/series.js';
+import { LookupError } from '../openlibrary.js';
 
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
 const COVER_TYPES = ['jpg', 'png', 'gif', 'webp'];
@@ -36,7 +37,7 @@ export function parseSeriesInput(input) {
   return { series };
 }
 
-export function bookRoutes(db, auth, config, processor, series) {
+export function bookRoutes(db, auth, config, processor, series, openLibrary) {
   const r = Router();
   const stmts = {
     list: db.prepare(`SELECT b.*, u.username AS added_by_name,
@@ -86,6 +87,12 @@ export function bookRoutes(db, auth, config, processor, series) {
     let files = [];
     try { files = await fsp.readdir(bookDir(id)); } catch { /* no folder */ }
     for (const f of files) if (f.startsWith('custom-cover.') && f !== keep) await fsp.rm(path.join(bookDir(id), f), { force: true });
+  };
+  // The ISBNs in the book's file. EPUB and MOBI files carry them, and reading their details is quick.
+  const readIsbns = async (b) => {
+    const name = ['epub', 'mobi'].includes(b.format) && findOriginal(b.id);
+    if (!name) return [];
+    try { return (await readMetadata(await fsp.readFile(path.join(bookDir(b.id), name)), { filename: b.original_name })).isbns || []; } catch { return []; }
   };
 
   r.use(auth.requireUser);
@@ -142,6 +149,28 @@ export function bookRoutes(db, auth, config, processor, series) {
       });
     }
     res.json({ book: shapeBook(stmts.get.get(b.id)) });
+  });
+
+  // Finds the book on Open Library by the ISBN in its file and by the title and author typed in
+  // the edit form. Nothing changes here: picking a match fills in the form, which is then saved.
+  r.get('/:id/lookup', async (req, res) => {
+    const b = stmts.get.get(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' });
+    if (!req.user.isAdmin && b.added_by !== req.user.id) return res.status(403).json({ error: 'Only the uploader or an admin can edit this book' });
+    const field = (v) => (typeof v === 'string' ? v.trim().slice(0, 500) : '');
+    const title = field(req.query.title);
+    const isbns = await readIsbns(b);
+    if (!title && !isbns.length) return res.status(400).json({ error: 'Type a title to look up' });
+    let results;
+    try {
+      results = await openLibrary.lookup({ title, author: field(req.query.author), isbns, language: b.language });
+    } catch (err) {
+      if (err instanceof LookupError) return res.status(502).json({ error: err.message });
+      throw err;
+    }
+    // A series the library already has keeps its name there, so the book joins it.
+    const known = series.names();
+    res.json({ results: results.map((m) => ({ ...m, series: m.series.map((s) => ({ ...s, name: knownSeriesName(s.name, known) })) })) });
   });
 
   r.delete('/:id', async (req, res) => {

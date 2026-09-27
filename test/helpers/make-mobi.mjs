@@ -36,7 +36,8 @@ function exthRecord(type, data) {
   return b;
 }
 
-export function makeMobi({ html, title = 'Mobi Fixture', author = 'Mobi Author', compress = true, trailing = true, images = [TINY_PNG] } = {}) {
+// `exth` adds EXTH records: [[type, data], ...], e.g. [[104, '9780316129084']] for an ISBN.
+export function makeMobi({ html, title = 'Mobi Fixture', author = 'Mobi Author', compress = true, trailing = true, images = [TINY_PNG], exth: extra = [] } = {}) {
   const text = Buffer.from(html, 'utf8');
   const recSize = 4096;
   const textRecords = [];
@@ -47,9 +48,10 @@ export function makeMobi({ html, title = 'Mobi Fixture', author = 'Mobi Author',
     textRecords.push(rec);
   }
   const fullName = Buffer.from(title, 'utf8');
-  const exth = Buffer.concat([exthRecord(100, author), exthRecord(503, title), exthRecord(201, Buffer.from([0, 0, 0, 0]))]);
+  const exthRecords = [exthRecord(100, author), exthRecord(503, title), exthRecord(201, Buffer.from([0, 0, 0, 0])), ...extra.map(([type, data]) => exthRecord(type, data))];
+  const exth = Buffer.concat(exthRecords);
   const exthHeader = Buffer.alloc(12);
-  exthHeader.write('EXTH', 0, 'latin1'); exthHeader.writeUInt32BE(12 + exth.length, 4); exthHeader.writeUInt32BE(3, 8);
+  exthHeader.write('EXTH', 0, 'latin1'); exthHeader.writeUInt32BE(12 + exth.length, 4); exthHeader.writeUInt32BE(exthRecords.length, 8);
   const mobiLen = 0xe8; // header length (from 'MOBI') covering the NCX index field
   const rec0 = Buffer.alloc(16 + mobiLen + exthHeader.length + exth.length + fullName.length + 2, 0);
   rec0.writeUInt16BE(compress ? 2 : 1, 0);

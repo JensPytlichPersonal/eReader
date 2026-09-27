@@ -258,6 +258,16 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .field .series-row input[name="series-name"] { flex: 1 1 auto; }
 .field .series-row input[name="series-no"] { flex: 0 0 64px; text-align: center; }
 .series-row .btn.icon { flex: none; }
+.lookup { margin: -4px 0 14px; }
+.lookup .hint a { font-weight: 600; }
+.matches { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.match { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; min-height: 60px; padding: 6px 8px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); text-align: left; }
+.match:hover, .match:focus-visible { border-color: var(--fg); }
+.match:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+.match .cover { display: block; width: 40px; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
+.match .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.match .title { font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.match .about { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 /* Cover dialog: the cover as the library shows it, beside the ways to change it */
 .cover-edit { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
 .cover-preview { flex: 0 0 110px; }
