@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { normalizeDocument } from './html.js';
 import { assembleSections, titleFromFilename } from './bundle.js';
 import { encodePng } from './png.js';
+import { isWatermark } from './watermarks.js';
 import { seriesFromXmp } from './series.js';
 
 const require = createRequire(import.meta.url);
@@ -43,7 +44,7 @@ export function joinHyphenated(prevText, nextText) {
   if (/\d$/.test(before) || /^[A-Z0-9]/.test(nextText)) return { text: prevText + nextText, dropHyphen: false };
   if (!lowerNext) return { text: prevText + nextText, dropHyphen: false };
   const stem = before.replace(/^.*[^A-Za-z]/, '').toLowerCase();
-  if (COMPOUND_PREFIXES.has(stem)) return { text: prevText + nextText, dropHyphen: false };
+  if (COMPOUND_PREFIXES.has(stem) || /[A-Za-z]-[A-Za-z]/.test(before)) return { text: prevText + nextText, dropHyphen: false };
   return { text: prevText.slice(0, -1) + nextText, dropHyphen: true };
 }
 
@@ -137,6 +138,7 @@ export function linesToBlocks(lines, ctx = {}) {
 
   const kept = lines.filter((l) => {
     if (l.image) return true;
+    if (isWatermark(l.text)) return false;
     const band = edgeBand(l);
     if (!band) return true;
     if (/^[\divxlc]+$/i.test(l.text.replace(/[\s|·•—–-]/g, ''))) return false;
@@ -228,7 +230,7 @@ export function pageItemsToBlocks(items, viewport, styles) {
 
 function blockHtml(b) {
   if (b.type === 'h') return `<h${b.level}>${b.html}</h${b.level}>`;
-  if (b.type === 'fn') return `<p class="footnote">${b.html}</p>`;
+  if (b.type === 'fn') return `<p class="footnote"${b.id ? ` id="${b.id}"` : ''}>${b.html}</p>`;
   if (b.type === 'leader') return `<p class="leader">${b.html}</p>`;
   if (b.type === 'img') return `<figure><img src="${b.src}" alt=""/></figure>`;
   const cls = [b.cont ? 'cont' : '', b.bullet ? 'list-item' : ''].filter(Boolean).join(' ');
@@ -244,8 +246,57 @@ function continues(prevBlocks, nextBlocks) {
   const last = [...prevBlocks].reverse().find((b) => b.type !== 'fn');
   const first = nextBlocks[0];
   if (!last || !first || last.type !== 'p' || first.type !== 'p' || first.bullet) return false;
-  if (/-$/.test(last.text)) return true;
-  return !/[.!?:;"”’)\]]$/.test(last.text) && /^[a-z(“"]/.test(first.text);
+  if (/[-–—]$/.test(last.text)) return true;
+  return !/[.!?:;"”’)\]]$/.test(last.text) && /^[a-z0-9(“"]/.test(first.text);
+}
+
+/** Join the text of a paragraph that ended one page with the block that begins the next. */
+function joinAcrossPages(last, first, marker) {
+  const joined = joinHyphenated(last.text, first.text);
+  let text;
+  let html;
+  if (joined) {
+    text = joined.text;
+    html = (joined.dropHyphen ? last.html.replace(/-(<\/(?:b|i)>)*$/, '$1') : last.html) + marker + first.html;
+  } else if (/[–—]$/.test(last.text)) {
+    text = last.text + first.text;
+    html = last.html + marker + first.html;
+  } else {
+    text = `${last.text} ${first.text}`;
+    html = `${last.html} ${marker}${first.html}`;
+  }
+  return { ...last, text, html: html.replace(/<\/(b|i)> ?<\1>/g, ' ').replace(/<\/(b|i)><\1>/g, '') };
+}
+
+const NOTE_NUM_RE = /^(\d{1,3}|[*†‡§])\s/;
+
+/** Turn footnote markers in a page's body blocks into links to that page's notes, and give the notes ids and back links. */
+function linkFootnotes(pageNo, blocks) {
+  const notes = blocks.filter((b) => b.type === 'fn');
+  const byNum = new Map();
+  for (const n of notes) {
+    const m = NOTE_NUM_RE.exec(n.text);
+    if (!m || byNum.has(m[1])) continue;
+    byNum.set(m[1], n);
+    n.id = `fn-${pageNo}-${m[1].replace(/[^\w]/g, (c) => c.charCodeAt(0))}`;
+    n.refs = 0;
+  }
+  if (!byNum.size) return;
+  for (const b of blocks) {
+    if (b.type === 'fn' || !b.html) continue;
+    b.html = b.html.replace(/<sup>(\d{1,3}|[*†‡§])<\/sup>/g, (m, num) => {
+      const note = byNum.get(num);
+      if (!note) return m;
+      note.refs++;
+      const refId = `${note.id.replace(/^fn-/, 'fnref-')}-${note.refs}`;
+      if (note.refs === 1) note.backTo = refId;
+      return `<sup><a id="${refId}" href="#${note.id}">${num}</a></sup>`;
+    });
+  }
+  for (const n of notes) {
+    if (!n.id) continue;
+    n.html = n.html.replace(/^<sup>(\d{1,3}|[*†‡§])<\/sup>/, (m, num) => (n.backTo ? `<sup><a href="#${n.backTo}">${num}</a></sup>` : m));
+  }
 }
 
 /**
@@ -255,35 +306,35 @@ function continues(prevBlocks, nextBlocks) {
 export function mergePages(pages, { budget = SECTION_BUDGET, startsChapter = () => false } = {}) {
   const sections = [];
   let cur = null;
-  const flush = () => { if (cur) { sections.push({ first: cur.first, last: cur.last, html: cur.parts.join('\n') }); cur = null; } };
+  const flush = () => {
+    if (!cur) return;
+    const parts = [...cur.parts];
+    if (cur.notes.length) parts.push(`<section class="endnotes">${cur.notes.join('\n')}</section>`);
+    sections.push({ first: cur.first, last: cur.last, html: parts.join('\n') });
+    cur = null;
+  };
   for (const { p, blocks } of pages) {
     const firstText = blocks.find((b) => b.type !== 'img');
     const chapterStart = startsChapter(p) || (firstText?.type === 'h' && firstText.level === 1);
-    if (cur && (cur.chars >= budget || (chapterStart && cur.chars > 4000))) flush();
+    if (cur && (cur.chars >= budget || (chapterStart && cur.chars > 0))) flush();
     const marker = `<span class="pg" id="pg${p}"></span>`;
-    if (!cur) cur = { first: p, last: p, chars: 0, parts: [], prevBlocks: null };
+    if (!cur) cur = { first: p, last: p, chars: 0, parts: [], notes: [], prevBlocks: null };
     cur.last = p;
-    const list = [...blocks];
-    if (cur.prevBlocks && continues(cur.prevBlocks, list)) {
-      // Pull the unfinished paragraph out of the previous page's output and join it with this page's first block.
-      const prevParts = cur.parts;
-      const tail = [];
-      while (prevParts.length && /^<p class="footnote">/.test(prevParts[prevParts.length - 1])) tail.unshift(prevParts.pop());
-      const lastHtml = prevParts.pop();
+    linkFootnotes(p, blocks);
+    const body = blocks.filter((b) => b.type !== 'fn');
+    const notes = blocks.filter((b) => b.type === 'fn');
+    if (cur.prevBlocks && cur.parts.length && continues(cur.prevBlocks, body)) {
+      // The paragraph that ended the previous page carries on: replace its output with the joined paragraph.
       const lastBlock = cur.prevBlocks.filter((b) => b.type !== 'fn').pop();
-      const first = list.shift();
-      const joined = joinHyphenated(lastBlock.text, first.text);
-      const merged = { ...lastBlock, text: joined ? joined.text : `${lastBlock.text} ${first.text}`,
-        html: joined ? (joined.dropHyphen ? lastBlock.html.replace(/-(<\/(?:b|i)>)*$/, '$1') : lastBlock.html) + marker + first.html : `${lastBlock.html} ${marker}${first.html}` };
-      merged.html = merged.html.replace(/<\/(b|i)> ?<\1>/g, ' ').replace(/<\/(b|i)><\1>/g, '');
-      void lastHtml;
-      prevParts.push(blockHtml(merged), ...tail);
+      cur.parts.pop();
+      const first = body.shift();
+      cur.parts.push(blockHtml(joinAcrossPages(lastBlock, first, marker)));
       cur.chars += first.text.length;
-      for (const b of list) { cur.parts.push(blockHtml(b)); cur.chars += b.text.length; }
     } else {
       cur.parts.push(marker);
-      for (const b of list) { cur.parts.push(blockHtml(b)); cur.chars += b.text.length; }
     }
+    for (const b of body) { cur.parts.push(blockHtml(b)); cur.chars += b.text.length; }
+    for (const n of notes) { cur.notes.push(blockHtml(n)); cur.chars += n.text.length; }
     cur.prevBlocks = blocks;
   }
   flush();
@@ -459,7 +510,10 @@ export async function convertPdf(buffer, { filename }) {
   });
   const merged = mergePages(pageBlocks, { budget: SECTION_BUDGET, startsChapter: (p) => chapterPages.has(p) });
   const chapters = merged.map((s) => {
-    const { root } = normalizeDocument(`<body>${s.html}</body>`, { resolveImage: (src) => (images.has(src) ? src : null) });
+    const { root } = normalizeDocument(`<body>${s.html}</body>`, {
+      resolveImage: (src) => (images.has(src) ? src : null),
+      resolveLink: (href) => (href.startsWith('#') ? `pages${s.first}${href}` : null),
+    });
     return { root, key: `pages${s.first}`, page: s.first, pageStart: s.first, pageEnd: s.last, title: s.first === s.last ? `Page ${s.first}` : `Pages ${s.first}–${s.last}` };
   });
 

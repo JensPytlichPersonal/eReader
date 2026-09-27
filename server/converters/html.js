@@ -2,6 +2,7 @@
 import { parseDocument, DomUtils, ElementType } from 'htmlparser2';
 import render from 'dom-serializer';
 import { filterInlineStyle } from './css.js';
+import { hasWatermark, stripWatermarks, isWatermarkLink } from './watermarks.js';
 
 const { isTag, isText, textContent, removeElement, replaceElement, getElementsByTagName, findOne } = DomUtils;
 
@@ -49,6 +50,7 @@ export function normalizeDocument(html, opts = {}) {
 
   const state = { images: new Set(), idCounter: 0, opts, ids: new Set() };
   cleanNode(container, state);
+  removeWatermarks(container);
   // Drop leading/trailing empty nodes
   while (container.children.length && isEmptyNode(container.children[0])) container.children.shift();
   while (container.children.length && isEmptyNode(container.children[container.children.length - 1])) container.children.pop();
@@ -124,6 +126,37 @@ function cleanNode(node, state) {
     // Remove empty inline wrappers that carry nothing.
     if (INLINE_TAGS.has(name) && name !== 'a' && name !== 'wbr' && !child.attribs.id && child.children.length === 0) {
       removeElement(child);
+    }
+  }
+}
+
+/** Take out download-site watermarks (see watermarks.js) and the elements they leave empty. */
+function removeWatermarks(root) {
+  const touched = [];
+  const visit = (node) => {
+    for (const child of [...node.children]) {
+      if (isText(child)) {
+        if (!hasWatermark(child.data)) continue;
+        child.data = stripWatermarks(child.data);
+        if (!child.data) removeElement(child);
+        touched.push(node);
+      } else if (isTag(child)) {
+        if (child.name === 'a' && isWatermarkLink(child.attribs.href || '')) {
+          // Unlink rather than delete, so nothing but the watermark text itself is lost.
+          child.name = 'span';
+          for (const k of ['href', 'target', 'rel']) delete child.attribs[k];
+          touched.push(child);
+        }
+        visit(child);
+      }
+    }
+  };
+  visit(root);
+  for (let node of touched) {
+    while (node !== root && node.parent && isEmptyNode(node)) {
+      const parent = node.parent;
+      removeElement(node);
+      node = parent;
     }
   }
 }

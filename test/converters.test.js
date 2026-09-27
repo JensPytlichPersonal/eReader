@@ -182,37 +182,26 @@ test('pdf hyphenation joins', () => {
   assert.deepEqual(joinHyphenated('a basic four-', 'profession model'), { text: 'a basic four-profession model', dropHyphen: false });
   assert.deepEqual(joinHyphenated('Would a 500-', 'player game'), { text: 'Would a 500-player game', dropHyphen: false });
   assert.deepEqual(joinHyphenated('the term Multi-', 'User Dungeon'), { text: 'the term Multi-User Dungeon', dropHyphen: false });
+  assert.deepEqual(joinHyphenated('The co-ordinate-', 'based Mosaic system'), { text: 'The co-ordinate-based Mosaic system', dropHyphen: false });
   assert.equal(joinHyphenated('no hyphen here', 'next'), null);
 });
 
-test('pdf page merging: sections split at budget and chapter starts, images kept in flow', () => {
+test('pdf page merging: chapter starts split sections, images kept, notes moved to the end and linked', () => {
   const { mergePages } = pdfInternals;
-  const p = (text) => ({ type: 'p', text, html: text, bullet: false, cont: false });
+  const p = (text, html = text) => ({ type: 'p', text, html, bullet: false, cont: false });
   const pages = [
     { p: 1, blocks: [p('x'.repeat(3000))] },
-    { p: 2, blocks: [{ type: 'img', src: 'images/p2_1.png', text: '' }, p('y'.repeat(3000))] },
-    { p: 3, blocks: [p('chapter two starts here.')] },
-    { p: 4, blocks: [p('z'.repeat(3000))] },
+    { p: 2, blocks: [{ type: 'img', src: 'images/p2_1.png', text: '' }, p('This was fair<sup>4</sup> royalty and in 1984–', 'This was fair<sup>4</sup> royalty and in 1984–'), { type: 'fn', text: '4 A fact.', html: '<sup>4</sup> A fact.' }] },
+    { p: 3, blocks: [p('85, there were articles.')] },
+    { p: 4, blocks: [{ type: 'h', level: 1, text: 'Chapter 2', html: 'Chapter 2', size: 20 }, p('z'.repeat(30))] },
   ];
-  const out = mergePages(pages, { budget: 100000, startsChapter: (n) => n === 3 });
-  assert.deepEqual(out.map((s) => [s.first, s.last]), [[1, 2], [3, 4]]);
+  const out = mergePages(pages, { budget: 100000, startsChapter: () => false });
+  assert.deepEqual(out.map((s) => [s.first, s.last]), [[1, 3], [4, 4]]);
   assert.match(out[0].html, /<figure><img src="images\/p2_1.png" alt=""\/><\/figure>/);
-  assert.match(out[1].html, /^<span class="pg" id="pg3"><\/span>/);
-});
-
-test('pdf block heuristics: headings by size, indentation starts paragraphs', () => {
-  const item = (str, x, y, size, w) => ({ str, transform: [size, 0, 0, size, x, y], width: w, height: size, hasEOL: false });
-  const items = [
-    item('Big Title', 72, 700, 20, 100),
-    item('First line of a paragraph that is long enough to count', 72, 670, 10, 300),
-    item('second line continues here with more words in it', 72, 658, 10, 300),
-    item('Indented start of new paragraph with more words', 90, 646, 10, 280),
-    item('42', 300, 30, 10, 10),
-  ];
-  const blocks = pageItemsToBlocks(items, { width: 612, height: 792 });
-  assert.deepEqual(blocks.map((b) => b.type), ['h', 'p', 'p']);
-  assert.equal(blocks[1].text, 'First line of a paragraph that is long enough to count second line continues here with more words in it');
-  assert.equal(blocks[2].text, 'Indented start of new paragraph with more words');
+  // The dash-ended paragraph is joined across the page break, with the marker inside, and the note is linked and moved to the end.
+  assert.match(out[0].html, /<p>This was fair<sup><a id="fnref-2-4-1" href="#fn-2-4">4<\/a><\/sup> royalty and in 1984–<span class="pg" id="pg3"><\/span>85, there were articles\.<\/p>/);
+  assert.match(out[0].html, /<section class="endnotes"><p class="footnote" id="fn-2-4"><sup><a href="#fnref-2-4-1">4<\/a><\/sup> A fact\.<\/p><\/section>$/);
+  assert.match(out[1].html, /^<span class="pg" id="pg4"><\/span>\n<h1>Chapter 2<\/h1>/);
 });
 
 test('format detection and dispatcher', async () => {
@@ -267,4 +256,53 @@ test('pdf reflow: running headers, hanging-indent lists, footnotes, hyphens, sup
   assert.match(html, /<p>The same could not be said of Meridian 59\.<\/p>/);
   assert.match(html, /<p>respect of any computer game<sup>21<\/sup>\.<\/p>/);
   assert.match(html, /<p class="footnote"><sup>21<\/sup> Actually, it used a <i>DOOM<\/i>-like engine\.<\/p>/);
+});
+
+test('OceanofPDF.com watermarks are removed whatever the markup around them', () => {
+  const html = (body) => serialize(normalizeDocument(`<body>${body}</body>`).root.children);
+  // The usual stamp at the end of a chapter leaves no empty paragraph behind, even inside a wrapper.
+  assert.equal(html('<div class="calibre1"><p>The end.</p><p class="calibre3"><a href="https://oceanofpdf.com"><i>OceanofPDF.com</i></a></p></div>'),
+    '<div class="calibre1"><p>The end.</p></div>');
+  // Run into a paragraph, written as a URL, or letter-spaced as on some PDF pages.
+  assert.equal(html('<p>The end. OceanofPDF.com</p>'), '<p>The end.</p>');
+  assert.equal(html('<p>Visit https://www.oceanofpdf.com/ now</p>'), '<p>Visit now</p>');
+  assert.equal(html('<p>O c e a n o f P D F . c o m</p><p>Next</p>'), '<p>Next</p>');
+  // A link to the site is unlinked but keeps any other text it wraps, and its id.
+  assert.equal(html('<p>Read <a id="k" href="http://oceanofpdf.com/authors/x/">more</a>.</p>'), '<p>Read <span id="k">more</span>.</p>');
+  assert.equal(html('<p>An ocean of PDF. Complete.</p>'), '<p>An ocean of PDF. Complete.</p>');
+});
+
+test('epub stamped with OceanofPDF.com converts exactly like the clean book', async () => {
+  // As found in a real OceanofPDF book, at the end of every chapter file.
+  const stamp = '<div style="float: none; margin: 10px 0px 10px 0px; text-align: center;"><p><a href="https://oceanofpdf.com"><i>OceanofPDF.com</i></a></p></div>';
+  const chapters = [
+    { id: 'ch1', file: 'ch1.xhtml', title: 'Chapter One', body: '<h1 class="calibre2">Chapter One</h1><div class="calibre10"> </div>\n' },
+    { id: 'ch2', file: 'ch2.xhtml', title: 'Chapter Two', body: '<div class="calibre1"><h1>Chapter Two</h1><p>It ends.</p></div>' },
+  ];
+  const stamped = [
+    { ...chapters[0], body: chapters[0].body + stamp },
+    { ...chapters[1], body: chapters[1].body.replace('</div>', `${stamp}</div>`) },
+  ];
+  const clean = await convertEpub(makeEpub({ chapters }), { filename: 'f.epub' });
+  const book = await convertEpub(makeEpub({ chapters: stamped }), { filename: 'f.epub' });
+  const html = (b) => b.sections.map((s) => serialize(s.nodes));
+  assert.deepEqual(html(book), html(clean));
+  assert.deepEqual(book.sections.map((s) => s.chars), clean.sections.map((s) => s.chars));
+});
+
+test('pdf: OceanofPDF.com lines are dropped before paragraphs are built', async () => {
+  const buf = makePdf([
+    ['Chapter One', '', 'The hallway smelt of boiled cabbage and it', 'continued on the next page because the sentence', '', 'OceanofPDF.com'],
+    ['runs across the page break like this.'],
+    ['O c e a n o f P D F . c o m'],
+  ]);
+  const book = await convertPdf(buf, { filename: '_OceanofPDF.com_Nineteen_Eighty-Four_-_George_Orwell.pdf' });
+  assert.equal(book.meta.title, 'Nineteen Eighty-Four - George Orwell');
+  const html = book.sections.map((s) => serialize(s.nodes)).join('\n');
+  assert.doesNotMatch(html, /OceanofPDF|O c e a n/i);
+  // A stamp between a paragraph and its continuation on the next page does not split it.
+  assert.match(html, /<p>The hallway smelt of boiled cabbage and it continued on the next page because the sentence <span class="pg" id="pg2"><\/span>runs across the page break like this\.<\/p>/);
+  // A page holding only the stamp gets the page-view hint rather than coming out blank.
+  assert.match(html, /<span class="pg" id="pg3"><\/span>\n<p><span class="pdf-empty">\[Page 3 has no extractable text/);
+  assert.equal(book.extra.textPages, 2);
 });

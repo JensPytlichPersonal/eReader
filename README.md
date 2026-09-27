@@ -118,9 +118,14 @@ Wide windows show two columns; switch to one column in the display settings if y
 | --- | --- |
 | EPUB 2 and 3 | Chapters, images, table of contents (nav or NCX), footnote links. Publisher CSS is reduced to a few typographic hints so every book follows your settings. |
 | MOBI, PRC, AZW, AZW3/KF8 | PalmDOC and HUFF/CDIC compression, images, table of contents from the NCX index, hybrid MOBI7+KF8 files. DRM-protected files are rejected. |
-| PDF | Text is extracted per page and merged into normal-sized sections, so wide screens fill both columns. Running headers and footers repeated across pages, page numbers and line-break hyphenation are removed; bulleted lists, footnotes (as small print with superscript markers), italic/bold runs and embedded images are kept. Invisible page markers tie the reflowed text to the *Original pages* view, so both views share the same position. In the dark theme the page view inverts the page but leaves photographs as printed. Scanned PDFs without text can still be read in the page view. |
+| PDF | Text is extracted per page and merged into normal-sized sections, so wide screens fill both columns. Running headers and footers repeated across pages, page numbers and line-break hyphenation are removed; bulleted lists, italic/bold runs and embedded images are kept, and footnotes are collected at the end of each section with links from the markers and back. Each top-level heading starts a new section. Invisible page markers tie the reflowed text to the *Original pages* view, so both views share the same position. In the dark theme the page view inverts the page but leaves photographs as printed. Scanned PDFs without text can still be read in the page view. |
 | Markdown | CommonMark + GitHub tables, YAML front matter for title/author, headings become the table of contents. |
 | Text | Paragraph and heading detection, including hard-wrapped Gutenberg-style text; UTF-8, UTF-16 and Latin-1. |
+
+Books from OceanofPDF have an "OceanofPDF.com" link stamped into every chapter (or onto the pages
+of a PDF) and the site's name at the start of the file name. Conversion removes the stamp in every
+format and keeps the site's name out of titles taken from the file name. The uploaded original is
+kept as it is, so a PDF's *Original pages* view still shows the stamp.
 
 Converted books are stored as small HTML sections under `data/books/<id>/`. If a book converts
 badly, choose *Convert again* from its menu, or re-run every book with `npm run reprocess` after an
@@ -171,7 +176,7 @@ npm test         # converter unit tests and API integration tests
 Layout of the code:
 
 - `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API
-- `server/converters/` one module per format plus the shared HTML normaliser, chunker and bundle writer, and `series.js`, which finds series in metadata and titles
+- `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns, and `series.js`, which finds series in metadata and titles
 - `public/` the web app: library, reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)
 
