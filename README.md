@@ -21,10 +21,15 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   on all your devices. Six reading fonts come with the app, so they look the same on every device:
   Literata (the default), Merriweather, Libre Baskerville, Bitter, Atkinson Hyperlegible and
   OpenDyslexic, all under the SIL Open Font License. The fonts installed on a device can be picked
-  too. Text size, line spacing, margins, alignment, hyphenation, the theme (light, sepia, dark, or
-  following the device, which is the default) and a high-contrast e-ink switch are stored on each
-  device separately, so your Boox can be light and large while your phone is dark and small, both in
-  the same font.
+  too. Text size, text weight, line spacing, margins, alignment, hyphenation, the theme (light, sepia,
+  dark, or following the device, which is the default) and a high-contrast e-ink switch are stored on
+  each device separately, so your Boox can be light and large while your phone is dark and small,
+  both in the same font.
+- **Heavier text for e-ink.** E-ink screens draw thin strokes as light grey, so the text weight
+  (normal, medium, semibold or bold) makes letters darker. Literata, Merriweather, Libre Baskerville
+  and Bitter switch to their own heavier faces, bold text included, up to the heaviest each font has.
+  Atkinson Hyperlegible, OpenDyslexic and the fonts installed on a device get a thin outline instead,
+  which adds about as much ink.
 - **Any screen size.** Single column on phones and e-readers, two columns on wide screens (or force
   either). Turn pages by tapping the left/right edge, swiping, or with the keyboard.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're
@@ -32,6 +37,8 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   are picked up from the books themselves, and any books can be grouped by hand.
 - **Details from Open Library.** When a book's title, author or series is missing or wrong, look it up
   on Open Library from its details and pick the matching book to fill them in.
+- **Covers.** EPUB and MOBI books bring their own. Where one is missing (most PDFs) or wrong, pick an
+  image, use a page of the PDF, or show the title instead.
 - **List or cards.** The View menu shows the library as a list or as cards in three sizes. On a phone
   the cards are 2, 3 or 4 across, and the tabs, search, menus, upload and account links sit behind
   the ☰ button so the books fill the screen.
@@ -164,7 +171,8 @@ of `public/js/api.js`.
 
 **Boox Go 6 (and other e-ink Android devices).** Open the address in the built-in browser or Chrome,
 sign in once (sessions last a year), then use the browser's "Add to home screen" so it opens full
-screen. In the reader's **Aa** panel pick *Light* and turn on *High contrast (e-ink)*. Tap the right
+screen. In the reader's **Aa** panel pick *Light* and turn on *High contrast (e-ink)*; if the letters
+still look thin, choose a heavier *Text weight* (*Medium* or *Semibold*). Tap the right
 third of the screen for the next page, the left third for the previous page, the middle for the menu.
 Swiping can be turned off there if your device registers accidental swipes.
 
@@ -192,8 +200,8 @@ kept as it is, so a PDF's *Original pages* view still shows the stamp.
 
 Converted books are stored as small HTML sections under `data/books/<id>/`. If a book converts
 badly, choose *Convert again* from its menu, or re-run every book with `npm run reprocess` after an
-update to the converters. Details edited by hand (title, author, series) are kept when a book is
-converted again.
+update to the converters. Details edited by hand (title, author, series, cover) are kept when a book
+is converted again.
 
 ## Series and collections
 
@@ -251,6 +259,24 @@ changes until you press *Save*.
   and ISBN go out. The covers in the list of matches load from covers.openlibrary.org.
 
 Like editing, looking up is for the uploader of a book or an admin.
+
+## Covers
+
+EPUB and MOBI books usually bring their cover along. PDFs rarely have one, and Markdown and text files
+never do, so the library shows the title and author instead. To add a cover, or to replace a wrong one,
+choose *Add a cover* or *Change cover* in a book's menu (the uploader or an admin can):
+
+| Choice | What it does |
+| --- | --- |
+| Choose an image | Any picture on the device, or a new photo on a phone. On a laptop you can also paste an image, for example one copied from a web page, or drop one on the page. |
+| Use page | PDFs only: one of the PDF's pages, the first by default, which is usually the cover. |
+| Use the original cover | Goes back to the cover in the book's file. |
+| Remove cover | Shows the title and author instead of a picture. |
+
+The browser scales a large picture down to 1200 pixels on its longer side and sends it as a JPEG, so the
+library stays quick on phones and e-readers; a small JPEG or PNG is sent as it is. The server takes
+JPEG, PNG, GIF and WebP images of up to 10 MB. A cover picked by hand is stored beside the book as
+`custom-cover.<ext>` and kept when the book is converted again.
 
 ## How position sync works
 

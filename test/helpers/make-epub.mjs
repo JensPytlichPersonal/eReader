@@ -1,7 +1,9 @@
 import { buildZip, TINY_PNG } from './zipwriter.mjs';
 
-// `metadata` is extra OPF metadata (e.g. series); `titleXml` replaces the <dc:title> element.
-export function makeEpub({ title = 'Fixture Book', author = 'Test Author', language = 'en', chapters, withNav = true, withNcx = true, css = '', metadata = '', titleXml } = {}) {
+// `metadata` is extra OPF metadata (e.g. series); `titleXml` replaces the <dc:title> element; `cover` is the
+// cover image ({ href, type, data }); `files` are more files beside the chapters ([{ name, data }]).
+const PNG_COVER = { href: 'images/cover.png', type: 'image/png', data: TINY_PNG };
+export function makeEpub({ title = 'Fixture Book', author = 'Test Author', language = 'en', chapters, withNav = true, withNcx = true, css = '', metadata = '', titleXml, cover = PNG_COVER, files = [] } = {}) {
   chapters ??= [
     { id: 'ch1', file: 'ch1.xhtml', title: 'Chapter One', body: '<h1 id="c1">Chapter One</h1><p class="first">Hello <em>world</em>. See <a href="ch2.xhtml#note1">note</a>.</p><p><img src="images/pic.png" alt="pic"/></p>' },
     { id: 'ch2', file: 'ch2.xhtml', title: 'Chapter Two', body: '<h1>Chapter Two</h1><p>Second chapter.</p><aside id="note1" epub:type="footnote"><p>A footnote. <a href="ch1.xhtml">back</a></p></aside><script>alert(1)</script><style>p{color:red}</style>' },
@@ -17,7 +19,7 @@ export function makeEpub({ title = 'Fixture Book', author = 'Test Author', langu
 <meta name="cover" content="cover-img"/>${metadata}
 </metadata>
 <manifest>
-<item id="cover-img" href="images/cover.png" media-type="image/png" properties="cover-image"/>
+<item id="cover-img" href="${cover.href}" media-type="${cover.type}" properties="cover-image"/>
 <item id="pic" href="images/pic.png" media-type="image/png"/>
 <item id="css" href="style.css" media-type="text/css"/>
 ${withNav ? '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>' : ''}
@@ -33,8 +35,9 @@ ${manifestItems}
     { name: 'META-INF/container.xml', data: `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>` },
     { name: 'OEBPS/content.opf', data: opf },
     { name: 'OEBPS/style.css', data: css || 'p.first { text-indent: 0; font-weight: bold; color: #333; font-family: Verdana } h1 { text-align: center; font-size: 2em } @font-face { font-family: X; src: url(x.ttf) }' },
-    { name: 'OEBPS/images/cover.png', data: TINY_PNG },
+    { name: `OEBPS/${cover.href}`, data: cover.data },
     { name: 'OEBPS/images/pic.png', data: TINY_PNG },
+    ...files.map((f) => ({ name: `OEBPS/${f.name}`, data: f.data })),
     ...chapters.map((c) => ({ name: `OEBPS/${c.file}`, data: xhtml(c) })),
   ];
   if (withNav) entries.push({ name: 'OEBPS/nav.xhtml', data: nav });

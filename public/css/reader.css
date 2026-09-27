@@ -7,6 +7,7 @@
   --margin-y: 28px;
   --text-align: justify;
   --hyphens: auto;
+  --text-stroke: 0;
   --page-w: 300px;
   --page-h: 500px;
   --gap: 48px;
@@ -39,6 +40,8 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
   overflow-wrap: break-word;
   color: var(--fg);
 }
+/* Heavier text in fonts without heavier faces of their own. Set on every element, so the em is each one's own size. */
+.book-content, .book-content * { -webkit-text-stroke-width: var(--text-stroke); }
 .book-content > :first-child { margin-top: 0; }
 .book-content p { margin: 0 0 0.35em 0; text-indent: 0; orphans: 2; widows: 2; }
 .book-content p + p { text-indent: 1.2em; margin-top: 0; }

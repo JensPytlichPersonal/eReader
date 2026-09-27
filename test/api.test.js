@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createApp } from '../server/app.js';
 import { makeEpub } from './helpers/make-epub.mjs';
+import { makePdf } from './helpers/make-pdf.mjs';
 
 let server, origin, processor, dataDir;
 before(async () => {
@@ -204,6 +205,78 @@ test('conversion failure is reported on the book', async () => {
   await jens(`/api/books/${r.data.book.id}`, { method: 'DELETE' });
 });
 
+test('an SVG from a book is sandboxed, so opening it directly cannot run its scripts', async () => {
+  const jens = client();
+  await jens('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1' } });
+  // A book can carry SVGs: an EPUB cover, and a figure inside a chapter. Either could hold a <script>.
+  const svg = (id) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#123"/><script>document.title=${JSON.stringify(id)}</script></svg>`;
+  const epub = makeEpub({
+    title: 'Has SVGs',
+    cover: { href: 'images/cover.svg', type: 'image/svg+xml', data: svg('cover') },
+    chapters: [{ id: 'ch1', file: 'ch1.xhtml', title: 'One', body: '<h1>One</h1><p><img src="images/fig.svg" alt="a figure"/></p>' }],
+    files: [{ name: 'images/fig.svg', data: svg('figure') }],
+  });
+  let r = await jens('/api/books', { method: 'POST', body: epub, headers: { 'x-file-name': encodeURIComponent('Has SVGs.epub') } });
+  const id = r.data.book.id;
+  const detail = await waitReady(jens, id);
+  assert.equal(detail.book.status, 'ready');
+  assert.equal(detail.book.hasCover, true);
+
+  // The sandbox gives the file an opaque origin and blocks scripts, forms and network access, so a
+  // <script> in an SVG opened as a page cannot act as the viewer. The SVG still draws inside an <img>.
+  const sandboxed = (res) => {
+    const csp = res.headers.get('content-security-policy') || '';
+    assert.match(csp, /(^|;)\s*sandbox\s*(;|$)/, `expected a sandbox in "${csp}"`);
+    assert.match(csp, /default-src 'none'/);
+  };
+
+  // The book's own cover is an SVG here (image/svg+xml), and it is sandboxed.
+  r = await jens(`/books/${id}/cover`);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /image\/svg\+xml/);
+  sandboxed(r);
+
+  // The SVG figure inside the chapter, served from the book's files, is sandboxed too.
+  const section = await jens(`/books/${id}/sections/0.html`);
+  const figurePath = section.data.match(/data-src="(images\/[^"]+\.svg)"/)?.[1];
+  assert.ok(figurePath, `expected an SVG figure in the section, got: ${section.data}`);
+  r = await jens(`/books/${id}/${figurePath}`);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /image\/svg\+xml/);
+  sandboxed(r);
+  // Other book files (the manifest, styles) carry it as well.
+  sandboxed(await jens(`/books/${id}/book.json`));
+
+  // The original download is not sandboxed: its formats are never run as a page, and the built-in
+  // PDF viewer needs its own scripts.
+  r = await jens(`/books/${id}/original`);
+  assert.equal(r.status, 200);
+  assert.doesNotMatch(r.headers.get('content-security-policy') || '', /sandbox/);
+
+  await jens(`/api/books/${id}`, { method: 'DELETE' });
+});
+
+test('an original is sent as the format it was read as, whatever its file name says', async () => {
+  const jens = client();
+  await jens('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1' } });
+  // The uploader picks the file name, but the format is read from the file's first bytes. A name
+  // ending in .html or .svg must not make the browser open the original as a page on this site.
+  const cases = [
+    ['Paper.html', makePdf([['A page of text.']]), 'application/pdf'],
+    ['Novel.svg', makeEpub({ title: 'Novel' }), 'application/epub+zip'],
+    ['Notes.txt', Buffer.from('Some plain notes.'), 'text/plain; charset=utf-8'],
+  ];
+  for (const [name, body, type] of cases) {
+    const r = await jens('/api/books', { method: 'POST', body, headers: { 'x-file-name': encodeURIComponent(name) } });
+    assert.equal(r.status, 202, name);
+    await waitReady(jens, r.data.book.id);
+    const original = await jens(`/books/${r.data.book.id}/original`);
+    assert.equal(original.status, 200, name);
+    assert.equal(original.headers.get('content-type'), type, name);
+    await jens(`/api/books/${r.data.book.id}`, { method: 'DELETE' });
+  }
+});
+
 test('the font is kept on the account, so each device of a user gets the same one', async () => {
   const laptop = client();
   await laptop('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1', device: 'Laptop' } });
@@ -238,5 +311,29 @@ test('the bundled fonts are served with the app', async () => {
   for (const url of urls.filter((u) => u.includes('-latin-'))) {
     const res = await fetch(origin + url, { method: 'HEAD' });
     assert.equal(res.status, 200, url);
+  }
+});
+
+test('the bundled fonts with every weight come drawn heavier, for the text weight setting', async () => {
+  const get = client();
+  const faces = (css) => [...css.matchAll(/font-family: '([^']+)';\s*font-style: (\w+);[^}]*?font-weight: (\d+);\s*src: url\(([^)]+)\)/g)]
+    .map(([, family, style, weight, url]) => ({ family, style, weight, url }));
+
+  const css = await get('/css/fonts/literata-600.css');
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /^text\/css/);
+  const literata = faces(css.data);
+  // A family of its own with the regular and bold styles, drawn with the semibold and the black faces.
+  assert.deepEqual(new Set(literata.map((f) => `${f.family} ${f.weight} ${f.style}`)), new Set(['Literata 600 400 normal', 'Literata 600 400 italic', 'Literata 600 700 normal', 'Literata 600 700 italic']));
+  for (const f of literata) assert.ok(f.url.endsWith(`-${f.weight === '400' ? 600 : 900}-${f.style}.woff2`), f.url);
+  for (const f of literata.filter((x) => x.url.includes('-latin-'))) assert.equal((await fetch(origin + f.url, { method: 'HEAD' })).status, 200, f.url);
+
+  // Libre Baskerville goes no heavier than bold, so at bold its bold text is the same face.
+  const baskerville = faces((await get('/css/fonts/libre-baskerville-700.css')).data);
+  assert.ok(baskerville.length && baskerville.every((f) => f.family === 'Libre Baskerville 700' && f.url.endsWith(`-700-${f.style}.woff2`)));
+
+  // Fonts with only a regular and a bold are outlined in the reader instead.
+  for (const file of ['atkinson-hyperlegible-500', 'opendyslexic-700', 'literata-400', 'literata-450', 'literata-1000', 'georgia-500']) {
+    assert.equal((await get(`/css/fonts/${file}.css`)).status, 404, file);
   }
 });

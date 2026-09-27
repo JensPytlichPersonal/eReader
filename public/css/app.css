@@ -268,6 +268,17 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .match .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .match .title { font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .match .about { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+/* Cover dialog: the cover as the library shows it, beside the ways to change it */
+.cover-edit { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.cover-preview { flex: 0 0 110px; }
+.cover-preview .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
+.cover-preview .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 8px; text-align: center; overflow: hidden; }
+.cover-preview .cover.placeholder .t { font-weight: 700; font-size: 14px; line-height: 1.2; }
+.cover-preview .cover.placeholder .a { font-size: 12px; color: var(--muted); }
+.cover-edit .menu { flex: 1 1 210px; min-width: 0; }
+.cover-edit .menu > .btn { white-space: normal; text-align: left; padding-top: 6px; padding-bottom: 6px; }
+.cover-page { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cover-page input { width: 76px; min-height: 44px; padding: 8px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); text-align: center; }
 
 /* Tables */
 table.list { width: 100%; border-collapse: collapse; }
