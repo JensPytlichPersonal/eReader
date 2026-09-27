@@ -8,6 +8,8 @@ import { createAuth } from './auth.js';
 import { createProcessor } from './processing/queue.js';
 import { createSeriesStore } from './series.js';
 import { createOpenLibrary } from './openlibrary.js';
+import { createHardcover } from './hardcover.js';
+import { createLookup } from './lookup.js';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { bookRoutes, bookFiles } from './routes/books.js';
@@ -24,8 +26,11 @@ export function createApp(overrides = {}) {
   const log = overrides.quiet ? { info() {}, error() {} } : console;
   const series = createSeriesStore(db);
   const processor = createProcessor(db, config, series, log);
-  // Tests hand in a client for a stand-in Open Library.
-  const openLibrary = overrides.openLibrary ?? createOpenLibrary();
+  // Tests hand in clients for stand-in catalogues (null for none).
+  const lookups = createLookup({
+    openLibrary: overrides.openLibrary ?? createOpenLibrary(),
+    hardcover: overrides.hardcover !== undefined ? overrides.hardcover : config.hardcoverToken ? createHardcover({ token: config.hardcoverToken }) : null,
+  });
 
   const app = express();
   app.disable('x-powered-by');
@@ -40,7 +45,7 @@ export function createApp(overrides = {}) {
 
   app.use('/api/auth', authRoutes(db, auth, config));
   app.use('/api/users', userRoutes(db, auth));
-  app.use('/api/books', bookRoutes(db, auth, config, processor, series, openLibrary));
+  app.use('/api/books', bookRoutes(db, auth, config, processor, series, lookups));
   app.use('/api/series', seriesRoutes(auth, series));
   app.use('/books', bookFiles(db, auth, config));
   app.get('/api/health', (req, res) => res.json({ ok: true, processing: processor.isBusy() }));
