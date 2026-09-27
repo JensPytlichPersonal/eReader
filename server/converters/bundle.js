@@ -37,7 +37,7 @@ export function assembleSections(chapters, opts = {}) {
       for (const el of DomUtils.findAll((e) => !!e.attribs?.id, nodes)) {
         idToSection.set(`${ch.key ?? ''}#${el.attribs.id}`, idx);
       }
-      sections.push({ nodes, headings, chars: textLength(nodes), title: i === 0 ? ch.title : undefined, key: ch.key, page: ch.page });
+      sections.push({ nodes, headings, chars: textLength(nodes), title: i === 0 ? ch.title : undefined, key: ch.key, page: ch.page, pageStart: ch.pageStart, pageEnd: ch.pageEnd });
       counter++;
     });
   }
@@ -148,7 +148,7 @@ export async function writeBundle(dir, book) {
     for (const img of DomUtils.findAll((e) => e.name === 'img', s.nodes)) usedImages.add(img.attribs['data-src']);
     const html = serialize(s.nodes);
     await fs.writeFile(path.join(dir, 'sections', `${i}.html`), html, 'utf8');
-    manifestSections.push({ title: s.title || '', chars: s.chars, start: cum, page: s.page });
+    manifestSections.push({ title: s.title || '', chars: s.chars, start: cum, page: s.page, pageStart: s.pageStart, pageEnd: s.pageEnd });
     cum += s.chars;
   }
   if (book.images?.size) {
