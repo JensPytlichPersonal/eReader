@@ -35,6 +35,8 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're
   on; opening it lists the books in reading order with a button that continues where you are. Series
   are picked up from the books themselves, and any books can be grouped by hand.
+- **Covers.** EPUB and MOBI books bring their own. Where one is missing (most PDFs) or wrong, pick an
+  image, use a page of the PDF, or show the title instead.
 - **List or cards.** The View menu shows the library as a list or as cards in three sizes. On a phone
   the cards are 2, 3 or 4 across, and the tabs, search, menus, upload and account links sit behind
   the ☰ button so the books fill the screen.
@@ -202,8 +204,8 @@ kept as it is, so a PDF's *Original pages* view still shows the stamp.
 
 Converted books are stored as small HTML sections under `data/books/<id>/`. If a book converts
 badly, choose *Convert again* from its menu, or re-run every book with `npm run reprocess` after an
-update to the converters. Details edited by hand (title, author, series) are kept when a book is
-converted again.
+update to the converters. Details edited by hand (title, author, series, cover) are kept when a book
+is converted again.
 
 ## Series and collections
 
@@ -242,6 +244,24 @@ its books in the library.
 
 Books already in the library when series support arrived are checked once in the background when the
 server starts. Their series are read from the original files, without converting the books again.
+
+## Covers
+
+EPUB and MOBI books usually bring their cover along. PDFs rarely have one, and Markdown and text files
+never do, so the library shows the title and author instead. To add a cover, or to replace a wrong one,
+choose *Add a cover* or *Change cover* in a book's menu (the uploader or an admin can):
+
+| Choice | What it does |
+| --- | --- |
+| Choose an image | Any picture on the device, or a new photo on a phone. On a laptop you can also paste an image, for example one copied from a web page, or drop one on the page. |
+| Use page | PDFs only: one of the PDF's pages, the first by default, which is usually the cover. |
+| Use the original cover | Goes back to the cover in the book's file. |
+| Remove cover | Shows the title and author instead of a picture. |
+
+The browser scales a large picture down to 1200 pixels on its longer side and sends it as a JPEG, so the
+library stays quick on phones and e-readers; a small JPEG or PNG is sent as it is. The server takes
+JPEG, PNG, GIF and WebP images of up to 10 MB. A cover picked by hand is stored beside the book as
+`custom-cover.<ext>` and kept when the book is converted again.
 
 ## How position sync works
 

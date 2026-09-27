@@ -19,6 +19,9 @@ self.addEventListener('fetch', (e) => {
 
   // Book content is immutable per conversion: cache first.
   if (url.pathname.startsWith('/books/') || url.pathname.startsWith('/vendor/')) {
+    // The app only fetches these files. One opened directly as a page always comes from the server,
+    // which sandboxes it, so a copy cached before it did can never stand in for it.
+    if (req.mode === 'navigate') return;
     if (url.pathname.endsWith('/book.json')) { e.respondWith(networkFirst(req, `${VERSION}-books`)); return; }
     if (url.pathname.endsWith('/original')) return;
     e.respondWith(cacheFirst(req, `${VERSION}-books`));

@@ -39,12 +39,18 @@ CREATE TABLE IF NOT EXISTS books (
   total_chars INTEGER NOT NULL DEFAULT 0,
   section_count INTEGER NOT NULL DEFAULT 0,
   page_count INTEGER NOT NULL DEFAULT 0,
+  -- Whether the book's file has a cover of its own (cover.<ext> in the book's folder).
   has_cover INTEGER NOT NULL DEFAULT 0,
   converted_at INTEGER NOT NULL DEFAULT 0,
   -- When someone last edited the title, author or series by hand; converting again keeps those.
   edited_at INTEGER NOT NULL DEFAULT 0,
   -- Which generation of metadata reading has seen this book (see METADATA_VERSION in processing/queue.js).
-  metadata_version INTEGER NOT NULL DEFAULT 0
+  metadata_version INTEGER NOT NULL DEFAULT 0,
+  -- The cover the library shows: 'file' the book's own (if it has one), 'custom' an image someone
+  -- picked (custom-cover.<ext> in the book's folder) or 'none'. Converting again keeps it.
+  cover_source TEXT NOT NULL DEFAULT 'file',
+  -- When someone last changed the cover. It versions the cover's address, so every device fetches the new one.
+  cover_edited_at INTEGER NOT NULL DEFAULT 0
 );
 
 -- Series and collections: books that belong together. A book can be in several; position
@@ -108,6 +114,8 @@ function migrate(db) {
   if (!columns.has('converted_at')) db.exec('ALTER TABLE books ADD COLUMN converted_at INTEGER NOT NULL DEFAULT 0');
   if (!columns.has('edited_at')) db.exec('ALTER TABLE books ADD COLUMN edited_at INTEGER NOT NULL DEFAULT 0');
   if (!columns.has('metadata_version')) db.exec('ALTER TABLE books ADD COLUMN metadata_version INTEGER NOT NULL DEFAULT 0');
+  if (!columns.has('cover_source')) db.exec("ALTER TABLE books ADD COLUMN cover_source TEXT NOT NULL DEFAULT 'file'");
+  if (!columns.has('cover_edited_at')) db.exec('ALTER TABLE books ADD COLUMN cover_edited_at INTEGER NOT NULL DEFAULT 0');
 }
 
 /** Runs `fn` in a transaction (a savepoint, so calls can nest). `fn` must be synchronous. */
