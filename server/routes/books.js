@@ -242,6 +242,15 @@ export function bookRoutes(db, auth, config, processor, series) {
   return r;
 }
 
+// A book's own files are served from the app's own origin, and a book can carry an SVG (an EPUB
+// cover, or a figure inside a chapter). Shown in an <img> its scripts never run, but opened as a URL
+// it would be a document on this origin with the viewer's session cookie, free to call the API as
+// them. This policy sandboxes every book file: an SVG still draws, but its scripts, forms and network
+// access are blocked and it gets an opaque origin. It is not set on /original, whose formats are not
+// served as documents the browser runs (epub, mobi, pdf, text) and where the built-in PDF viewer
+// needs its own scripts.
+const FILE_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox";
+
 /** Serves converted book files: /books/:id/book.json, sections/N.html, images/*, cover, styles.css, original */
 export function bookFiles(db, auth, config) {
   const r = Router();
@@ -268,6 +277,7 @@ export function bookFiles(db, auth, config) {
     try { name = fs.readdirSync(dir).find((f) => f.startsWith(prefix)); } catch { return res.status(404).end(); }
     if (!name) return res.status(404).end();
     res.setHeader('Content-Type', MIME[path.extname(name).toLowerCase()] || 'image/jpeg');
+    res.setHeader('Content-Security-Policy', FILE_CSP);
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.sendFile(path.join(dir, name));
   });
@@ -279,6 +289,7 @@ export function bookFiles(db, auth, config) {
     if (!target.startsWith(dir + path.sep) || /original\./.test(path.basename(target))) return res.status(404).end();
     const ext = path.extname(target).toLowerCase();
     res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
+    res.setHeader('Content-Security-Policy', FILE_CSP);
     res.setHeader('Cache-Control', ext === '.json' ? 'no-cache' : 'private, max-age=86400');
     res.sendFile(target, (err) => { if (err && !res.headersSent) res.status(err.statusCode || 404).end(); });
   });

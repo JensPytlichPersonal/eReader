@@ -204,6 +204,57 @@ test('conversion failure is reported on the book', async () => {
   await jens(`/api/books/${r.data.book.id}`, { method: 'DELETE' });
 });
 
+test('an SVG from a book is sandboxed, so opening it directly cannot run its scripts', async () => {
+  const jens = client();
+  await jens('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1' } });
+  // A book can carry SVGs: an EPUB cover, and a figure inside a chapter. Either could hold a <script>.
+  const svg = (id) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#123"/><script>document.title=${JSON.stringify(id)}</script></svg>`;
+  const epub = makeEpub({
+    title: 'Has SVGs',
+    cover: { href: 'images/cover.svg', type: 'image/svg+xml', data: svg('cover') },
+    chapters: [{ id: 'ch1', file: 'ch1.xhtml', title: 'One', body: '<h1>One</h1><p><img src="images/fig.svg" alt="a figure"/></p>' }],
+    files: [{ name: 'images/fig.svg', data: svg('figure') }],
+  });
+  let r = await jens('/api/books', { method: 'POST', body: epub, headers: { 'x-file-name': encodeURIComponent('Has SVGs.epub') } });
+  const id = r.data.book.id;
+  const detail = await waitReady(jens, id);
+  assert.equal(detail.book.status, 'ready');
+  assert.equal(detail.book.hasCover, true);
+
+  // The sandbox gives the file an opaque origin and blocks scripts, forms and network access, so a
+  // <script> in an SVG opened as a page cannot act as the viewer. The SVG still draws inside an <img>.
+  const sandboxed = (res) => {
+    const csp = res.headers.get('content-security-policy') || '';
+    assert.match(csp, /(^|;)\s*sandbox\s*(;|$)/, `expected a sandbox in "${csp}"`);
+    assert.match(csp, /default-src 'none'/);
+  };
+
+  // The book's own cover is an SVG here (image/svg+xml), and it is sandboxed.
+  r = await jens(`/books/${id}/cover`);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /image\/svg\+xml/);
+  sandboxed(r);
+
+  // The SVG figure inside the chapter, served from the book's files, is sandboxed too.
+  const section = await jens(`/books/${id}/sections/0.html`);
+  const figurePath = section.data.match(/data-src="(images\/[^"]+\.svg)"/)?.[1];
+  assert.ok(figurePath, `expected an SVG figure in the section, got: ${section.data}`);
+  r = await jens(`/books/${id}/${figurePath}`);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /image\/svg\+xml/);
+  sandboxed(r);
+  // Other book files (the manifest, styles) carry it as well.
+  sandboxed(await jens(`/books/${id}/book.json`));
+
+  // The original download is not sandboxed: its formats are never run as a page, and the built-in
+  // PDF viewer needs its own scripts.
+  r = await jens(`/books/${id}/original`);
+  assert.equal(r.status, 200);
+  assert.doesNotMatch(r.headers.get('content-security-policy') || '', /sandbox/);
+
+  await jens(`/api/books/${id}`, { method: 'DELETE' });
+});
+
 test('the font is kept on the account, so each device of a user gets the same one', async () => {
   const laptop = client();
   await laptop('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1', device: 'Laptop' } });
