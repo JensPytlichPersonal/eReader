@@ -192,15 +192,21 @@ export function titleFromFilename(name) {
   return stripWatermarks(title).replace(/\s+/g, ' ').trim() || 'Untitled';
 }
 
+/** The type of an image from its first bytes: 'jpg', 'png', 'gif', 'bmp', 'webp' or 'svg', or null when it is none of these. */
+export function sniffImage(data) {
+  if (!data || data.length <= 4) return null;
+  if (data[0] === 0xff && data[1] === 0xd8) return 'jpg';
+  if (data[0] === 0x89 && data[1] === 0x50) return 'png';
+  if (data[0] === 0x47 && data[1] === 0x49) return 'gif';
+  if (data[0] === 0x42 && data[1] === 0x4d) return 'bmp';
+  if (data.subarray(0, 4).toString('latin1') === 'RIFF' && data.subarray(8, 12).toString('latin1') === 'WEBP') return 'webp';
+  if (/^\s*<(\?xml|svg)/i.test(data.subarray(0, 100).toString('utf8'))) return 'svg';
+  return null;
+}
+
 export function imageExt(nameOrMime, data) {
-  if (data && data.length > 4) {
-    if (data[0] === 0xff && data[1] === 0xd8) return 'jpg';
-    if (data[0] === 0x89 && data[1] === 0x50) return 'png';
-    if (data[0] === 0x47 && data[1] === 0x49) return 'gif';
-    if (data[0] === 0x42 && data[1] === 0x4d) return 'bmp';
-    if (data.subarray(0, 4).toString('latin1') === 'RIFF' && data.subarray(8, 12).toString('latin1') === 'WEBP') return 'webp';
-    if (/^\s*<(\?xml|svg)/i.test(data.subarray(0, 100).toString('utf8'))) return 'svg';
-  }
+  const sniffed = sniffImage(data);
+  if (sniffed) return sniffed;
   const m = String(nameOrMime || '').toLowerCase().match(/(jpe?g|png|gif|webp|svg|bmp)/);
   if (m) return m[1] === 'jpeg' ? 'jpg' : m[1];
   return 'jpg';

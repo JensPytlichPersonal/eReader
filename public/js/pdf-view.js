@@ -10,6 +10,29 @@ function loadPdfjs() {
   return pdfjsPromise;
 }
 
+/**
+ * Draws one page of a PDF on a new canvas, `maxSide` pixels along its longer side, fetching only the parts
+ * of the file that page needs. The page number is kept within the document; returns { canvas, page }.
+ */
+export async function renderPdfPage(url, pageNumber, maxSide) {
+  const pdfjs = await loadPdfjs();
+  const task = pdfjs.getDocument({ url, cMapUrl: '/vendor/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/vendor/pdfjs/standard_fonts/', disableAutoFetch: true, disableStream: true });
+  try {
+    const doc = await task.promise;
+    const number = Math.min(Math.max(1, Math.round(pageNumber) || 1), doc.numPages);
+    const page = await doc.getPage(number);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: maxSide / Math.max(base.width, base.height) });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    await page.render({ canvasContext: canvas.getContext('2d', { alpha: false }), viewport }).promise;
+    return { canvas, page: number };
+  } finally {
+    await task.destroy();
+  }
+}
+
 export class PdfPageView {
   constructor(container, canvas) {
     this.container = container;

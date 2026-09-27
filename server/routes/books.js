@@ -6,8 +6,12 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { now, transaction } from '../db.js';
 import { detectFormat, SUPPORTED_EXTENSIONS } from '../converters/index.js';
-import { titleFromFilename } from '../converters/bundle.js';
+import { sniffImage, titleFromFilename } from '../converters/bundle.js';
 import { cleanSeriesName, parsePosition } from '../converters/series.js';
+
+// A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
+const COVER_TYPES = ['jpg', 'png', 'gif', 'webp'];
+const MAX_COVER_BYTES = 10 * 1024 * 1024;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -44,6 +48,8 @@ export function bookRoutes(db, auth, config, processor, series) {
     insert: db.prepare('INSERT INTO books (id, title, author, format, original_name, size, added_by, added_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     delete: db.prepare('DELETE FROM books WHERE id = ?'),
     updateMeta: db.prepare('UPDATE books SET title = ?, author = ?, edited_at = ? WHERE id = ?'),
+    // Always later than the cover's current version, even for two changes within a millisecond.
+    setCover: db.prepare('UPDATE books SET cover_source = ?, cover_edited_at = MAX(?, converted_at + 1, cover_edited_at + 1) WHERE id = ?'),
     progress: db.prepare('SELECT * FROM progress WHERE user_id = ? AND book_id = ?'),
     upsertProgress: db.prepare(`INSERT INTO progress (user_id, book_id, section, offset, percent, finished, device, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -61,7 +67,10 @@ export function bookRoutes(db, auth, config, processor, series) {
     id: b.id, title: b.title, author: b.author, language: b.language, format: b.format, originalName: b.original_name, size: b.size,
     series: inSeries,
     addedBy: b.added_by_name || null, addedById: b.added_by, addedAt: b.added_at, status: b.status, error: b.error,
-    totalChars: b.total_chars, sectionCount: b.section_count, pageCount: b.page_count, hasCover: !!b.has_cover, convertedAt: b.converted_at || 0,
+    totalChars: b.total_chars, sectionCount: b.section_count, pageCount: b.page_count, convertedAt: b.converted_at || 0,
+    // `hasCover`: the library shows a cover image; `coverVersion` changes whenever that image may have.
+    hasCover: b.cover_source === 'custom' || (b.cover_source === 'file' && !!b.has_cover), coverSource: b.cover_source, fileHasCover: !!b.has_cover,
+    coverVersion: Math.max(b.converted_at || 0, b.cover_edited_at || 0) || b.added_at,
     progress: b.p_updated_at != null ? { section: b.p_section, offset: b.p_offset, percent: b.p_percent, updatedAt: b.p_updated_at, device: b.p_device } : null,
   });
   const shapeProgress = (p) => (p ? { section: p.section, offset: p.offset, percent: p.percent, finished: !!p.finished, device: p.device, updatedAt: p.updated_at } : null);
@@ -72,6 +81,11 @@ export function bookRoutes(db, auth, config, processor, series) {
   };
   const readManifest = async (id) => {
     try { return JSON.parse(await fsp.readFile(path.join(bookDir(id), 'book.json'), 'utf8')); } catch { return null; }
+  };
+  const removeCustomCovers = async (id, keep) => {
+    let files = [];
+    try { files = await fsp.readdir(bookDir(id)); } catch { /* no folder */ }
+    for (const f of files) if (f.startsWith('custom-cover.') && f !== keep) await fsp.rm(path.join(bookDir(id), f), { force: true });
   };
 
   r.use(auth.requireUser);
@@ -148,6 +162,33 @@ export function bookRoutes(db, auth, config, processor, series) {
     res.status(202).json({ book: shapeBook(stmts.get.get(b.id)) });
   });
 
+  // The cover the library shows. Send an image (JPEG, PNG, GIF or WebP) to use it, or JSON
+  // { source: 'file' } for the cover in the book's own file or { source: 'none' } for no cover.
+  // The image is kept apart from the book's own cover, so converting the book again keeps it.
+  r.put('/:id/cover', express.raw({ type: (req) => !req.is('json'), limit: MAX_COVER_BYTES }), async (req, res) => {
+    const b = stmts.get.get(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' });
+    if (!req.user.isAdmin && b.added_by !== req.user.id) return res.status(403).json({ error: 'Only the uploader or an admin can change the cover' });
+    if (Buffer.isBuffer(req.body)) {
+      if (!req.body.length) return res.status(400).json({ error: 'No image received' });
+      // Checked by content, not by name: an SVG could carry scripts.
+      const ext = sniffImage(req.body);
+      if (!COVER_TYPES.includes(ext)) return res.status(415).json({ error: 'The cover must be a JPEG, PNG, GIF or WebP image' });
+      const name = `custom-cover.${ext}`;
+      await removeCustomCovers(b.id, name);
+      await fsp.writeFile(path.join(bookDir(b.id), name), req.body);
+      stmts.setCover.run('custom', now(), b.id);
+    } else {
+      const source = req.body?.source;
+      if (source !== 'file' && source !== 'none') return res.status(400).json({ error: "Send an image, or a source of 'file' or 'none'" });
+      stmts.setCover.run(source, now(), b.id);
+      await removeCustomCovers(b.id);
+    }
+    const updated = stmts.get.get(b.id);
+    if (!updated) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
+    res.json({ book: shapeBook(updated) });
+  });
+
   // ---- progress ----
   r.get('/:id/progress', (req, res) => {
     const b = stmts.get.get(req.params.id);
@@ -201,9 +242,23 @@ export function bookRoutes(db, auth, config, processor, series) {
   return r;
 }
 
-/** Serves converted book files: /books/:id/book.json, sections/N.html, images/*, cover.*, styles.css, original */
-export function bookFiles(auth, config) {
+// A book's own files are served from the app's own origin, and a book can carry an SVG (an EPUB
+// cover, or a figure inside a chapter). Shown in an <img> its scripts never run, but opened as a URL
+// it would be a document on this origin with the viewer's session cookie, free to call the API as
+// them. This policy sandboxes every book file: an SVG still draws, but its scripts, forms and network
+// access are blocked and it gets an opaque origin. It is not set on /original, which the built-in PDF
+// viewer opens with its own scripts; an original is safe without it because of ORIGINAL_FORMATS.
+const FILE_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox";
+// An original is sent as the format it was read as, which comes from its first bytes, never by its
+// file name, which the uploader chose: a PDF uploaded as "x.html" must not come back as a web page.
+// None of these types is run by a browser.
+const ORIGINAL_FORMATS = ['epub', 'mobi', 'pdf', 'md', 'txt'];
+
+/** Serves converted book files: /books/:id/book.json, sections/N.html, images/*, cover, styles.css, original */
+export function bookFiles(db, auth, config) {
   const r = Router();
+  const coverSource = db.prepare('SELECT cover_source FROM books WHERE id = ?');
+  const bookFormat = db.prepare('SELECT format FROM books WHERE id = ?');
   r.use(auth.requireUser);
   r.get('/:id/original', (req, res) => {
     const dir = path.join(config.booksDir, req.params.id);
@@ -211,17 +266,23 @@ export function bookFiles(auth, config) {
     let name;
     try { name = fs.readdirSync(dir).find((f) => f.startsWith('original.')); } catch { return res.status(404).end(); }
     if (!name) return res.status(404).end();
-    res.setHeader('Content-Type', MIME[path.extname(name).toLowerCase()] || 'application/octet-stream');
+    const format = bookFormat.get(req.params.id)?.format;
+    res.setHeader('Content-Type', ORIGINAL_FORMATS.includes(format) ? MIME[`.${format}`] : 'application/octet-stream');
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.sendFile(path.join(dir, name));
   });
+  // The cover the library shows: one picked by hand, or the one in the book's file.
   r.get('/:id/cover', (req, res) => {
     if (!/^[a-f0-9]{16}$/.test(req.params.id)) return res.status(404).end();
+    const source = coverSource.get(req.params.id)?.cover_source;
+    if (source !== 'custom' && source !== 'file') return res.status(404).end();
+    const prefix = source === 'custom' ? 'custom-cover.' : 'cover.';
     const dir = path.join(config.booksDir, req.params.id);
     let name;
-    try { name = fs.readdirSync(dir).find((f) => f.startsWith('cover.')); } catch { return res.status(404).end(); }
+    try { name = fs.readdirSync(dir).find((f) => f.startsWith(prefix)); } catch { return res.status(404).end(); }
     if (!name) return res.status(404).end();
     res.setHeader('Content-Type', MIME[path.extname(name).toLowerCase()] || 'image/jpeg');
+    res.setHeader('Content-Security-Policy', FILE_CSP);
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.sendFile(path.join(dir, name));
   });
@@ -233,6 +294,7 @@ export function bookFiles(auth, config) {
     if (!target.startsWith(dir + path.sep) || /original\./.test(path.basename(target))) return res.status(404).end();
     const ext = path.extname(target).toLowerCase();
     res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
+    res.setHeader('Content-Security-Policy', FILE_CSP);
     res.setHeader('Cache-Control', ext === '.json' ? 'no-cache' : 'private, max-age=86400');
     res.sendFile(target, (err) => { if (err && !res.headersSent) res.status(err.statusCode || 404).end(); });
   });
