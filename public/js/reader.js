@@ -90,9 +90,29 @@ function layout() {
 
 const stride = () => state.width + state.gap;
 
+/** Shift the column flow so that `page` is visible. A transform cannot be clamped the way scrollLeft is. */
+function shiftTo(page) {
+  els.content.style.transform = page ? `translateX(${-page * stride()}px)` : '';
+}
+
+/** Left edge of column 0 in viewport coordinates (the content box moves with the transform). */
+function originLeft() {
+  return els.content.getBoundingClientRect().left;
+}
+
+/** Column index of a rectangle. */
+function columnOf(rect) {
+  return Math.floor((rect.left - originLeft() + 1) / (state.colW + state.gap));
+}
+
 function measure() {
   const c = els.content;
-  const totalCols = Math.max(1, Math.round((c.scrollWidth + state.gap) / (state.colW + state.gap)));
+  let totalCols = Math.max(1, Math.round((c.scrollWidth + state.gap) / (state.colW + state.gap)));
+  // scrollWidth is unreliable on some engines for overflowing column boxes; cross-check with the last box.
+  for (let n = c.lastElementChild; n; n = n.previousElementSibling) {
+    const rects = n.getClientRects();
+    if (rects.length) { totalCols = Math.max(totalCols, columnOf(rects[rects.length - 1]) + 1); break; }
+  }
   state.pageCount = Math.max(1, Math.ceil(totalCols / state.cols));
 }
 
@@ -103,8 +123,11 @@ function indexNodes() {
   let total = 0;
   const marks = [];
   const walker = document.createTreeWalker(els.content, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
-    acceptNode: (n) => (n.nodeType === Node.TEXT_NODE ? (n.data.length ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP)
-      : (n.tagName === 'IMG' || (n.tagName === 'SPAN' && n.classList.contains('pg')) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP)),
+    acceptNode: (n) => {
+      if (n.nodeType === Node.ELEMENT_NODE && n.classList.contains('fn-area')) return NodeFilter.FILTER_REJECT; // placed clones
+      if (n.nodeType === Node.TEXT_NODE) return n.data.length ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      return n.tagName === 'IMG' || (n.tagName === 'SPAN' && n.classList.contains('pg')) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    },
   });
   let n;
   while ((n = walker.nextNode())) {
@@ -206,10 +229,7 @@ function rectForOffset(offset) {
 
 function pageForRect(rect) {
   if (!rect) return 0;
-  const contentLeft = els.content.getBoundingClientRect().left;
-  const x = rect.left - contentLeft + els.content.scrollLeft;
-  const col = Math.floor((x + 1) / (state.colW + state.gap));
-  return clamp(Math.floor(col / state.cols), 0, state.pageCount - 1);
+  return clamp(Math.floor(columnOf(rect) / state.cols), 0, state.pageCount - 1);
 }
 
 function pageForElement(el) {
@@ -240,7 +260,7 @@ function locatorForCurrentPage() {
   const section = state.section;
   if (!state.nodes.length) return { section, offset: 0 };
   const contentRect = els.content.getBoundingClientRect();
-  const left = contentRect.left;
+  const left = contentRect.left + state.page * stride();
   const right = left + state.width;
   const top = contentRect.top;
   const offsetOf = (node, k) => {
@@ -335,10 +355,11 @@ async function loadSection(idx) {
     els.content.appendChild(end);
   }
   state.section = idx;
-  els.content.scrollLeft = 0;
+  shiftTo(0);
   await waitForImages(els.content);
   if (token !== state.loadToken) return false;
   indexNodes();
+  placeFootnotes();
   measure();
   els.content.classList.remove('loading');
   prefetch(idx + 1);
@@ -349,7 +370,7 @@ async function loadSection(idx) {
 // ---------------------------------------------------------------- navigation
 function showPage(page, { record = true } = {}) {
   state.page = clamp(page, 0, state.pageCount - 1);
-  els.content.scrollLeft = state.page * stride();
+  shiftTo(state.page);
   if (record) {
     state.locator = locatorForCurrentPage();
     onPositionChanged();
@@ -378,7 +399,7 @@ async function restore(locator, { record = false } = {}) {
   const rect = rectForOffset(locator.offset || 0);
   const page = rect ? pageForRect(rect) : 0;
   state.page = page;
-  els.content.scrollLeft = page * stride();
+  shiftTo(page);
   state.locator = { section: state.section, offset: locator.offset || 0 };
   if (record) onPositionChanged();
   updateStatus();
@@ -394,8 +415,13 @@ async function navigateTo(target, { pushHistory = false } = {}) {
   }
   if (target.section !== state.section) { const ok = await loadSection(target.section); if (!ok) return; }
   if (target.id) {
-    const el = els.content.querySelector(`[id="${CSS.escape(target.id)}"]`);
-    if (el) { showPage(pageForElement(el)); updateReturnButton(); return; }
+    const el = els.content.querySelector(`[data-fn="${CSS.escape(target.id)}"]`) || els.content.querySelector(`[id="${CSS.escape(target.id)}"]`);
+    if (el) {
+      showPage(pageForElement(el));
+      if (el.dataset.fn) { el.classList.add('fn-flash'); setTimeout(() => el.classList.remove('fn-flash'), 1500); }
+      updateReturnButton();
+      return;
+    }
   }
   await restore({ section: state.section, offset: target.offset || 0 }, { record: true });
   updateReturnButton();
@@ -418,8 +444,87 @@ async function relayout() {
   const loc = { ...state.locator };
   if (state.mode === 'pages') { await showPdfPage(state.pdfPage, { record: false }); return; }
   layout();
+  shiftTo(0);
+  placeFootnotes();
   measure();
   await restore(loc);
+}
+
+// ---------------------------------------------------------------- footnotes at the foot of their column
+/**
+ * Clone each footnote from the hidden endnotes into the flow, right after the paragraph holding its
+ * marker, pushed to the bottom of that column. Runs after layout and again on every relayout, so the
+ * placement follows font size, margins and screen size. Clones are excluded from the text index.
+ */
+function placeFootnotes() {
+  const content = els.content;
+  content.querySelectorAll('.fn-area').forEach((e) => e.remove());
+  content.classList.remove('fn-inline');
+  const endnotes = content.querySelector('.endnotes');
+  if (!endnotes || state.mode === 'pages') return;
+  const noteById = new Map([...endnotes.querySelectorAll('p.footnote[id]')].map((n) => [n.id, n]));
+  const markers = [...content.querySelectorAll('sup a[data-id]')].filter((a) => noteById.has(a.dataset.id) && !a.closest('.endnotes'));
+  if (!markers.length) return;
+  content.classList.add('fn-inline'); // hides the endnotes section
+  const colTop = content.getBoundingClientRect().top;
+  const colBottom = colTop + state.height;
+  const blockOf = (el) => el.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote, figure, div, td') || el.parentElement;
+  const placed = new Set();
+  let i = 0;
+  while (i < markers.length) {
+    const area = document.createElement('div');
+    area.className = 'fn-area';
+    let j = i;
+    // Take every following marker that sits in a column up to `c` into this area, in document order.
+    const absorbUpTo = (c) => {
+      while (j < markers.length && columnOf(markers[j].getBoundingClientRect()) <= c) {
+        const m = markers[j++];
+        if (placed.has(m.dataset.id)) continue;
+        placed.add(m.dataset.id);
+        const clone = noteById.get(m.dataset.id).cloneNode(true);
+        clone.removeAttribute('id');
+        clone.dataset.fn = m.dataset.id;
+        area.appendChild(clone);
+      }
+    };
+    absorbUpTo(columnOf(markers[i].getBoundingClientRect()));
+    let target = blockOf(markers[j - 1]);
+    for (let attempt = 0; attempt < 5 && area.childElementCount; attempt++) {
+      target.after(area);
+      const fragments = target.getClientRects();
+      const lastFragment = fragments[fragments.length - 1];
+      const areaRect = area.getBoundingClientRect();
+      const areaCol = columnOf(areaRect);
+      if (!lastFragment || areaCol === columnOf(lastFragment)) {
+        // Fits below the paragraph: push it down to the foot of the column.
+        const space = lastFragment ? colBottom - lastFragment.bottom - areaRect.height : 0;
+        if (space > 0) {
+          area.style.marginTop = `${Math.floor(space)}px`;
+          if (columnOf(area.getBoundingClientRect()) !== areaCol) area.style.marginTop = `${Math.max(0, Math.floor(space) - 3)}px`;
+        }
+        break;
+      }
+      // The area spilled into a later column: bring along the markers up to that column, then attach the
+      // area after the last block that ends there and try again.
+      area.remove();
+      const before = j;
+      absorbUpTo(areaCol);
+      let candidate = j > before ? blockOf(markers[j - 1]) : null;
+      if (!candidate) {
+        for (let n = target.nextElementSibling; n; n = n.nextElementSibling) {
+          if (n.classList.contains('fn-area') || n.classList.contains('endnotes')) continue;
+          const fr = n.getClientRects();
+          if (!fr.length) continue;
+          if (columnOf(fr[0]) > areaCol) break;
+          if (columnOf(fr[fr.length - 1]) <= areaCol) candidate = n;
+        }
+      }
+      if (!candidate || candidate === target) { target.after(area); break; }
+      target = candidate;
+    }
+    if (!area.childElementCount) area.remove();
+    i = j;
+  }
 }
 
 // ---------------------------------------------------------------- status / progress ui
