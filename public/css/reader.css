@@ -25,8 +25,7 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
   column-width: var(--page-w);
   column-gap: var(--gap);
   column-fill: auto;
-  overflow: hidden;
-  scroll-behavior: auto;
+  overflow: visible;
 }
 #content.loading { visibility: hidden; }
 
@@ -150,3 +149,8 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
 .book-content .endnotes { border-top: 1px solid var(--line); margin-top: 1.5em; padding-top: .6em; break-before: auto; }
 .book-content .endnotes p.footnote { margin-top: .3em; text-align: left; overflow-wrap: anywhere; }
 .book-content sup a { text-decoration: none; padding: 0 .1em; }
+.book-content.fn-inline .endnotes { display: none; }
+.book-content .fn-area { font-size: .85em; border-top: 1px solid var(--line); padding-top: .4em; break-inside: avoid; text-align: left; overflow-wrap: anywhere; }
+.book-content .fn-area p.footnote { text-indent: 0; margin: .25em 0 0; }
+.book-content .fn-area p.footnote:first-child { margin-top: 0; }
+.book-content .fn-flash { outline: 2px solid var(--fg); outline-offset: 3px; }
