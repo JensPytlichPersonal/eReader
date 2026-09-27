@@ -14,9 +14,11 @@
 <script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=s.theme||'light';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
 <link rel="stylesheet" href="/css/app.css">
 </head>
-<body>
+<body class="library">
 <header class="app-header">
+  <button type="button" class="btn icon menu-toggle" id="btn-menu" aria-expanded="false" aria-controls="library-controls" aria-label="Menu">&#9776;</button>
   <a class="brand" href="/">eReader</a>
+  <span class="section-name" id="section-name">Books</span>
   <span class="spacer"></span>
   <nav>
     <a class="btn small hidden" id="nav-users" href="/users">Users</a>
@@ -25,34 +27,43 @@
   </nav>
 </header>
 <main class="page">
-  <div class="tabs" id="tabs">
-    <button type="button" data-view="books" aria-pressed="true">Books<span class="n"></span></button>
-    <button type="button" data-view="series" aria-pressed="false">Series &amp; collections<span class="n"></span></button>
+  <div id="library-controls">
+    <div class="tabs" id="tabs">
+      <button type="button" data-view="books" aria-pressed="true">Books<span class="n"></span></button>
+      <button type="button" data-view="series" aria-pressed="false">Series &amp; collections<span class="n"></span></button>
+    </div>
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Search title, author or series" autocomplete="off">
+      <select id="filter" aria-label="Filter">
+        <option value="all">All books</option>
+        <option value="reading">Reading</option>
+        <option value="unread">Not started</option>
+        <option value="finished">Finished</option>
+      </select>
+      <select id="sort" aria-label="Sort">
+        <option value="recent">Recently read</option>
+        <option value="added">Recently added</option>
+        <option value="title">Title</option>
+        <option value="author">Author</option>
+      </select>
+      <select id="layout" aria-label="Show series as">
+        <option value="stacks">Series as stacks</option>
+        <option value="shelves">Series as shelves</option>
+        <option value="every">Every book separately</option>
+      </select>
+      <select id="display" aria-label="View">
+        <option value="list">List</option>
+        <option value="cards-2">Large cards</option>
+        <option value="cards-3">Cards</option>
+        <option value="cards-4">Small cards</option>
+      </select>
+      <button class="btn primary" id="btn-upload">Upload books</button>
+      <input type="file" id="file-input" class="hidden" multiple accept=".epub,.mobi,.prc,.azw,.azw3,.pdf,.md,.markdown,.txt,.text,application/epub+zip,application/pdf,text/plain,text/markdown">
+    </div>
+    <div class="dropzone" id="dropzone">Drop EPUB, MOBI, PDF, Markdown or text files here to add them to the library</div>
   </div>
-  <div class="toolbar">
-    <input type="search" id="search" placeholder="Search title, author or series" autocomplete="off">
-    <select id="filter" aria-label="Filter">
-      <option value="all">All books</option>
-      <option value="reading">Reading</option>
-      <option value="unread">Not started</option>
-      <option value="finished">Finished</option>
-    </select>
-    <select id="sort" aria-label="Sort">
-      <option value="recent">Recently read</option>
-      <option value="added">Recently added</option>
-      <option value="title">Title</option>
-      <option value="author">Author</option>
-    </select>
-    <select id="layout" aria-label="Show series as">
-      <option value="stacks">Series as stacks</option>
-      <option value="shelves">Series as shelves</option>
-      <option value="every">Every book separately</option>
-    </select>
-    <button class="btn primary" id="btn-upload">Upload books</button>
-    <input type="file" id="file-input" class="hidden" multiple accept=".epub,.mobi,.prc,.azw,.azw3,.pdf,.md,.markdown,.txt,.text,application/epub+zip,application/pdf,text/plain,text/markdown">
-  </div>
-  <div class="dropzone" id="dropzone">Drop EPUB, MOBI, PDF, Markdown or text files here to add them to the library</div>
   <div class="uploads" id="uploads"></div>
+  <div class="active-filters hidden" id="active-filters"></div>
   <div id="library"></div>
 </main>
 <div id="dialog-root"></div>
