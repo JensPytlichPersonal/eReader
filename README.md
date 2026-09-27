@@ -90,6 +90,10 @@ Back up that directory and you have everything.
 Run it behind a reverse proxy with https (Caddy, nginx, Traefik) for use outside your home network.
 https also enables the offline cache and lets the app be installed as a proper web app.
 
+Times in the app are shown in Danish time (CET/CEST) on a 24-hour clock on every device, whatever
+its own language, clock and time zone settings. To use another zone, change `TIME_ZONE` at the top
+of `public/js/api.js`.
+
 ## Using it on your devices
 
 **Boox Go 6 (and other e-ink Android devices).** Open the address in the built-in browser or Chrome,

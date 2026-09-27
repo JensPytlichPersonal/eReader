@@ -39,12 +39,21 @@ export function toast(message, ms = 2500) {
   el._t = setTimeout(() => el.classList.add('hidden'), ms);
 }
 
-export function formatDate(ts) {
+// Timestamps read the same on every device: Danish time (CET, CEST in summer) on a 24-hour clock. Browsers often ignore the
+// system's 24-hour and region settings and format by their own language (typically 12-hour US English), so the browser's locale is not used.
+const TIME_ZONE = 'Europe/Copenhagen';
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const danishClock = new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const inDenmark = (d) => Object.fromEntries(danishClock.formatToParts(d).map((p) => [p.type, p.value]));
+
+// Today's timestamps show the time ("14:05"), older ones the date ("27 Sep", or "27 Sep 2025" in other years).
+export function formatDate(ts, now = Date.now()) {
   if (!ts) return '';
-  const d = new Date(ts);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  return sameDay ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+  const t = inDenmark(new Date(ts));
+  const today = inDenmark(now);
+  if (t.year === today.year && t.month === today.month && t.day === today.day) return `${t.hour}:${t.minute}`;
+  const date = `${Number(t.day)} ${MONTHS[t.month - 1]}`;
+  return t.year === today.year ? date : `${date} ${t.year}`;
 }
 
 export function escapeHtml(s) {
