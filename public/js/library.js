@@ -468,6 +468,19 @@ const seriesRow = (s = { name: '', position: null }) => `<div class="series-row"
     <button type="button" class="btn icon" data-remove-row aria-label="Remove">&times;</button>
   </div>`;
 
+/** A book found on Open Library, offered in the edit dialog. */
+const matchRow = (m, i) => {
+  const about = [m.series.map(seriesLabel).join(', '), m.byIsbn ? 'Same ISBN as the file' : ''].filter(Boolean).join(' · ');
+  return `<button type="button" class="match" data-pick="${i}">
+    ${m.cover ? `<img class="cover" src="${escapeHtml(m.cover)}" alt="" loading="lazy">` : '<span class="cover"></span>'}
+    <span class="body">
+      <span class="title">${escapeHtml(m.title)}</span>
+      <span class="about">${escapeHtml([m.author, m.year].filter(Boolean).join(' · '))}</span>
+      ${about ? `<span class="about">${escapeHtml(about)}</span>` : ''}
+    </span>
+  </button>`;
+};
+
 /** Title, author and the series and collections a book is in. */
 function editDetails(b) {
   const names = [...new Set(books.flatMap((x) => x.series.map((s) => s.name)))].sort((x, y) => x.localeCompare(y));
@@ -476,6 +489,10 @@ function editDetails(b) {
     <form class="details" novalidate>
       <div class="field"><label for="ed-title">Title</label><input id="ed-title" name="title" value="${escapeHtml(b.title)}" maxlength="500"></div>
       <div class="field"><label for="ed-author">Author</label><input id="ed-author" name="author" value="${escapeHtml(b.author || '')}" maxlength="500"></div>
+      <div class="lookup">
+        <button type="button" class="btn small" data-lookup>Look up on Open Library</button>
+        <div data-matches aria-live="polite"></div>
+      </div>
       <fieldset class="field">
         <legend>Series and collections</legend>
         <div class="series-rows">${(b.series.length ? b.series : [undefined]).map((s) => seriesRow(s)).join('')}</div>
@@ -489,17 +506,58 @@ function editDetails(b) {
   const form = root.querySelector('form');
   const rows = root.querySelector('.series-rows');
   const error = root.querySelector('[data-error]');
+  const lookupBtn = root.querySelector('[data-lookup]');
+  const matches = root.querySelector('[data-matches]');
   const fail = (message) => { error.textContent = message; error.classList.remove('hidden'); };
-  root.addEventListener('click', (ev) => {
-    if (ev.target.closest('[data-add-row]')) {
-      rows.insertAdjacentHTML('beforeend', seriesRow());
-      rows.lastElementChild.querySelector('input').focus();
+  const addRow = () => { rows.insertAdjacentHTML('beforeend', seriesRow()); return rows.lastElementChild; };
+  let found = [];
+
+  // Searches Open Library for the title and author as typed (and the ISBN in the file).
+  async function lookUp() {
+    lookupBtn.disabled = true;
+    lookupBtn.textContent = 'Looking up…';
+    matches.innerHTML = '';
+    try {
+      const query = new URLSearchParams({ title: form.elements.title.value.trim(), author: form.elements.author.value.trim() });
+      ({ results: found } = await api(`/api/books/${b.id}/lookup?${query}`));
+      matches.innerHTML = found.length
+        ? `<p class="muted hint">Choose the matching book to fill in the details. Nothing changes until you save.</p><div class="matches">${found.map(matchRow).join('')}</div>`
+        : '<p class="muted hint">No match on Open Library. Try a shorter title, or leave out the author.</p>';
+    } catch (err) {
+      matches.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    } finally {
+      lookupBtn.disabled = false;
+      lookupBtn.textContent = 'Look up on Open Library';
     }
+  }
+
+  // Fills in the form from a match. Its series join the rows already there; a series that is
+  // already listed takes the match's number.
+  function useMatch(m) {
+    form.elements.title.value = m.title;
+    if (m.author) form.elements.author.value = m.author;
+    const nameKey = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+    for (const s of m.series) {
+      const all = [...rows.querySelectorAll('.series-row')];
+      const nameOf = (row) => row.querySelector('[name="series-name"]');
+      const row = all.find((r) => nameKey(nameOf(r).value) === nameKey(s.name)) || all.find((r) => !nameOf(r).value.trim()) || addRow();
+      if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
+      if (s.position != null) row.querySelector('[name="series-no"]').value = s.position;
+    }
+    matches.innerHTML = `<p class="hint">Filled in from <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">Open Library</a>. Check the details, then save.</p>`;
+    lookupBtn.focus();
+  }
+
+  root.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-add-row]')) addRow().querySelector('input').focus();
     const remove = ev.target.closest('[data-remove-row]');
     if (remove) {
       const row = remove.closest('.series-row');
       if (rows.children.length > 1) row.remove(); else row.querySelectorAll('input').forEach((i) => { i.value = ''; });
     }
+    if (ev.target.closest('[data-lookup]')) lookUp();
+    const pick = ev.target.closest('[data-pick]');
+    if (pick) useMatch(found[Number(pick.dataset.pick)]);
   });
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();

@@ -30,6 +30,8 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're
   on; opening it lists the books in reading order with a button that continues where you are. Series
   are picked up from the books themselves, and any books can be grouped by hand.
+- **Details from Open Library.** When a book's title, author or series is missing or wrong, look it up
+  on Open Library from its details and pick the matching book to fill them in.
 - **List or cards.** The View menu shows the library as a list or as cards in three sizes. On a phone
   the cards are 2, 3 or 4 across, and the tabs, search, menus, upload and account links sit behind
   the ☰ button so the books fill the screen.
@@ -231,6 +233,25 @@ its books in the library.
 Books already in the library when series support arrived are checked once in the background when the
 server starts. Their series are read from the original files, without converting the books again.
 
+## Looking up details on Open Library
+
+*Edit details and series* has a **Look up on Open Library** button. It searches
+[Open Library](https://openlibrary.org), a free book catalogue that needs no account or key, by the
+ISBN in the book's file (EPUB and MOBI files usually carry one) and by the title and author as they
+are in the form, so a messy title can be tidied before looking up. Up to five matches are listed,
+the one with the file's ISBN first. Choosing one fills in the title, author and series; nothing
+changes until you press *Save*.
+
+- A series Open Library names joins the library's series of that name, however it is spelled there
+  ("The Expanse" joins "Expanse").
+- A translation keeps its own title: the Danish "Harry Potter og De Vises Sten" rather than the
+  English original, when the ISBN or the title typed points to that edition. The book's language
+  tells Open Library which edition to prefer.
+- Only the server talks to Open Library, and only when someone presses the button: the title, author
+  and ISBN go out. The covers in the list of matches load from covers.openlibrary.org.
+
+Like editing, looking up is for the uploader of a book or an admin.
+
 ## How position sync works
 
 A position is `(section, character offset)` into the normalised text, not a page number, so it is
@@ -250,8 +271,8 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API
-- `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns, and `series.js`, which finds series in metadata and titles
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, and the Open Library lookup (`openlibrary.js`)
+- `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
 - `public/` the web app: library, reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)
 

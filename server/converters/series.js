@@ -24,6 +24,12 @@ function looseKey(name) {
   return seriesKey(name).replace(/^(the|a|an|den|det|de|der|die|das|le|la|les|el|il) /, '').replace(/[\s-]seri(es|en)$/, '');
 }
 
+/** The name a series already has among `known` names ("Expanse" for "The Expanse"), else the name itself. */
+export function knownSeriesName(name, known) {
+  const clean = cleanSeriesName(name);
+  return known.find((k) => seriesKey(k) === seriesKey(clean)) ?? known.find((k) => looseKey(k) === looseKey(clean)) ?? clean;
+}
+
 /** A place in a series: 3, "3", "03", "2.5" or "2,5". Anything else is null (no place). */
 export function parsePosition(value) {
   if (typeof value === 'number') return Number.isFinite(value) && value >= 0 && value <= MAX_POSITION ? Math.round(value * 100) / 100 : null;

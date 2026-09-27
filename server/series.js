@@ -7,6 +7,7 @@ import { cleanSeriesName, seriesKey, uniqueSeries } from './converters/series.js
 export function createSeriesStore(db) {
   const stmts = {
     get: db.prepare('SELECT id, name FROM series WHERE id = ?'),
+    names: db.prepare('SELECT name FROM series ORDER BY id'),
     byKey: db.prepare('SELECT id, name FROM series WHERE name_key = ?'),
     insert: db.prepare('INSERT INTO series (name, name_key, created_at) VALUES (?, ?, ?)'),
     rename: db.prepare('UPDATE series SET name = ?, name_key = ? WHERE id = ?'),
@@ -85,6 +86,8 @@ export function createSeriesStore(db) {
 
   return {
     get: (id) => stmts.get.get(id) || null,
+    /** The name of every series and collection, oldest first. */
+    names: () => stmts.names.all().map((r) => r.name),
     forBook: (bookId) => stmts.forBook.all(bookId).map(shape),
     byBook,
     setForBook,
