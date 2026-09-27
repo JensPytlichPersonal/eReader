@@ -11,7 +11,7 @@ import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { bookRoutes, bookFiles } from './routes/books.js';
 import { seriesRoutes } from './routes/series.js';
-import { fontsCss, fontsDir } from './fonts.js';
+import { fontsCss, fontsDir, heavierFontCss } from './fonts.js';
 
 const require = createRequire(import.meta.url);
 
@@ -50,6 +50,18 @@ export function createApp(overrides = {}) {
   app.use('/vendor/fonts', express.static(fontsDir, { immutable: true, maxAge: '30d' }));
   const fonts = fontsCss();
   app.get('/css/fonts.css', (req, res) => res.type('text/css').set('Cache-Control', 'no-cache').send(fonts));
+  // A bundled font drawn heavier, for the text weight setting: /css/fonts/literata-600.css
+  const heavier = new Map();
+  app.get('/css/fonts/:file', (req, res, next) => {
+    const [file, name, weight] = /^([a-z-]+)-(\d{3})\.css$/.exec(req.params.file) || [];
+    if (!file) return next();
+    if (!heavier.has(file)) {
+      const css = heavierFontCss(name, Number(weight));
+      if (!css) return next();
+      heavier.set(file, css);
+    }
+    res.type('text/css').set('Cache-Control', 'no-cache').send(heavier.get(file));
+  });
 
   // App pages
   const page = (name) => (req, res) => res.sendFile(path.join(PUBLIC_DIR, name), { headers: { 'Cache-Control': 'no-cache' } });
