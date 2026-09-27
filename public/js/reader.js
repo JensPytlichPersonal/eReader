@@ -2,7 +2,7 @@
 // (section, character offset) so it is stable across devices, fonts and screen sizes, and
 // keeps that position in sync with the server.
 import { api, toast, escapeHtml, guessDeviceName, registerServiceWorker, formatDate } from './api.js';
-import { loadSettings, saveSettings, applyTheme, applyTypography, fontOptions, fontReady, adoptAccountFont, saveAccountFont } from './settings.js';
+import { loadSettings, saveSettings, applyTheme, applyTypography, fontOptions, fontReady, adoptAccountFont, saveAccountFont, effectiveTheme } from './settings.js';
 import { PdfPageView } from './pdf-view.js';
 
 registerServiceWorker();
@@ -373,10 +373,15 @@ function showPage(page, { record = true } = {}) {
   updateStatus();
 }
 
+/** On the last page of the book: the last PDF page, or the last page of the last section. */
+function atEnd() {
+  if (state.mode === 'pages') return state.pdfPage >= (state.manifest.pageCount || 0);
+  return state.locator.section === sections().length - 1 && state.page === state.pageCount - 1;
+}
+
 function onPositionChanged() {
   const { section, offset } = state.locator;
-  const last = state.mode === 'pages' ? state.pdfPage >= (state.manifest.pageCount || 0) : section === sections().length - 1 && state.page === state.pageCount - 1;
-  state.percent = last ? 1 : percentOf(section, offset);
+  state.percent = atEnd() ? 1 : percentOf(section, offset);
   try { localStorage.setItem(localKey, JSON.stringify({ section, offset, percent: state.percent, updatedAt: Date.now() })); } catch { /* ignore */ }
   state.dirty = true;
   scheduleSync();
@@ -735,12 +740,29 @@ async function checkRemote() {
 }
 
 // ---------------------------------------------------------------- pdf page mode
+// A PDF opens in the view last used for it on this device. Until then a scan opens as its pages, as its text is only
+// as good as the OCR engine made it; other PDFs open in the view last chosen for any PDF.
+const pdfModeKey = `ereader.pdfmode.${bookId}`;
+function initialPdfMode() {
+  try { const mode = localStorage.getItem(pdfModeKey); if (mode === 'text' || mode === 'pages') return mode; } catch { /* ignore */ }
+  return state.manifest.scanned ? 'pages' : settings.pdfMode;
+}
+function rememberPdfMode(mode) {
+  try { localStorage.setItem(pdfModeKey, mode); } catch { /* ignore */ }
+  settings.pdfMode = mode;
+  saveSettings(settings);
+}
+function markPdfMode() {
+  document.querySelectorAll('#pdfmode-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.mode));
+}
+
 async function enterPagesMode() {
   if (!state.pdf) {
     state.pdf = new PdfPageView(els.pdfview, els.pdfcanvas);
     try { await state.pdf.open(`${base}original`); } catch (err) { toast('Could not open the PDF pages: ' + err.message); state.pdf = null; return false; }
   }
   state.mode = 'pages';
+  markPdfMode();
   els.pdfview.classList.add('on');
   els.viewport.classList.add('hidden');
   if (state.locator.section !== state.section || !state.nodes.length) await loadSection(state.locator.section);
@@ -750,6 +772,7 @@ async function enterPagesMode() {
 
 function leavePagesMode() {
   state.mode = 'text';
+  markPdfMode();
   els.pdfview.classList.remove('on');
   els.viewport.classList.remove('hidden');
 }
@@ -761,7 +784,7 @@ async function showPdfPage(pageNo, { record }) {
   const idx = sectionForPage(wanted);
   if (idx !== state.section || !state.nodes.length) { const ok = await loadSection(idx); if (!ok) return; }
   state.pdfPage = wanted;
-  await state.pdf.render(wanted, settings.pdfInvert);
+  await state.pdf.render(wanted, settings.pdfInvert && effectiveTheme(settings) === 'dark');
   state.page = 0; state.pageCount = 1;
   state.locator = { section: idx, offset: offsetForPage(wanted) };
   if (record) onPositionChanged();
@@ -901,8 +924,13 @@ function bindSettings() {
   $('btn-show-zones').addEventListener('click', () => { closePanels(); toggleBars(false); els.tapHint.classList.remove('hidden'); setTimeout(() => els.tapHint.classList.add('hidden'), 2500); });
   if (state.manifest.format === 'pdf') {
     $('pdf-group').classList.remove('hidden');
-    seg('pdfmode-seg', 'pdfMode', async () => { if (settings.pdfMode === 'pages') { if (!(await enterPagesMode())) { settings.pdfMode = 'text'; saveSettings(settings); } } else { leavePagesMode(); await relayout(); } });
-    check('opt-pdf-invert', 'pdfInvert', () => { if (state.mode === 'pages') showPdfPage(state.section, { record: false }); });
+    $('pdfmode-seg').addEventListener('click', async (e) => {
+      const mode = e.target.closest('button[data-v]')?.dataset.v;
+      if (!mode || mode === state.mode) return;
+      if (mode === 'pages') { if (!(await enterPagesMode())) return; } else { leavePagesMode(); await relayout(); }
+      rememberPdfMode(mode);
+    });
+    check('opt-pdf-invert', 'pdfInvert', () => { if (state.mode === 'pages') showPdfPage(state.pdfPage, { record: false }); });
   }
   $('btn-download').href = `${base}original`;
   $('btn-download').setAttribute('download', state.book.originalName || 'book');
@@ -1012,7 +1040,7 @@ function bindInput() {
   });
 
   window.addEventListener('resize', debounce(relayout, 150));
-  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(settings));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { applyTheme(settings); if (state.mode === 'pages') showPdfPage(state.pdfPage, { record: false }); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushSync({ keepalive: true });
     else { checkRemote(); checkAccountFont(); }
@@ -1136,7 +1164,7 @@ async function init() {
   bindSettings();
   bindInput();
   layout();
-  if (manifest.format === 'pdf' && settings.pdfMode === 'pages') {
+  if (manifest.format === 'pdf' && initialPdfMode() === 'pages') {
     state.locator = { section: clamp(start.section, 0, sections().length - 1), offset: start.offset || 0 };
     const ok = await enterPagesMode();
     if (ok && start.id) await navigateTo(start);
@@ -1144,7 +1172,8 @@ async function init() {
   } else {
     await navigateTo(start);
   }
-  state.percent = state.locator.section === sections().length - 1 && state.page === state.pageCount - 1 ? 1 : percentOf(state.locator.section, state.locator.offset);
+  markPdfMode();
+  state.percent = atEnd() ? 1 : percentOf(state.locator.section, state.locator.offset);
   updateStatus();
   if (state.dirty) scheduleSync(300);
   els.loading.classList.add('hidden');

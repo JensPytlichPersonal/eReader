@@ -14,11 +14,11 @@ import { textToHtml, convertText } from '../server/converters/text.js';
 import { convertMarkdown } from '../server/converters/markdown.js';
 import { convertEpub } from '../server/converters/epub.js';
 import { convertMobi } from '../server/converters/mobi.js';
-import { convertPdf, pageItemsToBlocks, pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml, joinHyphenated, mergePages } from '../server/converters/pdf.js';
+import { convertPdf, pageItemsToBlocks, pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml, joinHyphenated, mergePages, readOperators, numberedRunningLines, numberVariants, isOcrNoise } from '../server/converters/pdf.js';
 const pdfInternals = { pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml, joinHyphenated, mergePages };
 import { convert, detectFormat } from '../server/converters/index.js';
 import { writeBundle, sniffImage, imageExt } from '../server/converters/bundle.js';
-import { makePdf } from './helpers/make-pdf.mjs';
+import { makePdf, makeScannedPdf, ocrLine } from './helpers/make-pdf.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ereader-conv-'));
 const sectionHtml = (dir, i) => fs.readFileSync(path.join(dir, 'sections', `${i}.html`), 'utf8');
@@ -327,4 +327,118 @@ test('images are told apart by their first bytes, and only file names fill the g
   assert.equal(imageExt('images/photo.jpeg', Buffer.from('plain text')), 'jpg');
   assert.equal(imageExt('image/webp', null), 'webp');
   assert.equal(imageExt('', TINY_PNG), 'png');
+});
+
+test('pdf: a scanned book is read from its OCR text, by chapters and paragraphs, without running heads or noise', async () => {
+  const W = 320;
+  const centred = (text, y, size) => ocrLine(text, W / 2 - (text.length * 0.56 + 0.3) * size / 2, y, size);
+  // Body type is 9 pt on 13 pt, paragraphs are indented by 10 pt from the margin at 30.
+  const body = (y, rows) => rows.flatMap(([x, text, size = 9], i) => ocrLine(text, x, y - i * 13 - (rows[i].gap || 0), size));
+  const rows = (...list) => list;
+  const pages = [
+    centred('THE MILLER', 330, 22),
+    [...centred('CHAPTER I', 420, 18), ...centred('THE MILL', 392, 11), ...body(362, rows(
+      [40, 'Mary lived by the river where the old mill'],
+      [30, 'turned all day long, and her father kept all'],
+      [30, 'the sacks of grain in the loft above it.'],
+      [40, '" Why did you come? " she asked the strange'],
+      [30, 'woman at the gate. The woman only stared at'],
+      [30, 'her and said nothing at all.'],
+      [40, 'Go away!', 11], // the OCR engine drew its boxes large: still a line of the text
+      [40, 'Mary said it again, but the woman did not'],
+      [30, 'move from the gate where she stood, and the'],
+    )), ...ocrLine('mill went on turning', 30, 150, 9), ...ocrLine('u', 30, 60, 9)], // a picture above, a speck below
+    [...ocrLine('2 THE MILLER OF ASHVALE', 30, 470, 10), ...body(440, rows(
+      [30, 'all through the night, as it always did.'],
+      [40, 'In the morning the woman had gone, and only'],
+      [30, 'her footprints were left in the frost by the'],
+      [30, 'gate of the mill.'],
+    ))],
+    [...ocrLine('THE MILL 3', 200, 470, 10), ...body(440, rows(
+      [40, 'Mary followed the footprints down to the'],
+      [30, 'water, where they ended at the edge of the'],
+      [30, 'river.'],
+    ))],
+    [...ocrLine('4 THE MILLER OF ASHVALE', 30, 470, 10), ...body(440, rows(
+      [40, 'She stood there until her father called her'],
+      [30, 'back to the mill for supper that evening.'],
+    ))],
+    [...centred('CHAPTER II', 420, 18), ...centred('THE RIVER', 392, 11), ...body(362, rows(
+      [40, 'The river was high that spring, higher than'],
+      [30, 'anyone in the valley could remember.'],
+    ))],
+  ];
+  const book = await convertPdf(makeScannedPdf(pages, { width: W, height: 500 }), { filename: 'The Miller.pdf' });
+  assert.equal(book.extra.scanned, true);
+  assert.equal(book.extra.textPages, 6);
+  const html = book.sections.map((s) => serialize(s.nodes)).join('\n');
+  // The chapters start sections, headed by their number and title.
+  assert.deepEqual(book.sections.map((s) => [s.pageStart, s.pageEnd]), [[1, 1], [2, 5], [6, 6]]);
+  assert.match(html, /<h1[^>]*>CHAPTER I<\/h1>\n<h2[^>]*>THE MILL<\/h2>/);
+  assert.match(html, /<h1[^>]*>CHAPTER II<\/h1>\n<h2[^>]*>THE RIVER<\/h2>/);
+  // Paragraphs by their indent; quote marks with their words; a big line of text is no heading.
+  assert.match(html, /<p>Mary lived by the river where the old mill turned all day long, and her father kept all the sacks of grain in the loft above it\.<\/p>/);
+  assert.match(html, /<p>"Why did you come\?" she asked the strange woman at the gate\. The woman only stared at her and said nothing at all\.<\/p>/);
+  assert.match(html, /<p>Go away!<\/p>/);
+  // A sentence carries on past a picture and over the page break.
+  assert.match(html, /<p>Mary said it again, but the woman did not move from the gate where she stood, and the mill went on turning <span class="pg" id="pg3"><\/span>all through the night, as it always did\.<\/p>/);
+  assert.match(html, /<p>Mary followed the footprints down to the water, where they ended at the edge of the river\.<\/p>/);
+  // Running heads that carry the page number go, whatever their title; so does a speck read as a letter.
+  assert.doesNotMatch(html, /ASHVALE|THE MILL 3|<p>u<\/p>|<sup>/);
+  const m = await writeBundle(path.join(tmp, 'scan'), book);
+  assert.equal(m.scanned, true);
+});
+
+test('pdf: a page is a scan when images cover it, and its text is OCR when invisible or under the scan', async () => {
+  const { OPS } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const vp = { width: 300, height: 480, transform: [1, 0, 0, -1, 0, 480] };
+  const ops = (...list) => ({ fnArray: list.map(([name]) => OPS[name]), argsArray: list.map(([, args]) => args ?? null) });
+  const image = (id, m) => [['save'], ['transform', m], ['paintImageXObject', [id, 1, 1]], ['restore']];
+  const scan = image('scan', [300, 0, 0, 480, 0, 0]);
+  const text = [['beginText'], ['showText', [[]]], ['showText', [[]]], ['endText']];
+  const facts = (...list) => { const f = readOperators(ops(...list), OPS, vp); return { scan: f.scan, ocr: f.ocr }; };
+  assert.deepEqual(facts(...scan, ['setTextRenderingMode', [3]], ...text), { scan: true, ocr: true });
+  assert.deepEqual(facts(...text, ...scan), { scan: true, ocr: true }); // drawn first and covered: "text under the image"
+  assert.deepEqual(facts(...scan, ...text), { scan: true, ocr: false }); // printed over a picture that fills the page
+  assert.deepEqual(facts(...[0, 1, 2, 3].flatMap((i) => image(`strip${i}`, [300, 0, 0, 120, 0, i * 120])), ['setTextRenderingMode', [3]], ...text), { scan: true, ocr: true });
+  const figure = readOperators(ops(...text, ...image('fig', [100, 0, 0, 80, 50, 200])), OPS, vp);
+  assert.deepEqual([figure.scan, figure.ocr], [false, false]);
+  assert.deepEqual(figure.images.map((i) => [i.id, i.x, i.top, i.w, i.h]), [['fig', 50, 200, 100, 80]]);
+});
+
+test('pdf: OCR words make lines by their boxes, with quote marks and split running heads put back together', () => {
+  // As found in an Internet Archive scan: each word at the bottom of its box and sized to it, spaces as wide as they like.
+  const item = (str, x, y, size, w) => ({ str, transform: [size, 0, 0, size, x, y], width: w, height: size, hasEOL: false, fontName: 'f' });
+  const vp = { width: 303, height: 490 };
+  const items = [
+    item('MOTHER!', 121.6, 454.6, 14, 64.7), item(' ', 186.3, 454.6, 14, 30), item("'IT'S", 87.8, 449.8, 9.2, 30), item('341', 240, 449.8, 9.1, 17.3),
+    item('woman.', 26.9, 135.1, 9.94, 35.8), item(' ', 62.7, 135.1, 9.94, 94), item('"', 76.0, 140.0, 7.91, 4.7), item('I', 84.7, 135.1, 6.95, 4.2),
+    item(' ', 88.9, 135.1, 6.95, 25), item('will', 92.4, 135.0, 7.13, 17.1), item(' ', 109.5, 135.0, 7.13, 26), item('not', 112.4, 135.0, 8.54, 15.4),
+    item(' ', 127.8, 135.0, 8.54, 27), item('let', 130.8, 135.0, 6.55, 11.8), item(' ', 142.6, 135.0, 6.55, 25), item('you', 145.5, 132.5, 9.02, 16.2),
+    item(' ', 161.7, 132.5, 9.02, 25), item('stay.', 165.2, 132.5, 6.8, 20.4),
+    item('', 27.2, 122.0, 7.07, 0), item('to', 27.2, 122.0, 7.07, 8.5), item(' ', 35.7, 122.0, 7.07, 26), item('me."', 40.1, 122.0, 7.79, 18.7),
+  ];
+  const { lines } = pageLines(items, vp, {}, { ocr: true });
+  assert.deepEqual(lines.map((l) => l.text), ["'IT'S MOTHER! 341", 'woman. "I will not let you stay.', 'to me."']);
+  assert.ok(lines.every((l) => l.ocr && !/<sup>/.test(l.html)));
+  // A line's right edge is where its last word ends, not where a space claims to.
+  assert.equal(Math.round(lines[1].right), 186);
+});
+
+test('pdf: running heads carrying the page number, misread or not, and what OCR reads into specks', () => {
+  const line = (text, y) => ({ text, y, height: 480, x: 30, right: 200, size: 10 });
+  const pages = [10, 11, 12, 13].map((p) => ({
+    p,
+    lines: [line(p % 2 ? `A CHAPTER TITLE ${p - 4}` : `${p - 4} THE BOOK`, 450), line('Some text in the middle of the page, 12 lines of it.', 300), line(p === 13 ? '9' : 'the last line of text', 60)],
+  }));
+  const numbered = numberedRunningLines(pages);
+  assert.deepEqual(pages.map(({ lines }) => numbered.has(lines[0])), [true, true, true, true]);
+  assert.equal(numbered.has(pages[3].lines[2]), true); // a page number on its own, a little above the foot of the page
+  assert.ok(!numbered.has(pages[0].lines[1]) && !numbered.has(pages[0].lines[2]));
+  assert.ok(numberVariants('ib the book').includes('# the book'));
+  assert.ok(numberVariants('the book').includes('# the book'));
+  assert.ok(numberVariants('a chapter title n').includes('a chapter title #'));
+  assert.equal(lineKey({ text: '"I AM COLIN" 1 65' }), lineKey({ text: "'I AM COLIN 161" }));
+  for (const noise of ['u', "''u", '7*.', ', . , m']) assert.equal(isOcrNoise(noise), true, noise);
+  for (const kept of ['IV', '7', '* * *', 'No.', 'I am.']) assert.equal(isOcrNoise(kept), false, kept);
 });
