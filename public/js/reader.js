@@ -843,7 +843,7 @@ function seg(id, key, onChange) {
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-v]');
     if (!b) return;
-    settings[key] = key === 'lineHeight' ? parseFloat(b.dataset.v) : b.dataset.v;
+    settings[key] = key === 'lineHeight' || key === 'weight' ? parseFloat(b.dataset.v) : b.dataset.v;
     saveSettings(settings);
     sync();
     onChange();
@@ -860,6 +860,7 @@ function bindSettings() {
   const typo = () => { applyTheme(settings); relayout(); };
   seg('theme-seg', 'theme', typo);
   check('opt-eink', 'eink', typo);
+  seg('weight-seg', 'weight', async () => { await fontReady(settings); typo(); });
   seg('lh-seg', 'lineHeight', typo);
   seg('margin-seg', 'margin', typo);
   seg('align-seg', 'align', typo);
