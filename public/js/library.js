@@ -18,11 +18,11 @@ const els = {
 let me = null;
 let books = [];
 let pollTimer = null;
-const prefs = JSON.parse(localStorage.getItem('rreader.library') || '{}');
+const prefs = JSON.parse(localStorage.getItem('ereader.library') || '{}');
 els.sort.value = prefs.sort || 'recent';
 els.filter.value = prefs.filter || 'all';
 
-function savePrefs() { localStorage.setItem('rreader.library', JSON.stringify({ sort: els.sort.value, filter: els.filter.value })); }
+function savePrefs() { localStorage.setItem('ereader.library', JSON.stringify({ sort: els.sort.value, filter: els.filter.value })); }
 
 async function load() {
   const data = await api('/api/books');

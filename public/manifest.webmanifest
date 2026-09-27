@@ -1,6 +1,6 @@
 {
-  "name": "rReader",
-  "short_name": "rReader",
+  "name": "eReader",
+  "short_name": "eReader",
   "description": "Your personal library. Reads EPUB, MOBI, PDF, Markdown and text and keeps your place on every device.",
   "start_url": "/",
   "scope": "/",

@@ -1,5 +1,5 @@
 // Per-device display settings persisted in localStorage.
-const KEY = 'rreader.settings';
+const KEY = 'ereader.settings';
 
 export const FONTS = [
   { id: 'serif', label: 'Serif (device default)', stack: 'serif' },

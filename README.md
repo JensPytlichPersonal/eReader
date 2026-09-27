@@ -1,4 +1,4 @@
-# rReader
+# eReader
 
 A self-hosted web e-reader for the whole household. Upload EPUB, MOBI, PDF, Markdown and
 text files once; everyone with an account can read every book, and each reader's position
@@ -42,20 +42,20 @@ other readers under **Users**. Registration is otherwise closed unless you start
 
 ### Keeping it running
 
-rReader is a single Node process, so any process manager works. On a Linux server, a systemd
+eReader is a single Node process, so any process manager works. On a Linux server, a systemd
 unit is enough. Create a user for it, clone the repository somewhere it can read, and save this as
-`/etc/systemd/system/rreader.service`:
+`/etc/systemd/system/ereader.service`:
 
 ```ini
 [Unit]
-Description=rReader web e-reader
+Description=eReader web e-reader
 After=network.target
 
 [Service]
-User=rreader
-WorkingDirectory=/opt/rreader
+User=ereader
+WorkingDirectory=/opt/ereader
 Environment=PORT=8080
-Environment=DATA_DIR=/var/lib/rreader
+Environment=DATA_DIR=/var/lib/ereader
 ExecStart=/usr/bin/node --no-warnings=ExperimentalWarning server/index.js
 Restart=on-failure
 
@@ -66,9 +66,9 @@ WantedBy=multi-user.target
 Then:
 
 ```bash
-sudo mkdir -p /var/lib/rreader && sudo chown rreader /var/lib/rreader
+sudo mkdir -p /var/lib/ereader && sudo chown ereader /var/lib/ereader
 sudo systemctl daemon-reload
-sudo systemctl enable --now rreader
+sudo systemctl enable --now ereader
 ```
 
 Everything the app stores (database, uploaded originals, converted books) lives in `DATA_DIR`.

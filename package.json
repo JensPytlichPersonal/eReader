@@ -1,5 +1,5 @@
 {
-  "name": "rreader",
+  "name": "ereader",
   "version": "0.1.0",
   "description": "Self-hosted multi-user web eReader for EPUB, MOBI, PDF, Markdown and text - built for e-ink, phones and laptops.",
   "type": "module",

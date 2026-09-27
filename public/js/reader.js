@@ -36,7 +36,7 @@ const state = {
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const sections = () => state.manifest.sections;
-const localKey = `rreader.pos.${bookId}`;
+const localKey = `ereader.pos.${bookId}`;
 
 function percentOf(section, offset) {
   const m = state.manifest;
@@ -358,7 +358,7 @@ function updateStatus() {
     els.pos.textContent = `${pct}% · ${title} · page ${state.page + 1} of ${state.pageCount} in this section`;
   }
   els.slider.value = String(Math.round((state.percent ?? 0) * 1000));
-  document.title = `${m.title} - rReader`;
+  document.title = `${m.title} - eReader`;
 }
 
 // ---------------------------------------------------------------- sync
@@ -745,8 +745,8 @@ async function init() {
   updateStatus();
   if (state.dirty) scheduleSync(300);
   els.loading.classList.add('hidden');
-  if (!localStorage.getItem('rreader.hinted')) {
-    localStorage.setItem('rreader.hinted', '1');
+  if (!localStorage.getItem('ereader.hinted')) {
+    localStorage.setItem('ereader.hinted', '1');
     els.tapHint.classList.remove('hidden');
     setTimeout(() => els.tapHint.classList.add('hidden'), 3000);
   }
