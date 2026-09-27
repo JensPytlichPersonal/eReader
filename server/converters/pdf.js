@@ -48,20 +48,34 @@ export function joinHyphenated(prevText, nextText) {
   return { text: prevText.slice(0, -1) + nextText, dropHyphen: true };
 }
 
-/**
- * Group a page's text runs into lines. Small raised runs (footnote markers) are attached to
- * the line they belong to as superscripts instead of forming lines of their own.
- * @returns {{lines: Array, bodySize: number}}
- */
-export function pageLines(items, viewport, styles = {}) {
+function textRuns(items, styles) {
   const runs = [];
   for (const it of items) {
     if (it.str == null || !it.transform) continue;
     const size = Math.abs(it.transform[3]) || Math.abs(it.transform[0]) || it.height || 10;
     runs.push({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width || 0, size, font: it.fontName, ...styleOf(styles, it.fontName) });
   }
+  return runs;
+}
+const runsBodySize = (runs) => median(runs.filter((r) => r.str.trim().length > 3).map((r) => r.size)) || median(runs.map((r) => r.size));
+
+/** The body text size of one page on its own; the document's median of these is what pageLines wants. */
+export function pageBodySize(items) {
+  const runs = textRuns(items);
+  return runs.length ? runsBodySize(runs) : NaN;
+}
+
+/**
+ * Group a page's text runs into lines. Small raised runs (footnote markers) are attached to
+ * the line they belong to as superscripts instead of forming lines of their own.
+ * @param {object} [opts] {bodySize}: the document's body size. Without it the page's own median is used,
+ *   which misjudges pages that are mostly footnotes (the markers in the body no longer look small there).
+ * @returns {{lines: Array, bodySize: number}}
+ */
+export function pageLines(items, viewport, styles = {}, opts = {}) {
+  const runs = textRuns(items, styles);
   if (!runs.length) return { lines: [], bodySize: NaN };
-  const bodySize = median(runs.filter((r) => r.str.trim().length > 3).map((r) => r.size)) || median(runs.map((r) => r.size));
+  const bodySize = opts.bodySize || runsBodySize(runs);
   const isSmall = (r) => r.size < bodySize * 0.78 && r.str.trim().length <= 4;
   const big = runs.filter((r) => !isSmall(r)).sort((a, b) => (Math.abs(b.y - a.y) > 2 ? b.y - a.y : a.x - b.x));
   const lines = [];
@@ -95,9 +109,12 @@ export function pageLines(items, viewport, styles = {}) {
       const clean = it.str.replace(/\s+/g, ' ');
       text += clean;
       let frag = escape(clean);
-      if (it.bold && clean.trim()) frag = `<b>${frag}</b>`;
-      if (it.italic && clean.trim()) frag = `<i>${frag}</i>`;
-      if (it.sup && clean.trim()) frag = `<sup>${frag.trim()}</sup>`;
+      if (it.sup && clean.trim()) {
+        frag = `<sup>${frag.trim()}</sup>`; // markers carry no bold/italic, whatever font the run inherited
+      } else {
+        if (it.bold && clean.trim()) frag = `<b>${frag}</b>`;
+        if (it.italic && clean.trim()) frag = `<i>${frag}</i>`;
+      }
       html += frag;
       prev = it;
     }
@@ -128,6 +145,8 @@ export function edgeBand(line) {
  * Turn a page's lines (and image placeholders) into blocks (headings, paragraphs, footnotes, images).
  * @param {object} ctx {bodySize, isRunning(line) -> boolean}
  */
+const MARKER_ONLY_RE = /^(\d{1,3}|[*†‡§])$/; // a note number on a line of its own (the note text wrapped below it)
+
 export function linesToBlocks(lines, ctx = {}) {
   if (!lines.length) return [];
   const textLines = lines.filter((l) => !l.image);
@@ -136,23 +155,32 @@ export function linesToBlocks(lines, ctx = {}) {
   const leftEdge = median(textLines.filter((l) => l.text.length > 40).map((l) => l.x));
   const rightEdge = median(textLines.filter((l) => l.text.length > 40).map((l) => l.right));
 
-  const kept = lines.filter((l) => {
+  // A note number printed on a line of its own (its text wrapped below it) looks like a page number
+  // when it falls in the bottom band; tell them apart by size and by the small line right under it.
+  const isMarkerLine = (l, i) => {
+    if (!MARKER_ONLY_RE.test(l.text) || l.size >= bodySize * 0.78) return false;
+    const next = lines.slice(i + 1).find((n) => !n.image);
+    return !!next && next.size < bodySize * 0.92 && l.y - next.y < next.size * 2.2 && Math.abs(next.x - l.x) < bodySize;
+  };
+  const kept = lines.filter((l, i) => {
     if (l.image) return true;
     if (isWatermark(l.text)) return false;
     const band = edgeBand(l);
     if (!band) return true;
+    if (isMarkerLine(l, i)) return true;
     if (/^[\divxlc]+$/i.test(l.text.replace(/[\s|·•—–-]/g, ''))) return false;
     if (isRunning(l)) return false;
     return true;
   });
 
+  const startsNote = (l) => l.startsWithSup || /^\d{1,3}\s/.test(l.text) || /^[*†‡§]/.test(l.text) || MARKER_ONLY_RE.test(l.text);
   let footStart = kept.length;
   for (let i = kept.length - 1; i >= 0; i--) {
     const l = kept[i];
     if (l.image) break;
     const small = l.size < bodySize * 0.92;
     if (!small) break;
-    if (l.startsWithSup || /^\d{1,3}\s/.test(l.text) || /^[*†‡§]/.test(l.text)) footStart = i;
+    if (startsNote(l)) footStart = i;
   }
 
   const blocks = [];
@@ -198,8 +226,20 @@ export function linesToBlocks(lines, ctx = {}) {
       continue;
     }
     if (inFoot) {
-      const marker = l.startsWithSup || /^\d{1,3}\s/.test(l.text) || /^[*†‡§]/.test(l.text);
-      if (!para || para.type !== 'fn' || marker || bigGap) { flush(); startPara(l, 'fn'); } else append(l);
+      // A line opening with a plain number only starts a new note when it carries the next number:
+      // "…twice as powerful as a level" / "11 anything." is a wrapped note, not note 11.
+      let marker = startsNote(l);
+      const plainNum = !l.startsWithSup && /^(\d{1,3})\s/.exec(l.text);
+      if (plainNum && para && para.type === 'fn') {
+        const prevNum = /^(\d{1,3})(?!\d)/.exec(para.text);
+        if (prevNum && Number(plainNum[1]) !== Number(prevNum[1]) + 1) marker = false;
+      }
+      if (MARKER_ONLY_RE.test(l.text)) {
+        flush();
+        startPara({ ...l, html: `<sup>${escape(l.text)}</sup>` }, 'fn');
+        continue;
+      }
+      if (!para || para.type !== 'fn' || (marker && !(para.lines === 1 && MARKER_ONLY_RE.test(para.text))) || bigGap) { flush(); startPara(l, 'fn'); } else append(l);
       continue;
     }
     if (!para || para.type !== 'p' || bigGap || (prev && prev.size > bodySize * 1.15)) { flush(); startPara(l); continue; }
@@ -270,22 +310,40 @@ function joinAcrossPages(last, first, marker) {
 
 const NOTE_NUM_RE = /^(\d{1,3}|[*†‡§])\s/;
 
-/** Turn footnote markers in a page's body blocks into links to that page's notes, and give the notes ids and back links. */
-function linkFootnotes(pageNo, blocks) {
-  const notes = blocks.filter((b) => b.type === 'fn');
-  const byNum = new Map();
-  for (const n of notes) {
-    const m = NOTE_NUM_RE.exec(n.text);
-    if (!m || byNum.has(m[1])) continue;
-    byNum.set(m[1], n);
-    n.id = `fn-${pageNo}-${m[1].replace(/[^\w]/g, (c) => c.charCodeAt(0))}`;
-    n.refs = 0;
+/** Give every footnote block an id keyed by page and number; returns a lookup by page. */
+function indexFootnotes(pages) {
+  const byPage = new Map();
+  for (const { p, blocks } of pages) {
+    const map = new Map();
+    for (const n of blocks) {
+      if (n.type !== 'fn') continue;
+      const m = NOTE_NUM_RE.exec(n.text);
+      if (!m || map.has(m[1])) continue;
+      n.id = `fn-${p}-${m[1].replace(/[^\w]/g, (c) => c.charCodeAt(0))}`;
+      n.refs = 0;
+      map.set(m[1], n);
+    }
+    byPage.set(p, map);
   }
-  if (!byNum.size) return;
+  return byPage;
+}
+
+/**
+ * Turn the footnote markers in a page's body blocks into links to their notes. A note is normally printed on
+ * the marker's page; when it is not there, the following two pages and the previous one are tried.
+ */
+function linkFootnotes(pageNo, blocks, byPage) {
+  const find = (num) => {
+    for (const p of [pageNo, pageNo + 1, pageNo + 2, pageNo - 1]) {
+      const n = byPage.get(p)?.get(num);
+      if (n && !n.refs) return n;
+    }
+    return byPage.get(pageNo)?.get(num) || null;
+  };
   for (const b of blocks) {
     if (b.type === 'fn' || !b.html) continue;
     b.html = b.html.replace(/<sup>(\d{1,3}|[*†‡§])<\/sup>/g, (m, num) => {
-      const note = byNum.get(num);
+      const note = find(num);
       if (!note) return m;
       note.refs++;
       const refId = `${note.id.replace(/^fn-/, 'fnref-')}-${note.refs}`;
@@ -293,9 +351,12 @@ function linkFootnotes(pageNo, blocks) {
       return `<sup><a id="${refId}" href="#${note.id}">${num}</a></sup>`;
     });
   }
-  for (const n of notes) {
-    if (!n.id) continue;
-    n.html = n.html.replace(/^<sup>(\d{1,3}|[*†‡§])<\/sup>/, (m, num) => (n.backTo ? `<sup><a href="#${n.backTo}">${num}</a></sup>` : m));
+}
+
+function backLinkFootnotes(blocks) {
+  for (const n of blocks) {
+    if (n.type !== 'fn' || !n.id || !n.backTo) continue;
+    n.html = n.html.replace(/^<sup>(\d{1,3}|[*†‡§])<\/sup>/, (m, num) => `<sup><a href="#${n.backTo}">${num}</a></sup>`);
   }
 }
 
@@ -313,6 +374,9 @@ export function mergePages(pages, { budget = SECTION_BUDGET, startsChapter = () 
     sections.push({ first: cur.first, last: cur.last, html: parts.join('\n') });
     cur = null;
   };
+  const byPage = indexFootnotes(pages);
+  for (const { p, blocks } of pages) linkFootnotes(p, blocks, byPage);
+  for (const { blocks } of pages) backLinkFootnotes(blocks);
   for (const { p, blocks } of pages) {
     const firstText = blocks.find((b) => b.type !== 'img');
     const chapterStart = startsChapter(p) || (firstText?.type === 'h' && firstText.level === 1);
@@ -320,7 +384,6 @@ export function mergePages(pages, { budget = SECTION_BUDGET, startsChapter = () 
     const marker = `<span class="pg" id="pg${p}"></span>`;
     if (!cur) cur = { first: p, last: p, chars: 0, parts: [], notes: [], prevBlocks: null };
     cur.last = p;
-    linkFootnotes(p, blocks);
     const body = blocks.filter((b) => b.type !== 'fn');
     const notes = blocks.filter((b) => b.type === 'fn');
     if (cur.prevBlocks && cur.parts.length && continues(cur.prevBlocks, body)) {
@@ -472,9 +535,9 @@ export async function convertPdf(buffer, { filename }) {
     }
   } catch { /* ignore */ }
 
-  // Pass 1: lines and images for every page, so running headers/footers can be recognised across pages.
-  const pages = [];
-  const keyCounts = new Map();
+  // Pass 1: text runs, font styles and images for every page. The body size is the median over the
+  // whole document, so a page that is mostly footnotes still tells its markers from its text.
+  const raw = [];
   const bodySizes = [];
   const images = new Map();
   for (let p = 1; p <= doc.numPages; p++) {
@@ -483,20 +546,31 @@ export async function convertPdf(buffer, { filename }) {
     let ops = null;
     try { ops = await page.getOperatorList(); } catch { ops = null; }
     const tc = await page.getTextContent();
-    const { lines, bodySize } = pageLines(tc.items, viewport, await fontStyles(page, tc));
-    if (Number.isFinite(bodySize)) bodySizes.push(bodySize);
+    const styles = await fontStyles(page, tc);
+    const pageBody = pageBodySize(tc.items);
+    if (Number.isFinite(pageBody)) bodySizes.push(pageBody);
+    let imgs = [];
+    const hasText = tc.items.some((it) => it.str?.trim());
+    if (ops && hasText) { try { imgs = await pageImages(page, viewport, ops, OPS, p, images); } catch { imgs = []; } }
+    raw.push({ p, items: tc.items, viewport, styles, imgs });
+    page.cleanup();
+  }
+  const bodySize = median(bodySizes);
+
+  // Lines per page, and the running header/footer keys counted across pages.
+  const pages = [];
+  const keyCounts = new Map();
+  for (const { p, items, viewport, styles, imgs } of raw) {
+    const { lines } = pageLines(items, viewport, styles, { bodySize });
     for (const l of lines) {
       const band = edgeBand(l);
       if (!band) continue;
       const k = `${band}:${lineKey(l)}`;
       keyCounts.set(k, (keyCounts.get(k) || 0) + 1);
     }
-    let imgs = [];
-    if (ops && lines.length) { try { imgs = await pageImages(page, viewport, ops, OPS, p, images); } catch { imgs = []; } }
     pages.push({ p, lines: [...lines, ...imgs].sort((a, b) => b.y - a.y) });
-    page.cleanup();
   }
-  const bodySize = median(bodySizes);
+  raw.length = 0;
   const threshold = Math.max(3, Math.ceil(doc.numPages * 0.02));
   const isRunning = (l) => (keyCounts.get(`${edgeBand(l)}:${lineKey(l)}`) || 0) >= threshold && l.text.length < 120;
 
