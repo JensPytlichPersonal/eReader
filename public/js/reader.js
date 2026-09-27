@@ -346,14 +346,9 @@ async function loadSection(idx) {
   els.content.classList.add('loading');
   const html = await fetchSection(idx);
   if (token !== state.loadToken) return false;
-  els.content.innerHTML = html;
+  state.sectionHtml = html + (idx === sections().length - 1 ? '<p class="section-end">— The end —</p>' : '');
+  els.content.innerHTML = state.sectionHtml;
   els.content.lang = state.manifest.language || 'en';
-  if (idx === sections().length - 1) {
-    const end = document.createElement('p');
-    end.className = 'section-end';
-    end.textContent = '— The end —';
-    els.content.appendChild(end);
-  }
   state.section = idx;
   shiftTo(0);
   await waitForImages(els.content);
@@ -445,6 +440,12 @@ async function relayout() {
   if (state.mode === 'pages') { await showPdfPage(state.pdfPage, { record: false }); return; }
   layout();
   shiftTo(0);
+  if (state.sectionHtml) {
+    // Re-render from the pristine markup: footnote placement may have split paragraphs for the old layout.
+    els.content.innerHTML = state.sectionHtml;
+    await waitForImages(els.content, 800);
+    indexNodes();
+  }
   placeFootnotes();
   measure();
   await restore(loc);
@@ -452,9 +453,11 @@ async function relayout() {
 
 // ---------------------------------------------------------------- footnotes at the foot of their column
 /**
- * Clone each footnote from the hidden endnotes into the flow, right after the paragraph holding its
- * marker, pushed to the bottom of that column. Runs after layout and again on every relayout, so the
- * placement follows font size, margins and screen size. Clones are excluded from the text index.
+ * Place footnotes the way a typesetter would: for the markers in a column, reserve the notes' height at
+ * the foot of that column, let the text run down to the reserved space (splitting a paragraph at a line
+ * boundary if needed) and put the notes there; the rest of the text continues in the next column.
+ * Notes are cloned from the hidden endnotes and excluded from the text index, so positions are unchanged.
+ * Splitting a paragraph keeps the character sequence intact. Runs after layout and on every relayout.
  */
 function placeFootnotes() {
   const content = els.content;
@@ -465,66 +468,174 @@ function placeFootnotes() {
   const noteById = new Map([...endnotes.querySelectorAll('p.footnote[id]')].map((n) => [n.id, n]));
   const markers = [...content.querySelectorAll('sup a[data-id]')].filter((a) => noteById.has(a.dataset.id) && !a.closest('.endnotes'));
   if (!markers.length) return;
-  content.classList.add('fn-inline'); // hides the endnotes section
+  content.classList.add('fn-inline');
   const colTop = content.getBoundingClientRect().top;
   const colBottom = colTop + state.height;
-  const blockOf = (el) => el.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote, figure, div, td') || el.parentElement;
   const placed = new Set();
+  const rectOf = (el) => el.getBoundingClientRect();
+  const sameLine = (a, b) => {
+    const overlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    return overlap > Math.min(a.height, b.height) * 0.3;
+  };
+  const endOffset = () => offsetOfElement(endnotes); // text after this is hidden
+  const markerOffset = (a) => offsetOfElement(a);
+  const blockOf = (node) => {
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    const hit = el.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote, figure, div, td, dd, dt, pre, section');
+    if (hit && hit !== content && content.contains(hit)) return hit;
+    // Whitespace between blocks: attach to the neighbouring block.
+    return node.previousElementSibling || node.nextElementSibling || content.firstElementChild;
+  };
+  // Rectangle of the first character at or after `off` that has a size (skips whitespace-only nodes).
+  const rectAt = (off, limitOff = state.totalNodes) => {
+    for (let o = off; o < limitOff && o < off + 64; o++) {
+      const r = rectForOffset(o);
+      if (r && (r.width || r.height)) return { r, off: o };
+    }
+    return null;
+  };
+  const rectBefore = (off) => {
+    for (let o = off; o >= 0 && o > off - 64; o--) {
+      const r = rectForOffset(o);
+      if (r && (r.width || r.height)) return { r, off: o };
+    }
+    return null;
+  };
+  // First text offset of a block (used to tell "before this block" from "inside it").
+  const blockStart = (block) => offsetOfElement(block);
+  const lineBounds = (off) => {
+    // Extend from `off` (or the next sized character) backwards to the start of its line; returns {start, top, bottom, col}
+    const hit = rectAt(off);
+    if (!hit) return null;
+    const r0 = hit.r;
+    const col = columnOf(r0);
+    let start = hit.off;
+    let top = r0.top, bottom = r0.bottom;
+    while (start > 0) {
+      const r = rectForOffset(start - 1);
+      if (!r || !(r.width || r.height) || columnOf(r) !== col || !sameLine(r, r0)) break;
+      top = Math.min(top, r.top); bottom = Math.max(bottom, r.bottom);
+      start--;
+    }
+    return { start, top, bottom, col };
+  };
+  const splitAt = (off) => {
+    // Split the block containing text offset `off` just before that character; returns the continuation block.
+    const i = nodeIndexForOffset(off);
+    const node = state.nodes[i];
+    const k = off - state.starts[i];
+    const block = blockOf(node);
+    const range = document.createRange();
+    if (node.nodeType === Node.TEXT_NODE) range.setStart(node, k); else range.setStartBefore(node);
+    range.setEnd(block, block.childNodes.length);
+    const frag = range.extractContents();
+    const cont = document.createElement(block.tagName);
+    cont.className = `${block.className} cont split`.trim();
+    cont.appendChild(frag);
+    block.after(cont);
+    indexNodes();
+    return { block, cont };
+  };
+
   let i = 0;
-  while (i < markers.length) {
+  let guard = 0;
+  while (i < markers.length && guard++ < 200) {
+    const col0 = columnOf(rectOf(markers[i]));
+    let j = i;
     const area = document.createElement('div');
     area.className = 'fn-area';
-    let j = i;
-    // Take every following marker that sits in a column up to `c` into this area, in document order.
-    const absorbUpTo = (c) => {
-      while (j < markers.length && columnOf(markers[j].getBoundingClientRect()) <= c) {
-        const m = markers[j++];
-        if (placed.has(m.dataset.id)) continue;
-        placed.add(m.dataset.id);
-        const clone = noteById.get(m.dataset.id).cloneNode(true);
-        clone.removeAttribute('id');
-        clone.dataset.fn = m.dataset.id;
-        area.appendChild(clone);
-      }
-    };
-    absorbUpTo(columnOf(markers[i].getBoundingClientRect()));
-    let target = blockOf(markers[j - 1]);
-    for (let attempt = 0; attempt < 5 && area.childElementCount; attempt++) {
-      target.after(area);
-      const fragments = target.getClientRects();
-      const lastFragment = fragments[fragments.length - 1];
-      const areaRect = area.getBoundingClientRect();
-      const areaCol = columnOf(areaRect);
-      if (!lastFragment || areaCol === columnOf(lastFragment)) {
-        // Fits below the paragraph: push it down to the foot of the column.
-        const space = lastFragment ? colBottom - lastFragment.bottom - areaRect.height : 0;
-        if (space > 0) {
-          area.style.marginTop = `${Math.floor(space)}px`;
-          if (columnOf(area.getBoundingClientRect()) !== areaCol) area.style.marginTop = `${Math.max(0, Math.floor(space) - 3)}px`;
-        }
-        break;
-      }
-      // The area spilled into a later column: bring along the markers up to that column, then attach the
-      // area after the last block that ends there and try again.
-      area.remove();
-      const before = j;
-      absorbUpTo(areaCol);
-      let candidate = j > before ? blockOf(markers[j - 1]) : null;
-      if (!candidate) {
-        for (let n = target.nextElementSibling; n; n = n.nextElementSibling) {
-          if (n.classList.contains('fn-area') || n.classList.contains('endnotes')) continue;
-          const fr = n.getClientRects();
-          if (!fr.length) continue;
-          if (columnOf(fr[0]) > areaCol) break;
-          if (columnOf(fr[fr.length - 1]) <= areaCol) candidate = n;
-        }
-      }
-      if (!candidate || candidate === target) { target.after(area); break; }
-      target = candidate;
+    while (j < markers.length && columnOf(rectOf(markers[j])) === col0) {
+      const m = markers[j++];
+      if (placed.has(m.dataset.id)) continue;
+      placed.add(m.dataset.id);
+      const clone = noteById.get(m.dataset.id).cloneNode(true);
+      clone.removeAttribute('id');
+      clone.dataset.fn = m.dataset.id;
+      area.appendChild(clone);
     }
-    if (!area.childElementCount) area.remove();
+    if (!area.childElementCount) { i = j; continue; }
+    const lastMarker = markers[j - 1];
+    // Measure the area's height in a column (all columns share the width).
+    content.appendChild(area);
+    const H = rectOf(area).height;
+    area.remove();
+    let col = col0;
+    let done = false;
+    for (let attempt = 0; attempt < 3 && !done; attempt++) {
+      const limit = colBottom - H;
+      const mOff = markerOffset(lastMarker);
+      const mLine = lineBounds(mOff);
+      if (!mLine) break;
+      if (mLine.col !== col) { col = mLine.col; }
+      if (mLine.bottom > limit + 0.5) {
+        // The marker's own line would sit below the notes: move that line to the next column and retry there.
+        const { cont } = splitAt(mLine.start);
+        cont.style.breakBefore = 'column';
+        col += 1;
+        continue;
+      }
+      // First character after the marker line that no longer fits above the reserved space in this column.
+      const hi = Math.min(endOffset(), state.totalNodes);
+      const searchLimit = limit - 4; // character boxes are shorter than line boxes; leave slack
+      const beyond = (off) => {
+        const hit = rectAt(off, hi);
+        if (!hit) return true; // nothing sized before the endnotes: treat as past the column
+        const c = columnOf(hit.r);
+        return c > col || (c === col && hit.r.bottom > searchLimit);
+      };
+      let lo = mOff, hiOff = hi; // smallest off in [lo, hi) with beyond(off); hi if none
+      while (lo < hiOff) { const mid = (lo + hiOff) >> 1; if (beyond(mid)) hiOff = mid; else lo = mid + 1; }
+      if (lo >= hi) {
+        // Everything after the marker fits: the notes go after the last block of the column (end of section).
+        blockOf(state.nodes[nodeIndexForOffset(Math.max(0, hi - 1))]).after(area);
+      } else {
+        const line = lineBounds(lo);
+        if (!line || line.col !== col) {
+          blockOf(state.nodes[nodeIndexForOffset(Math.max(0, lo - 1))]).after(area);
+        } else {
+          const block = blockOf(state.nodes[nodeIndexForOffset(line.start)]);
+          if (line.start <= blockStart(block)) block.before(area);
+          else splitAt(line.start).block.after(area);
+        }
+      }
+      // Measure where the area really landed and push it to the foot of the column; if it does not fit,
+      // move one more line of text after it and try again.
+      for (let fix = 0; fix < 6; fix++) {
+        area.style.marginTop = '';
+        const aRect = rectOf(area);
+        const room = colBottom - 1 - aRect.bottom;
+        if (columnOf(aRect) === col && room >= 0) {
+          area.style.marginTop = `${Math.floor(room)}px`;
+          if (columnOf(rectOf(area)) !== col) area.style.marginTop = `${Math.max(0, Math.floor(room) - 3)}px`;
+          break;
+        }
+        const prev = area.previousElementSibling;
+        if (!prev || area.parentElement !== content || prev.classList.contains('fn-area') || prev.classList.contains('endnotes')) break;
+        const endOff = offsetOfElement(area); // first indexed character after the area
+        const before = rectBefore(Math.max(0, endOff - 1));
+        const lastLine = before ? lineBounds(before.off) : null;
+        if (!lastLine || lastLine.start <= mOff) break; // the marker's line must stay above its notes
+        const next = area.nextElementSibling;
+        if (lastLine.start <= blockStart(prev)) {
+          area.after(prev); // the whole block moves below the notes
+        } else {
+          const { cont: moved } = splitAt(lastLine.start); // splits prev into head + moved (moved sits before the area)
+          area.after(moved);
+        }
+        // Merge the moved text with the continuation that followed the area, if that was the same paragraph.
+        const first = area.nextElementSibling;
+        if (first && next && next !== first && next.classList.contains('split') && first.tagName === next.tagName) {
+          while (next.firstChild) first.appendChild(next.firstChild);
+          next.remove();
+        }
+        indexNodes();
+      }
+      done = true;
+    }
+    if (!area.isConnected || area.parentElement !== content) { area.remove(); blockOf(lastMarker).after(area); }
     i = j;
   }
+  indexNodes();
 }
 
 // ---------------------------------------------------------------- status / progress ui
