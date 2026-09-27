@@ -107,6 +107,19 @@ test('Open Library lookup: the title typed picks the work or a translation, and 
   ]);
 });
 
+test('Open Library lookup: books sharing no word with the title are only offered by the same author', async () => {
+  // As Open Library answers for "Omega Force: Hunted", which it does not have.
+  const encyclopedia = { key: '/works/OL3532958W', title: 'The Encyclopedia of Arcade Video Games', author_name: ['Bill Kurtz'] };
+  const nameless = { key: '/works/OL16799547W', title: 'THE ENEMY INSIDE' };
+  const keeper = { key: '/works/OL15936393W', title: 'The keeper of lost causes', author_name: ['Jussi Adler-Olsen'] };
+  const lookup = (answer, book) => createOpenLibrary({ interval: 0, fetch: standIn(answer).fetch }).lookup(book);
+  assert.deepEqual(await lookup(inTurn({ docs: [] }, { docs: [encyclopedia, nameless] }), { title: 'Omega Force: Hunted', author: 'Joshua Dalzelle' }), []);
+  assert.deepEqual(await lookup(() => ({ docs: [encyclopedia] }), { title: 'The Hunted' }), [], '"The" is not enough');
+  // The same author under another title: most likely a translation.
+  const translated = await lookup(() => ({ docs: [encyclopedia, keeper] }), { title: 'Kvinden i buret', author: 'Adler-Olsen, Jussi' });
+  assert.deepEqual(translated.map((m) => m.title), ['The keeper of lost causes']);
+});
+
 test('Open Library failures are reported, and what was found before is kept', async () => {
   const failing = async (reply) => createOpenLibrary({ interval: 0, fetch: standIn(inTurn(reply)).fetch }).lookup({ title: 'Dune' });
   await assert.rejects(failing({ status: 503, body: 'Down for maintenance' }), (err) => err instanceof LookupError && /\(error 503\)/.test(err.message));
