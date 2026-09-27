@@ -50,6 +50,9 @@ export function createApp(overrides = {}) {
   app.use('/vendor/pdfjs/legacy', express.static(path.join(pdfjsDir, 'legacy', 'build'), { immutable: true, maxAge: '30d' }));
   app.use('/vendor/pdfjs/cmaps', express.static(path.join(pdfjsDir, 'cmaps'), { immutable: true, maxAge: '30d' }));
   app.use('/vendor/pdfjs/standard_fonts', express.static(path.join(pdfjsDir, 'standard_fonts'), { immutable: true, maxAge: '30d' }));
+  // The decoders for the images of most scans (JBIG2, CCITT fax, JPEG 2000) and colour profiles. Without them such pages draw blank.
+  app.use('/vendor/pdfjs/wasm', express.static(path.join(pdfjsDir, 'wasm'), { immutable: true, maxAge: '30d' }));
+  app.use('/vendor/pdfjs/iccs', express.static(path.join(pdfjsDir, 'iccs'), { immutable: true, maxAge: '30d' }));
   app.use('/vendor/fonts', express.static(fontsDir, { immutable: true, maxAge: '30d' }));
   const fonts = fontsCss();
   app.get('/css/fonts.css', (req, res) => res.type('text/css').set('Cache-Control', 'no-cache').send(fonts));
