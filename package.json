@@ -20,6 +20,6 @@
     "express": "^5.2.1",
     "htmlparser2": "^10.0.0",
     "marked": "^18.0.14",
-    "pdfjs-dist": "^5.3.31"
+    "pdfjs-dist": "^6.3.289"
   }
 }

@@ -23,7 +23,8 @@ export class PdfPageView {
 
   async open(url) {
     const pdfjs = await loadPdfjs();
-    this.doc = await pdfjs.getDocument({ url, cMapUrl: '/vendor/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/vendor/pdfjs/standard_fonts/' }).promise;
+    this.task = pdfjs.getDocument({ url, cMapUrl: '/vendor/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/vendor/pdfjs/standard_fonts/' });
+    this.doc = await this.task.promise;
     return this.doc.numPages;
   }
 
@@ -58,7 +59,8 @@ export class PdfPageView {
   }
 
   destroy() {
-    this.doc?.destroy();
+    this.task?.destroy();
+    this.task = null;
     this.doc = null;
   }
 }
