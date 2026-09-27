@@ -195,8 +195,13 @@ test('pdf page merging: chapter starts split sections, images kept, notes moved 
     { p: 3, blocks: [p('85, there were articles.')] },
     { p: 4, blocks: [{ type: 'h', level: 1, text: 'Chapter 2', html: 'Chapter 2', size: 20 }, p('z'.repeat(30))] },
   ];
+  // A note printed on the page after its marker, and a marker whose number sits on its own line above a long URL.
+  pages[2].blocks.push({ type: 'p', text: 'See the site<sup>9</sup>.', html: 'See the site<sup>9</sup>.', bullet: false, cont: false });
+  pages[3].blocks.push({ type: 'fn', text: '9 http://example.com/a/very/long/url', html: '<sup>9</sup> http://example.com/a/very/long/url' });
   const out = mergePages(pages, { budget: 100000, startsChapter: () => false });
   assert.deepEqual(out.map((s) => [s.first, s.last]), [[1, 3], [4, 4]]);
+  assert.match(out[0].html, /See the site<sup><a id="fnref-4-9-1" href="#fn-4-9">9<\/a><\/sup>\./);
+  assert.match(out[1].html, /<p class="footnote" id="fn-4-9"><sup><a href="#fnref-4-9-1">9<\/a><\/sup> http:\/\/example.com/);
   assert.match(out[0].html, /<figure><img src="images\/p2_1.png" alt=""\/><\/figure>/);
   // The dash-ended paragraph is joined across the page break, with the marker inside, and the note is linked and moved to the end.
   assert.match(out[0].html, /<p>This was fair<sup><a id="fnref-2-4-1" href="#fn-2-4">4<\/a><\/sup> royalty and in 1984–<span class="pg" id="pg3"><\/span>85, there were articles\.<\/p>/);
@@ -237,9 +242,10 @@ test('pdf reflow: running headers, hanging-indent lists, footnotes, hyphens, sup
     item('User terms, but not so far ahead as to be a total fail-', 85, 498, 12, 300),
     item('ure as such things go in the industry at large.', 85, 484, 12, 200),
     item('The same could not be said of Meridian', 85, 455, 12, 250), item('59', 85, 441, 12, 12), item('.', 97, 441, 12, 3),
-    item('respect of any computer game', 85, 412, 12, 157), item('21', 242, 416, 7.9, 7), item('.', 249, 412, 12, 3),
+    item('respect of any computer game', 85, 412, 12, 157), item('21', 242, 416, 7.9, 7, 'fi'), item('.', 249, 412, 12, 3),
     item('21', 85, 75, 6.5, 6), item('Actually, it used a', 93, 71, 10.1, 76), item('DOOM', 171, 71, 10.1, 30, 'fi'),
     item('-like engine.', 201, 71, 10.1, 60),
+    item('22', 85, 55, 6.5, 7), item('http://www.example.com/a/very/long/path/that/wraps.html', 85, 41, 10.1, 325), item('11 anything has a list.', 85, 29, 10.1, 110),
   ];
   const styles = { f1: { fontFamily: 'serif', realName: 'ZillaSlab-Regular' }, fi: { fontFamily: 'serif', realName: 'ZillaSlab-Italic' } };
   const { lines, bodySize } = pageLines(items, vp, styles);
@@ -254,8 +260,12 @@ test('pdf reflow: running headers, hanging-indent lists, footnotes, hyphens, sup
   assert.match(html, /<p class="list-item">• It was a victim of its own success\. Although OSI was expecting tens of thousands of players, they were not expecting hundreds of thousands of them\. The sheer end\.<\/p>/);
   assert.match(html, /<p>All in all, this was a game ahead of its time in Multi-User terms, but not so far ahead as to be a total failure as such things go in the industry at large\.<\/p>/);
   assert.match(html, /<p>The same could not be said of Meridian 59\.<\/p>/);
-  assert.match(html, /<p>respect of any computer game<sup>21<\/sup>\.<\/p>/);
+  assert.match(html, /<p>respect of any computer game<sup>21<\/sup>\.<\/p>/); // italic font on the marker run is ignored
+  const merged = pdfInternals.mergePages([{ p: 41, blocks }], { budget: 100000 });
+  assert.match(merged[0].html, /<sup><a id="fnref-41-21-1" href="#fn-41-21">21<\/a><\/sup>\./);
+  assert.match(merged[0].html, /<p class="footnote" id="fn-41-21"><sup><a href="#fnref-41-21-1">21<\/a><\/sup> Actually/);
   assert.match(html, /<p class="footnote"><sup>21<\/sup> Actually, it used a <i>DOOM<\/i>-like engine\.<\/p>/);
+  assert.match(html, /<p class="footnote"><sup>22<\/sup> http:\/\/www\.example\.com\/a\/very\/long\/path\/that\/wraps\.html 11 anything has a list\.<\/p>/); // a wrapped note line opening with a number is not note 11
 });
 
 test('OceanofPDF.com watermarks are removed whatever the markup around them', () => {
