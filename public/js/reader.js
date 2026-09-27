@@ -710,6 +710,19 @@ async function adoptRemote(p) {
   toast(`Moved to your latest position${p.device ? ` from ${p.device}` : ''}`, 3500);
 }
 
+/**
+ * Reloads the book at the reader's place. On the home screen the app has no browser buttons, so the Aa panel has this.
+ * The place goes to the server first (two seconds at most): the reloaded page starts from the server's position unless
+ * its own copy is clearly newer, and a position sent on the way out can arrive after the new page has asked.
+ */
+async function reloadHere() {
+  clearTimeout(state.syncTimer);
+  const handed = (async () => { while (state.syncing) await new Promise((r) => setTimeout(r, 50)); await flushSync(); })();
+  await Promise.race([handed.catch(() => {}), new Promise((r) => setTimeout(r, 2000))]);
+  history.replaceState(null, '', location.pathname); // a #sec link left in the address would open there instead
+  location.reload();
+}
+
 async function checkRemote() {
   if (document.visibilityState !== 'visible' || !state.manifest) return;
   try {
@@ -893,6 +906,7 @@ function bindSettings() {
   }
   $('btn-download').href = `${base}original`;
   $('btn-download').setAttribute('download', state.book.originalName || 'book');
+  $('btn-reload').addEventListener('click', reloadHere);
   $('btn-readers').addEventListener('click', async () => {
     const { readers } = await api(`/api/books/${bookId}/readers`);
     alert(readers.length ? readers.map((r) => `${r.displayName || r.username}: ${Math.round(r.percent * 100)}% (${formatDate(r.updatedAt)})`).join('\n') : 'Nobody else has started this book.');
@@ -1023,6 +1037,12 @@ async function dropStaleCache() {
 }
 
 // ---------------------------------------------------------------- start
+/** Says why the book can't be shown. On the home screen the app has no browser buttons, so it offers a reload and the way back. */
+function showProblem(html) {
+  els.loading.innerHTML = `<div class="problem"><p>${html}</p><div class="row"><button class="btn" id="btn-retry">Reload</button><a class="btn" href="${escapeHtml($('btn-back').getAttribute('href'))}">Library</a></div></div>`;
+  $('btn-retry').addEventListener('click', () => location.reload());
+}
+
 /** The font follows the reader's account: take it on when another device changed it. */
 async function checkAccountFont() {
   try {
@@ -1043,7 +1063,7 @@ async function init() {
   try {
     data = await api(`/api/books/${bookId}`);
   } catch (err) {
-    if (err.status === 404) { els.loading.textContent = 'This book no longer exists.'; return; }
+    if (err.status === 404) { showProblem('This book no longer exists.'); return; }
     // Offline: fall back to the cached manifest and the last local position.
     try {
       const res = await fetch(`${base}book.json`);
@@ -1053,13 +1073,13 @@ async function init() {
       data = { book: { id: bookId, title: manifest.title, format: manifest.format, size: 0, originalName: '' }, manifest, progress: local, bookmarks: [] };
       toast('Offline - reading from this device\'s cache');
     } catch {
-      els.loading.textContent = 'Could not load the book. Check your connection and try again.';
+      showProblem('Could not load the book. Check your connection and try again.');
       return;
     }
   }
   const { book, manifest, progress, bookmarks } = data;
   if (!manifest) {
-    els.loading.innerHTML = book.status === 'error' ? `Could not convert this book.<br><small>${escapeHtml(book.error || '')}</small>` : 'This book is still being prepared. Please try again in a moment.';
+    showProblem(book.status === 'error' ? `Could not convert this book.<br><small>${escapeHtml(book.error || '')}</small>` : 'This book is still being prepared. Please try again in a moment.');
     return;
   }
   state.book = book;
@@ -1107,4 +1127,4 @@ async function init() {
   }
 }
 
-init().catch((err) => { els.loading.textContent = `Something went wrong: ${err.message}`; console.error(err); });
+init().catch((err) => { showProblem(`Something went wrong: ${escapeHtml(err.message)}`); console.error(err); });

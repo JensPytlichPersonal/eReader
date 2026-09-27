@@ -71,7 +71,10 @@ export function createApp(overrides = {}) {
   app.get('/users', page('users.html'));
   app.get('/settings', page('settings.html'));
   app.get('/sw.js', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'sw.js'), { headers: { 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/' } }));
-  app.use(express.static(PUBLIC_DIR, { maxAge: '1h', index: false }));
+  // Scripts and styles are checked for changes on every load, like the pages, so after an update a device never runs
+  // old scripts with a new page and a reload always gets the new version. Unchanged files cost a short "not modified".
+  const revalidate = (res, file) => { if (/\.(js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); };
+  app.use(express.static(PUBLIC_DIR, { maxAge: '1h', index: false, setHeaders: revalidate }));
 
   // Errors
   // eslint-disable-next-line no-unused-vars

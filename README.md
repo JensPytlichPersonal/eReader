@@ -175,6 +175,12 @@ Swiping can be turned off there if your device registers accidental swipes.
 **iPhone and iPad.** Open it in Safari, tap Share, then *Add to Home Screen*. It runs full screen
 without browser chrome; the safe areas around the notch and home indicator are respected.
 
+**Reloading.** On the home screen the app has no browser button to reload it, so it has its own: in a
+book, *Reload* in the **Aa** panel reopens it where you are, and *Reload the app* in Settings starts
+again from the library. A book that can't be shown offers *Reload* and the way back to the library.
+After an update, the new version arrives with the next page the app loads: scripts and styles are
+checked for changes every time, like the pages.
+
 **Laptop.** Arrow keys, space, Page Up/Down turn pages; `t` opens the contents, `b` bookmarks, `s`
 the display settings, `m` the menu, `+`/`-` change the text size, Home/End jump to the start or end.
 Wide windows show two columns; switch to one column in the display settings if you prefer.

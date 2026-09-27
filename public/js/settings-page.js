@@ -44,6 +44,9 @@ document.getElementById('pw-form').addEventListener('submit', async (e) => {
   }
 });
 
+// On the home screen the app has no browser buttons, so this is its reload: it starts again from the library.
+document.getElementById('reload').addEventListener('click', () => { location.href = '/'; });
+
 document.getElementById('clear-cache').addEventListener('click', async () => {
   if ('caches' in window) for (const k of await caches.keys()) await caches.delete(k);
   alert('Cached books removed from this device.');
