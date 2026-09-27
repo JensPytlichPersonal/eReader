@@ -544,6 +544,7 @@ function placeFootnotes() {
     let j = i;
     const area = document.createElement('div');
     area.className = 'fn-area';
+    let group = []; // the markers whose notes this area holds, in document order
     while (j < markers.length && columnOf(rectOf(markers[j])) === col0) {
       const m = markers[j++];
       if (placed.has(m.dataset.id)) continue;
@@ -552,25 +553,39 @@ function placeFootnotes() {
       clone.removeAttribute('id');
       clone.dataset.fn = m.dataset.id;
       area.appendChild(clone);
+      group.push(m);
     }
     if (!area.childElementCount) { i = j; continue; }
-    const lastMarker = markers[j - 1];
+    let lastMarker = group[group.length - 1];
     // Measure the area's height in a column (all columns share the width).
-    content.appendChild(area);
-    const H = rectOf(area).height;
-    area.remove();
+    const measureArea = () => { content.appendChild(area); const h = rectOf(area).height; area.remove(); return h; };
+    let H = measureArea();
     let col = col0;
     let done = false;
-    for (let attempt = 0; attempt < 3 && !done; attempt++) {
+    for (let attempt = 0; attempt < 6 && !done; attempt++) {
       const limit = colBottom - H;
       const mOff = markerOffset(lastMarker);
       const mLine = lineBounds(mOff);
       if (!mLine) break;
       if (mLine.col !== col) { col = mLine.col; }
       if (mLine.bottom > limit + 0.5) {
-        // The marker's own line would sit below the notes: move that line to the next column and retry there.
+        // The marker's own line would sit below the notes: move that line to the next column.
         const { cont } = splitAt(mLine.start);
         cont.style.breakBefore = 'column';
+        // Markers on earlier lines stay in this column and keep their notes here; the moved ones are
+        // placed with the next column's group.
+        const stay = group.filter((m) => columnOf(rectOf(m)) === col);
+        if (stay.length && stay.length < group.length) {
+          for (const m of group.slice(stay.length)) {
+            placed.delete(m.dataset.id);
+            area.querySelector(`[data-fn="${m.dataset.id}"]`)?.remove();
+          }
+          j = markers.indexOf(group[stay.length]);
+          group = stay;
+          lastMarker = group[group.length - 1];
+          H = measureArea();
+          continue;
+        }
         col += 1;
         continue;
       }
