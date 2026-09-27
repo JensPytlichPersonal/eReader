@@ -1,4 +1,4 @@
-import { api, requireUser, escapeHtml, formatDate, toast, registerServiceWorker } from './api.js';
+import { api, ApiError, requireUser, escapeHtml, formatDate, toast, registerServiceWorker } from './api.js';
 import { loadSettings, applyTheme, adoptAccountFont } from './settings.js';
 
 registerServiceWorker();
@@ -17,6 +17,7 @@ const els = {
   menu: document.getElementById('btn-menu'),
   sectionName: document.getElementById('section-name'),
   activeFilters: document.getElementById('active-filters'),
+  offlineNote: document.getElementById('offline-note'),
   upload: document.getElementById('btn-upload'),
   file: document.getElementById('file-input'),
   drop: document.getElementById('dropzone'),
@@ -25,6 +26,8 @@ const els = {
 };
 let me = null;
 let books = [];
+let offline = false; // no connection: showing the books from the last time, with `kept` the ones this device can open
+let kept = new Set();
 let pollTimer = null;
 let coverEditor = null; // the cover dialog, which takes images pasted or dropped on the page while it is open
 const prefs = JSON.parse(localStorage.getItem('ereader.library') || '{}');
@@ -53,14 +56,46 @@ phone.addEventListener?.('change', labelViews);
 // Books and series in the chosen view: a grid of cards, or a list.
 const tiles = (html) => `<div class="${display === 'list' ? 'list' : 'grid'}">${html}</div>`;
 
+// The books as the library last loaded them, for opening it without a connection.
+const SAVED = 'ereader.library-books';
+
 async function load() {
-  const data = await api('/api/books');
+  let data;
+  try {
+    data = await api('/api/books');
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    return showOffline();
+  }
+  offline = false;
   books = data.books;
+  try { if (me) localStorage.setItem(SAVED, JSON.stringify({ me, books })); } catch { /* storage full */ }
   render();
   const processing = books.some((b) => b.status === 'processing');
   clearTimeout(pollTimer);
   if (processing) pollTimer = setTimeout(load, 3000);
 }
+
+/**
+ * Without a connection: the books from the last time the library loaded. The ones this device keeps (every book
+ * opened here, see keepOffline in reader.js) can be read; the others are faded.
+ */
+async function showOffline() {
+  if (!me) {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(SAVED)); } catch { /* none */ }
+    if (!saved?.me) {
+      els.library.innerHTML = '<div class="empty"><p>No connection.</p><p>Once this device has opened the library online, it shows here offline too.</p></div>';
+      return;
+    }
+    ({ me, books } = saved);
+  }
+  const here = 'caches' in window ? await Promise.all(books.map((b) => caches.match(`/books/${b.id}/book.json`).then((hit) => hit && b.id, () => null))) : [];
+  kept = new Set(here.filter(Boolean));
+  offline = true;
+  render();
+}
+const faded = (b) => offline && !kept.has(b.id);
 
 function status(b) {
   if (b.status !== 'ready') return b.status;
@@ -118,7 +153,7 @@ function card(b, ctx = {}) {
   const seriesHtml = others.length ? `<div class="series-line">${others.map(seriesLink).join(', ')}</div>` : '';
   const progressHtml = b.progress ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : '';
   const when = b.progress ? `Read ${formatDate(b.progress.updatedAt)}` : `Added ${formatDate(b.addedAt)}`;
-  return `<div class="card" data-id="${b.id}">
+  return `<div class="card${faded(b) ? ' unavailable' : ''}" data-id="${b.id}">
     ${cover}${number}${st}${link}
     <div class="info">
       <div class="title">${escapeHtml(b.title)}</div>
@@ -137,7 +172,7 @@ function bookRow(b, ctx = {}) {
   const about = [escapeHtml(b.author || ''), ...b.series.filter((s) => s.id !== ctx.seriesId).map(seriesLink)].filter(Boolean).join(' · ');
   const state = b.status === 'processing' ? 'Preparing…' : b.status === 'error' ? 'Could not convert'
     : b.progress ? `${pct}% · Read ${formatDate(b.progress.updatedAt)}` : `Added ${formatDate(b.addedAt)}`;
-  return `<div class="list-row${ctx.current ? ' current' : ''}" data-id="${b.id}">
+  return `<div class="list-row${ctx.current ? ' current' : ''}${faded(b) ? ' unavailable' : ''}" data-id="${b.id}">
     <div class="thumb">${coverHtml(b)}</div>
     ${b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : ''}
     <div class="body">
@@ -374,6 +409,7 @@ function render() {
   const narrowing = seriesId == null ? [els.filter.value !== 'all' ? els.filter.selectedOptions[0].textContent : '', q ? `"${q}"` : ''].filter(Boolean) : [];
   els.activeFilters.innerHTML = narrowing.length ? `<span>Showing ${escapeHtml(narrowing.join(' · '))}</span><button type="button" class="btn small" data-show-all>Show all</button>` : '';
   els.activeFilters.classList.toggle('hidden', !narrowing.length);
+  els.offlineNote.classList.toggle('hidden', !offline);
   if (!books.length) {
     els.library.innerHTML = '<div class="empty"><p>The library is empty.</p><p>Upload EPUB, MOBI, PDF, Markdown or text files to get started.</p></div>';
     return;
@@ -812,12 +848,16 @@ els.filter.addEventListener('change', () => { savePrefs(); render(); });
 els.sort.addEventListener('change', () => { savePrefs(); render(); });
 els.layout.addEventListener('change', () => { layout = els.layout.value; savePrefs(); render(); });
 els.display.addEventListener('change', () => { display = els.display.value; savePrefs(); render(); });
-document.getElementById('btn-logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.href = '/login'; });
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
+document.getElementById('btn-logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); localStorage.removeItem(SAVED); location.href = '/login'; });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') (offline ? start : load)(); });
+window.addEventListener('online', () => { if (offline) start(); });
 
-requireUser().then((u) => {
-  me = u;
-  adoptAccountFont(u); // so books open in the account's font without a second layout
-  if (u.isAdmin) document.getElementById('nav-users').classList.remove('hidden');
-  return load();
-}).catch(() => {});
+function start() {
+  return requireUser().then((u) => {
+    me = u;
+    adoptAccountFont(u); // so books open in the account's font without a second layout
+    if (u.isAdmin) document.getElementById('nav-users').classList.remove('hidden');
+    return load();
+  }).catch((err) => { if (!(err instanceof ApiError)) return showOffline(); });
+}
+start();
