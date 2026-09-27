@@ -106,7 +106,7 @@ export function blocksToHtml(blocks) {
 
 export async function convertPdf(buffer, { filename }) {
   const pdfjs = await loadPdfjs();
-  const doc = await pdfjs.getDocument({
+  const task = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     useSystemFonts: false,
     disableFontFace: true,
@@ -115,7 +115,8 @@ export async function convertPdf(buffer, { filename }) {
     cMapUrl: path.join(pdfjsDir, 'cmaps') + path.sep,
     cMapPacked: true,
     verbosity: 0,
-  }).promise;
+  });
+  const doc = await task.promise;
   let title = '';
   let author = '';
   try {
@@ -163,7 +164,7 @@ export async function convertPdf(buffer, { filename }) {
   } catch { /* ignore */ }
 
   const { sections, toc } = assembleSections(chapters, { toc: outlineToc, budget: Infinity });
-  await doc.destroy();
+  await task.destroy();
   return {
     meta: { title, author, language: '', format: 'pdf' },
     sections,
