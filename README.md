@@ -18,12 +18,13 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   look: your font, your size, your margins. PDFs get a reflowed text view plus an "original pages"
   view for figures, tables and scans.
 - **Your font everywhere, the rest per device.** The font you pick is saved to your account and used
-  on all your devices. Six reading fonts come with the app (Literata, Merriweather, Libre Baskerville,
-  Bitter, Atkinson Hyperlegible and OpenDyslexic, all under the SIL Open Font License), so they look
-  the same on every device; the fonts installed on a device can be picked too. Text size, line
-  spacing, margins, alignment, hyphenation, the theme (light, sepia, dark, or following the device,
-  which is the default) and a high-contrast e-ink switch are stored on each device separately, so
-  your Boox can be light and large while your phone is dark and small, both in the same font.
+  on all your devices. Six reading fonts come with the app, so they look the same on every device:
+  Literata (the default), Merriweather, Libre Baskerville, Bitter, Atkinson Hyperlegible and
+  OpenDyslexic, all under the SIL Open Font License. The fonts installed on a device can be picked
+  too. Text size, line spacing, margins, alignment, hyphenation, the theme (light, sepia, dark, or
+  following the device, which is the default) and a high-contrast e-ink switch are stored on each
+  device separately, so your Boox can be light and large while your phone is dark and small, both in
+  the same font.
 - **Any screen size.** Single column on phones and e-readers, two columns on wide screens (or force
   either). Turn pages by tapping the left/right edge, swiping, or with the keyboard.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're

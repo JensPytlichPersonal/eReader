@@ -3,7 +3,7 @@
 import { api } from './api.js';
 
 const KEY = 'ereader.settings';
-// 2: settings saved from here on carry this, so a stored "light" theme is a choice, not the old default.
+// 2: settings saved from here on carry this, so a stored light theme or serif font is a choice, not an old default.
 const VERSION = 2;
 
 // Bundled fonts come with the app (see server/fonts.js) and look the same on every device. The
@@ -47,7 +47,7 @@ export function fontReady(s) {
 export const DEFAULTS = {
   theme: 'auto',        // light | sepia | dark | auto (follows the device)
   eink: false,
-  font: 'serif',
+  font: 'literata',     // bundled with the app, so a new device looks like the others
   fontSize: 18,
   lineHeight: 1.5,
   margin: 'm',          // s | m | l
@@ -64,8 +64,11 @@ export const DEFAULTS = {
 export function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || '{}');
-    // Before version 2 every setting was stored, so a light theme was usually just the old default.
-    if (!s.v && s.theme === 'light') delete s.theme;
+    // Before version 2 every setting was stored, so a light theme or serif font was usually just the old default.
+    if (!s.v) {
+      if (s.theme === 'light') delete s.theme;
+      if (s.font === 'serif') delete s.font;
+    }
     return { ...DEFAULTS, ...s };
   } catch { return { ...DEFAULTS }; }
 }
