@@ -95,11 +95,19 @@ function indexNodes() {
   const nodes = [];
   const starts = [];
   let total = 0;
+  const marks = [];
   const walker = document.createTreeWalker(els.content, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
-    acceptNode: (n) => (n.nodeType === Node.TEXT_NODE ? (n.data.length ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP) : (n.tagName === 'IMG' ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP)),
+    acceptNode: (n) => (n.nodeType === Node.TEXT_NODE ? (n.data.length ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP)
+      : (n.tagName === 'IMG' || (n.tagName === 'SPAN' && n.classList.contains('pg')) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP)),
   });
   let n;
   while ((n = walker.nextNode())) {
+    if (n.nodeType === Node.ELEMENT_NODE && n.tagName === 'SPAN') {
+      // PDF page marker: records where a source page begins in the text.
+      const pg = parseInt((n.id || '').replace(/^pg/, ''), 10);
+      if (Number.isFinite(pg)) marks.push({ page: pg, offset: total });
+      continue;
+    }
     nodes.push(n);
     starts.push(total);
     total += n.nodeType === Node.TEXT_NODE ? n.data.length : 1;
@@ -107,6 +115,61 @@ function indexNodes() {
   state.nodes = nodes;
   state.starts = starts;
   state.totalNodes = total;
+  state.pageMarks = marks;
+  state.nodeIndex = new Map(nodes.map((node, i) => [node, i]));
+  state.tocOffsets = [];
+  for (const t of flattenToc(state.manifest?.toc || [])) {
+    if (t.section !== state.section || !t.id) continue;
+    const el = els.content.querySelector(`[id="${CSS.escape(t.id)}"]`);
+    if (el) state.tocOffsets.push({ title: t.title, offset: offsetOfElement(el) });
+  }
+  state.tocOffsets.sort((a, b) => a.offset - b.offset);
+}
+
+function flattenToc(toc, out = []) {
+  for (const t of toc) { out.push(t); if (t.children) flattenToc(t.children, out); }
+  return out;
+}
+
+/** Text offset of the first indexed node at or after an element. */
+function offsetOfElement(el) {
+  let n = el;
+  while (n) {
+    const i = state.nodeIndex.get(n);
+    if (i != null) return state.starts[i];
+    n = nextNode(n);
+  }
+  return state.totalNodes;
+}
+
+/** Title of the contents entry the current position falls under. */
+function currentTitle() {
+  const sec = sections()[state.section] || {};
+  let title = sec.title || '';
+  const off = state.locator?.section === state.section ? state.locator.offset : 0;
+  for (const t of state.tocOffsets || []) if (t.offset <= off + 1) title = t.title; else break;
+  return title;
+}
+
+/** PDF page shown at a text offset of the current section (from the page markers). */
+function pageAtOffset(offset) {
+  const sec = sections()[state.section] || {};
+  let page = sec.pageStart || sec.page || state.section + 1;
+  for (const m of state.pageMarks || []) if (m.offset <= offset) page = m.page; else break;
+  return page;
+}
+
+/** Section index holding a PDF page. */
+function sectionForPage(pageNo) {
+  const list = sections();
+  const hit = list.findIndex((s) => s.pageStart != null && pageNo >= s.pageStart && pageNo <= s.pageEnd);
+  if (hit >= 0) return hit;
+  return clamp(pageNo - 1, 0, list.length - 1);
+}
+
+function offsetForPage(pageNo) {
+  const m = (state.pageMarks || []).find((x) => x.page === pageNo);
+  return m ? m.offset : 0;
 }
 
 function nodeIndexForOffset(offset) {
@@ -290,7 +353,7 @@ function showPage(page, { record = true } = {}) {
 
 function onPositionChanged() {
   const { section, offset } = state.locator;
-  const last = section === sections().length - 1 && state.page === state.pageCount - 1;
+  const last = state.mode === 'pages' ? state.pdfPage >= (state.manifest.pageCount || 0) : section === sections().length - 1 && state.page === state.pageCount - 1;
   state.percent = last ? 1 : percentOf(section, offset);
   try { localStorage.setItem(localKey, JSON.stringify({ section, offset, percent: state.percent, updatedAt: Date.now() })); } catch { /* ignore */ }
   state.dirty = true;
@@ -298,7 +361,10 @@ function onPositionChanged() {
 }
 
 async function restore(locator, { record = false } = {}) {
-  if (state.mode === 'pages') return showPdfPage(locator.section, { record });
+  if (state.mode === 'pages') {
+    if (locator.section !== state.section || !state.nodes.length) { const ok = await loadSection(locator.section); if (!ok) return; }
+    return showPdfPage(pageAtOffset(locator.offset || 0), { record });
+  }
   if (locator.section !== state.section || !state.nodes.length) {
     const ok = await loadSection(locator.section);
     if (!ok) return;
@@ -314,7 +380,12 @@ async function restore(locator, { record = false } = {}) {
 
 async function navigateTo(target, { pushHistory = false } = {}) {
   if (pushHistory) state.history.push({ ...state.locator });
-  if (state.mode === 'pages') { await showPdfPage(target.section, { record: true }); return; }
+  if (state.mode === 'pages') {
+    if (target.section !== state.section || !state.nodes.length) { const ok = await loadSection(target.section); if (!ok) return; }
+    const m = /^pg(\d+)$/.exec(target.id || '');
+    await showPdfPage(m ? parseInt(m[1], 10) : pageAtOffset(target.offset || 0), { record: true });
+    return;
+  }
   if (target.section !== state.section) { const ok = await loadSection(target.section); if (!ok) return; }
   if (target.id) {
     const el = els.content.querySelector(`[id="${CSS.escape(target.id)}"]`);
@@ -325,21 +396,21 @@ async function navigateTo(target, { pushHistory = false } = {}) {
 }
 
 async function next() {
-  if (state.mode === 'pages') return showPdfPage(state.section + 1, { record: true });
+  if (state.mode === 'pages') return showPdfPage(state.pdfPage + 1, { record: true });
   if (state.page < state.pageCount - 1) showPage(state.page + 1);
   else if (state.section < sections().length - 1) { if (await loadSection(state.section + 1)) showPage(0); }
   else toast('End of book');
 }
 
 async function prev() {
-  if (state.mode === 'pages') return showPdfPage(state.section - 1, { record: true });
+  if (state.mode === 'pages') return showPdfPage(state.pdfPage - 1, { record: true });
   if (state.page > 0) showPage(state.page - 1);
   else if (state.section > 0) { if (await loadSection(state.section - 1)) showPage(state.pageCount - 1); }
 }
 
 async function relayout() {
   const loc = { ...state.locator };
-  if (state.mode === 'pages') { await showPdfPage(state.section, { record: false }); return; }
+  if (state.mode === 'pages') { await showPdfPage(state.pdfPage, { record: false }); return; }
   layout();
   measure();
   await restore(loc);
@@ -348,13 +419,12 @@ async function relayout() {
 // ---------------------------------------------------------------- status / progress ui
 function updateStatus() {
   const m = state.manifest;
-  const sec = m.sections[state.section] || {};
   const pct = Math.round((state.percent ?? percentOf(state.locator.section, state.locator.offset)) * 100);
-  const title = sec.title || '';
+  const title = currentTitle();
   if (state.mode === 'pages') {
     els.statusLeft.textContent = title;
-    els.statusRight.textContent = `Page ${sec.page} of ${m.pageCount} · ${pct}%`;
-    els.pos.textContent = `${title} · page ${sec.page} of ${m.pageCount}`;
+    els.statusRight.textContent = `Page ${state.pdfPage} of ${m.pageCount} · ${pct}%`;
+    els.pos.textContent = `${title} · page ${state.pdfPage} of ${m.pageCount}`;
   } else {
     els.statusLeft.textContent = title;
     els.statusRight.textContent = `${pct}% · ${state.page + 1}/${state.pageCount}`;
@@ -423,7 +493,8 @@ async function enterPagesMode() {
   state.mode = 'pages';
   els.pdfview.classList.add('on');
   els.viewport.classList.add('hidden');
-  await showPdfPage(state.locator.section, { record: false });
+  if (state.locator.section !== state.section || !state.nodes.length) await loadSection(state.locator.section);
+  await showPdfPage(pageAtOffset(state.locator.offset || 0), { record: false });
   return true;
 }
 
@@ -433,16 +504,18 @@ function leavePagesMode() {
   els.viewport.classList.remove('hidden');
 }
 
-async function showPdfPage(sectionIdx, { record }) {
-  const idx = clamp(sectionIdx, 0, sections().length - 1);
-  if (idx !== sectionIdx && record) toast(sectionIdx < 0 ? 'Start of book' : 'End of book');
-  state.section = idx;
-  const pageNo = sections()[idx].page || idx + 1;
-  await state.pdf.render(pageNo, settings.pdfInvert);
+async function showPdfPage(pageNo, { record }) {
+  const total = state.manifest.pageCount || sections().length;
+  const wanted = clamp(pageNo, 1, total);
+  if (wanted !== pageNo && record) toast(pageNo < 1 ? 'Start of book' : 'End of book');
+  const idx = sectionForPage(wanted);
+  if (idx !== state.section || !state.nodes.length) { const ok = await loadSection(idx); if (!ok) return; }
+  state.pdfPage = wanted;
+  await state.pdf.render(wanted, settings.pdfInvert);
   state.page = 0; state.pageCount = 1;
-  state.locator = { section: idx, offset: 0 };
+  state.locator = { section: idx, offset: offsetForPage(wanted) };
   if (record) onPositionChanged();
-  else state.percent = idx === sections().length - 1 ? 1 : percentOf(idx, 0);
+  else state.percent = wanted >= total ? 1 : percentOf(idx, state.locator.offset);
   updateStatus();
 }
 
@@ -479,7 +552,8 @@ function markCurrentToc() {
     if (sec < state.section) current = b;
     else if (sec === state.section) {
       if (!b.dataset.id) { current = b; continue; }
-      const el = state.mode === 'text' ? els.content.querySelector(`[id="${CSS.escape(b.dataset.id)}"]`) : null;
+      if (state.mode === 'pages') { const m = /^pg(\d+)$/.exec(b.dataset.id); if (!m || parseInt(m[1], 10) <= state.pdfPage) current = b; continue; }
+      const el = els.content.querySelector(`[id="${CSS.escape(b.dataset.id)}"]`);
       if (!el) { current = b; continue; }
       if (pageForElement(el) <= state.page) current = b;
     }
@@ -755,8 +829,9 @@ async function init() {
   bindInput();
   layout();
   if (manifest.format === 'pdf' && settings.pdfMode === 'pages') {
-    state.locator = { section: clamp(start.section, 0, sections().length - 1), offset: 0 };
+    state.locator = { section: clamp(start.section, 0, sections().length - 1), offset: start.offset || 0 };
     const ok = await enterPagesMode();
+    if (ok && start.id) await navigateTo(start);
     if (!ok) await navigateTo(start);
   } else {
     await navigateTo(start);
