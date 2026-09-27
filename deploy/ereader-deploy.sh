@@ -10,6 +10,11 @@
 #   EREADER_HEALTH   URL that must answer 200      (default http://127.0.0.1:<PORT of the unit>/api/health)
 set -euo pipefail
 
+# Dependencies are reinstalled unless node_modules was installed from exactly the current lockfile.
+# A stamp with the lockfile's hash records that; npm ci empties node_modules, so a failed or manual
+# install leaves no stamp behind and the next deploy installs again.
+STAMP=node_modules/.deploy-lockfile
+
 main() {
   local dir=${EREADER_DIR:-/opt/ereader}
   local branch=${EREADER_BRANCH:-main}
@@ -22,17 +27,16 @@ main() {
   before=$(git rev-parse HEAD)
   after=$(git rev-parse "origin/$branch")
   if [ "$before" = "$after" ]; then
-    if [ -d node_modules ]; then
+    if deps_current; then
       echo "already at ${after:0:7}, nothing to deploy (restart by hand with: sudo systemctl restart $service)"
       return 0
     fi
-    echo "at ${after:0:7} but node_modules is missing, installing"
+    echo "at ${after:0:7} but node_modules does not match the lockfile, installing"
   else
     echo "deploying ${before:0:7} -> ${after:0:7}: $(git log -1 --format=%s "$after")"
   fi
   git reset --quiet --hard "$after"
-  install_and_restart "$before" "$after" "$service"
-  if healthy "$health"; then
+  if install_and_restart "$service" && healthy "$health"; then
     echo "deployed ${after:0:7}, $service answers on $health"
     return 0
   fi
@@ -40,8 +44,7 @@ main() {
   echo "$service did not come up after the update, rolling back to ${before:0:7}" >&2
   systemctl status "$service" --no-pager --lines=20 >&2 || true
   git reset --quiet --hard "$before"
-  install_and_restart "$after" "$before" "$service"
-  if healthy "$health"; then
+  if install_and_restart "$service" && healthy "$health"; then
     echo "rolled back to ${before:0:7}, $service is up again" >&2
   else
     echo "rollback did not bring $service up either, look at: journalctl -u $service -n 100" >&2
@@ -49,15 +52,19 @@ main() {
   return 1
 }
 
-# Reinstall dependencies only when package.json or the lockfile changed between the two commits.
+lockfile_hash() { sha256sum package-lock.json | cut -d' ' -f1; }
+
+deps_current() { [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$(lockfile_hash)" ]; }
+
 install_and_restart() {
-  local from=$1 to=$2 service=$3
-  if [ -d node_modules ] && git diff --quiet "$from" "$to" -- package.json package-lock.json; then
+  local service=$1
+  if deps_current; then
     echo "dependencies unchanged"
   else
-    npm ci --omit=dev --no-audit --no-fund --loglevel=error
+    npm ci --omit=dev --no-audit --no-fund --loglevel=error || return 1
+    lockfile_hash > "$STAMP"
   fi
-  sudo systemctl restart "$service"
+  sudo systemctl restart "$service" || return 1
 }
 
 # Wait up to 30 seconds for the health URL to answer.

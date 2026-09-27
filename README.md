@@ -90,7 +90,7 @@ Back up that directory and you have everything.
 `.github/workflows/deploy.yml` deploys `main` whenever a pull request is merged (or on demand from
 the **Actions** tab with **Run workflow**). It runs the tests, then connects to the server over SSH
 with a key that is allowed to do exactly one thing: run `deploy/ereader-deploy.sh`. That script
-fetches `main`, reinstalls dependencies when the lockfile changed, restarts the service and waits for
+fetches `main`, reinstalls dependencies unless `node_modules` matches the current lockfile, restarts the service and waits for
 `/api/health` to answer, rolling back to the previous commit if it does not. Pull requests get the
 same tests as a check from `.github/workflows/test.yml`.
 
