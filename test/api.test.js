@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createApp } from '../server/app.js';
 import { makeEpub } from './helpers/make-epub.mjs';
+import { makePdf } from './helpers/make-pdf.mjs';
 
 let server, origin, processor, dataDir;
 before(async () => {
@@ -253,6 +254,27 @@ test('an SVG from a book is sandboxed, so opening it directly cannot run its scr
   assert.doesNotMatch(r.headers.get('content-security-policy') || '', /sandbox/);
 
   await jens(`/api/books/${id}`, { method: 'DELETE' });
+});
+
+test('an original is sent as the format it was read as, whatever its file name says', async () => {
+  const jens = client();
+  await jens('/api/auth/login', { method: 'POST', body: { username: 'jens', password: 'secret1' } });
+  // The uploader picks the file name, but the format is read from the file's first bytes. A name
+  // ending in .html or .svg must not make the browser open the original as a page on this site.
+  const cases = [
+    ['Paper.html', makePdf([['A page of text.']]), 'application/pdf'],
+    ['Novel.svg', makeEpub({ title: 'Novel' }), 'application/epub+zip'],
+    ['Notes.txt', Buffer.from('Some plain notes.'), 'text/plain; charset=utf-8'],
+  ];
+  for (const [name, body, type] of cases) {
+    const r = await jens('/api/books', { method: 'POST', body, headers: { 'x-file-name': encodeURIComponent(name) } });
+    assert.equal(r.status, 202, name);
+    await waitReady(jens, r.data.book.id);
+    const original = await jens(`/books/${r.data.book.id}/original`);
+    assert.equal(original.status, 200, name);
+    assert.equal(original.headers.get('content-type'), type, name);
+    await jens(`/api/books/${r.data.book.id}`, { method: 'DELETE' });
+  }
 });
 
 test('the font is kept on the account, so each device of a user gets the same one', async () => {

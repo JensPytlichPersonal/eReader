@@ -246,15 +246,19 @@ export function bookRoutes(db, auth, config, processor, series) {
 // cover, or a figure inside a chapter). Shown in an <img> its scripts never run, but opened as a URL
 // it would be a document on this origin with the viewer's session cookie, free to call the API as
 // them. This policy sandboxes every book file: an SVG still draws, but its scripts, forms and network
-// access are blocked and it gets an opaque origin. It is not set on /original, whose formats are not
-// served as documents the browser runs (epub, mobi, pdf, text) and where the built-in PDF viewer
-// needs its own scripts.
+// access are blocked and it gets an opaque origin. It is not set on /original, which the built-in PDF
+// viewer opens with its own scripts; an original is safe without it because of ORIGINAL_FORMATS.
 const FILE_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox";
+// An original is sent as the format it was read as, which comes from its first bytes, never by its
+// file name, which the uploader chose: a PDF uploaded as "x.html" must not come back as a web page.
+// None of these types is run by a browser.
+const ORIGINAL_FORMATS = ['epub', 'mobi', 'pdf', 'md', 'txt'];
 
 /** Serves converted book files: /books/:id/book.json, sections/N.html, images/*, cover, styles.css, original */
 export function bookFiles(db, auth, config) {
   const r = Router();
   const coverSource = db.prepare('SELECT cover_source FROM books WHERE id = ?');
+  const bookFormat = db.prepare('SELECT format FROM books WHERE id = ?');
   r.use(auth.requireUser);
   r.get('/:id/original', (req, res) => {
     const dir = path.join(config.booksDir, req.params.id);
@@ -262,7 +266,8 @@ export function bookFiles(db, auth, config) {
     let name;
     try { name = fs.readdirSync(dir).find((f) => f.startsWith('original.')); } catch { return res.status(404).end(); }
     if (!name) return res.status(404).end();
-    res.setHeader('Content-Type', MIME[path.extname(name).toLowerCase()] || 'application/octet-stream');
+    const format = bookFormat.get(req.params.id)?.format;
+    res.setHeader('Content-Type', ORIGINAL_FORMATS.includes(format) ? MIME[`.${format}`] : 'application/octet-stream');
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.sendFile(path.join(dir, name));
   });
