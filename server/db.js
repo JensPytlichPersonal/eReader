@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS books (
   total_chars INTEGER NOT NULL DEFAULT 0,
   section_count INTEGER NOT NULL DEFAULT 0,
   page_count INTEGER NOT NULL DEFAULT 0,
-  has_cover INTEGER NOT NULL DEFAULT 0
+  has_cover INTEGER NOT NULL DEFAULT 0,
+  converted_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS progress (
@@ -72,7 +73,14 @@ export function openDatabase(dbPath) {
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec('PRAGMA busy_timeout = 5000;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Adds columns introduced after the first release to databases created before them. */
+function migrate(db) {
+  const columns = new Set(db.prepare('PRAGMA table_info(books)').all().map((c) => c.name));
+  if (!columns.has('converted_at')) db.exec('ALTER TABLE books ADD COLUMN converted_at INTEGER NOT NULL DEFAULT 0');
 }
 
 export const now = () => Date.now();

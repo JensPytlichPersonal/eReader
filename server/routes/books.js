@@ -41,7 +41,7 @@ export function bookRoutes(db, auth, config, processor) {
   const shapeBook = (b) => ({
     id: b.id, title: b.title, author: b.author, language: b.language, format: b.format, originalName: b.original_name, size: b.size,
     addedBy: b.added_by_name || null, addedById: b.added_by, addedAt: b.added_at, status: b.status, error: b.error,
-    totalChars: b.total_chars, sectionCount: b.section_count, pageCount: b.page_count, hasCover: !!b.has_cover,
+    totalChars: b.total_chars, sectionCount: b.section_count, pageCount: b.page_count, hasCover: !!b.has_cover, convertedAt: b.converted_at || 0,
     progress: b.p_updated_at != null ? { section: b.p_section, offset: b.p_offset, percent: b.p_percent, updatedAt: b.p_updated_at, device: b.p_device } : null,
   });
   const shapeProgress = (p) => (p ? { section: p.section, offset: p.offset, percent: p.percent, finished: !!p.finished, device: p.device, updatedAt: p.updated_at } : null);

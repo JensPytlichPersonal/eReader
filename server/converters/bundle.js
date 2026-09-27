@@ -177,6 +177,7 @@ export async function writeBundle(dir, book) {
     toc: book.toc,
     cover: coverName,
     hasStyles: !!book.css,
+    convertedAt: Date.now(),
     ...(book.extra || {}),
   };
   await fs.writeFile(path.join(dir, 'book.json'), JSON.stringify(manifest), 'utf8');

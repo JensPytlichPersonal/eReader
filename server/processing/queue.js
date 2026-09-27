@@ -12,7 +12,7 @@ export function createProcessor(db, config, log = console) {
     get: db.prepare('SELECT * FROM books WHERE id = ?'),
     setStatus: db.prepare('UPDATE books SET status = ?, error = ? WHERE id = ?'),
     finish: db.prepare(`UPDATE books SET status = 'ready', error = NULL, title = ?, author = ?, language = ?, format = ?,
-      total_chars = ?, section_count = ?, page_count = ?, has_cover = ? WHERE id = ?`),
+      total_chars = ?, section_count = ?, page_count = ?, has_cover = ?, converted_at = ? WHERE id = ?`),
     pending: db.prepare("SELECT id FROM books WHERE status = 'processing' ORDER BY added_at"),
   };
 
@@ -29,7 +29,7 @@ export function createProcessor(db, config, log = console) {
       const manifest = await writeBundle(dir, result);
       stmts.finish.run(
         (manifest.title || book.title).slice(0, 500), (manifest.author || '').slice(0, 500), manifest.language || '', manifest.format,
-        manifest.totalChars, manifest.sections.length, manifest.pageCount || 0, manifest.cover ? 1 : 0, id,
+        manifest.totalChars, manifest.sections.length, manifest.pageCount || 0, manifest.cover ? 1 : 0, manifest.convertedAt || now(), id,
       );
       log.info?.(`[convert] ${id} ok: "${manifest.title}" (${manifest.format}, ${manifest.sections.length} sections)`);
     } catch (err) {
