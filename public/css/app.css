@@ -145,7 +145,33 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .card .series-line { font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .card .series-line a { position: relative; z-index: 1; font-weight: 600; }
 /* Number in the series on a book's cover, number of books on a series' cover */
-.card .cover-tag { position: absolute; top: 6px; left: 6px; padding: 2px 8px; border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 14px; }
+.card .cover-tag, .shelf-book .cover-tag { position: absolute; top: 6px; left: 6px; padding: 2px 8px; border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 14px; }
+/* A series folded into one tile: the cover of the book you're on, with the edges of the others behind it */
+.card .stack { position: relative; isolation: isolate; padding: 8px 8px 0 0; border-bottom: 2px solid var(--line); }
+.card .stack::before, .card .stack::after { content: ""; position: absolute; border: 2px solid var(--muted); border-radius: 3px; background: var(--panel); }
+.card .stack::before { top: 0; right: 0; bottom: 8px; left: 8px; }
+.card .stack::after { top: 4px; right: 4px; bottom: 4px; left: 4px; }
+.card .stack .cover { position: relative; z-index: 1; border: 2px solid var(--muted); border-bottom: 0; border-radius: 3px 3px 0 0; }
+.card.pile .cover-tag { top: 14px; }
+.card .meta .place { font-weight: 700; color: var(--fg); }
+/* Shelves: each series on a row of its own, every book with its title */
+.shelf { margin: 22px 0 8px; }
+.shelf-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin-bottom: 10px; }
+.shelf-head h2 { margin: 0; font-size: 20px; }
+.shelf-head h2 a { text-decoration: none; }
+.shelf-head h2 a::after { content: " \203A"; }
+.shelf-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 16px 12px; padding-bottom: 18px; border-bottom: 2px solid var(--line); }
+@media (max-width: 599px) { .shelf-row { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 14px 10px; } }
+.shelf-book { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.shelf-book .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
+.shelf-book .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 8px; text-align: center; overflow: hidden; }
+.shelf-book .cover.placeholder .t { font-weight: 700; font-size: 13px; line-height: 1.2; }
+.shelf-book .cover.placeholder .a { font-size: 11px; color: var(--muted); }
+.shelf-book.current .cover { border-color: var(--fg); outline: 3px solid var(--fg); outline-offset: 2px; }
+.shelf-book:hover .cover, .shelf-book:focus-within .cover { border-color: var(--fg); }
+.shelf-book .title { font-weight: 700; font-size: 13px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.shelf-book .state { font-size: 12px; color: var(--muted); }
+.shelf-book .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
 .series-head { margin-bottom: 18px; }
 .series-head h1 { margin: 14px 0 4px; }
 .series-head .row { margin-top: 12px; }
