@@ -1,4 +1,4 @@
-import { api, requireUser, escapeHtml, formatDate, toast, registerServiceWorker } from './api.js';
+import { api, ApiError, requireUser, escapeHtml, formatDate, toast, registerServiceWorker } from './api.js';
 import { loadSettings, applyTheme, adoptAccountFont } from './settings.js';
 
 registerServiceWorker();
@@ -17,6 +17,7 @@ const els = {
   menu: document.getElementById('btn-menu'),
   sectionName: document.getElementById('section-name'),
   activeFilters: document.getElementById('active-filters'),
+  offlineNote: document.getElementById('offline-note'),
   upload: document.getElementById('btn-upload'),
   file: document.getElementById('file-input'),
   drop: document.getElementById('dropzone'),
@@ -25,6 +26,8 @@ const els = {
 };
 let me = null;
 let books = [];
+let offline = false; // no connection: showing the books from the last time, with `kept` the ones this device can open
+let kept = new Set();
 let pollTimer = null;
 let coverEditor = null; // the cover dialog, which takes images pasted or dropped on the page while it is open
 const prefs = JSON.parse(localStorage.getItem('ereader.library') || '{}');
@@ -53,14 +56,46 @@ phone.addEventListener?.('change', labelViews);
 // Books and series in the chosen view: a grid of cards, or a list.
 const tiles = (html) => `<div class="${display === 'list' ? 'list' : 'grid'}">${html}</div>`;
 
+// The books as the library last loaded them, for opening it without a connection.
+const SAVED = 'ereader.library-books';
+
 async function load() {
-  const data = await api('/api/books');
+  let data;
+  try {
+    data = await api('/api/books');
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    return showOffline();
+  }
+  offline = false;
   books = data.books;
+  try { if (me) localStorage.setItem(SAVED, JSON.stringify({ me, books })); } catch { /* storage full */ }
   render();
   const processing = books.some((b) => b.status === 'processing');
   clearTimeout(pollTimer);
   if (processing) pollTimer = setTimeout(load, 3000);
 }
+
+/**
+ * Without a connection: the books from the last time the library loaded. The ones this device keeps (every book
+ * opened here, see keepOffline in reader.js) can be read; the others are faded.
+ */
+async function showOffline() {
+  if (!me) {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(SAVED)); } catch { /* none */ }
+    if (!saved?.me) {
+      els.library.innerHTML = '<div class="empty"><p>No connection.</p><p>Once this device has opened the library online, it shows here offline too.</p></div>';
+      return;
+    }
+    ({ me, books } = saved);
+  }
+  const here = 'caches' in window ? await Promise.all(books.map((b) => caches.match(`/books/${b.id}/book.json`).then((hit) => hit && b.id, () => null))) : [];
+  kept = new Set(here.filter(Boolean));
+  offline = true;
+  render();
+}
+const faded = (b) => offline && !kept.has(b.id);
 
 function status(b) {
   if (b.status !== 'ready') return b.status;
@@ -118,7 +153,7 @@ function card(b, ctx = {}) {
   const seriesHtml = others.length ? `<div class="series-line">${others.map(seriesLink).join(', ')}</div>` : '';
   const progressHtml = b.progress ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : '';
   const when = b.progress ? `Read ${formatDate(b.progress.updatedAt)}` : `Added ${formatDate(b.addedAt)}`;
-  return `<div class="card" data-id="${b.id}">
+  return `<div class="card${faded(b) ? ' unavailable' : ''}" data-id="${b.id}">
     ${cover}${number}${st}${link}
     <div class="info">
       <div class="title">${escapeHtml(b.title)}</div>
@@ -137,7 +172,7 @@ function bookRow(b, ctx = {}) {
   const about = [escapeHtml(b.author || ''), ...b.series.filter((s) => s.id !== ctx.seriesId).map(seriesLink)].filter(Boolean).join(' · ');
   const state = b.status === 'processing' ? 'Preparing…' : b.status === 'error' ? 'Could not convert'
     : b.progress ? `${pct}% · Read ${formatDate(b.progress.updatedAt)}` : `Added ${formatDate(b.addedAt)}`;
-  return `<div class="list-row${ctx.current ? ' current' : ''}" data-id="${b.id}">
+  return `<div class="list-row${ctx.current ? ' current' : ''}${faded(b) ? ' unavailable' : ''}" data-id="${b.id}">
     <div class="thumb">${coverHtml(b)}</div>
     ${b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : ''}
     <div class="body">
@@ -374,6 +409,7 @@ function render() {
   const narrowing = seriesId == null ? [els.filter.value !== 'all' ? els.filter.selectedOptions[0].textContent : '', q ? `"${q}"` : ''].filter(Boolean) : [];
   els.activeFilters.innerHTML = narrowing.length ? `<span>Showing ${escapeHtml(narrowing.join(' · '))}</span><button type="button" class="btn small" data-show-all>Show all</button>` : '';
   els.activeFilters.classList.toggle('hidden', !narrowing.length);
+  els.offlineNote.classList.toggle('hidden', !offline);
   if (!books.length) {
     els.library.innerHTML = '<div class="empty"><p>The library is empty.</p><p>Upload EPUB, MOBI, PDF, Markdown or text files to get started.</p></div>';
     return;
@@ -486,14 +522,17 @@ const seriesRow = (s = { name: '', position: null }) => `<div class="series-row"
     <button type="button" class="btn icon" data-remove-row aria-label="Remove">&times;</button>
   </div>`;
 
-/** A book found on Open Library, offered in the edit dialog. */
+// The catalogues the server looks books up in.
+const CATALOGUES = { hardcover: 'Hardcover', openlibrary: 'Open Library' };
+
+/** A book found online, offered in the edit dialog. */
 const matchRow = (m, i) => {
   const about = [m.series.map(seriesLabel).join(', '), m.byIsbn ? 'Same ISBN as the file' : ''].filter(Boolean).join(' · ');
   return `<button type="button" class="match" data-match="${i}">
     ${m.cover ? `<img class="cover" src="${escapeHtml(m.cover)}" alt="" loading="lazy">` : '<span class="cover"></span>'}
     <span class="body">
       <span class="title">${escapeHtml(m.title)}</span>
-      <span class="about">${escapeHtml([m.author, m.year].filter(Boolean).join(' · '))}</span>
+      <span class="about">${escapeHtml([m.author, m.year, CATALOGUES[m.source]].filter(Boolean).join(' · '))}</span>
       ${about ? `<span class="about">${escapeHtml(about)}</span>` : ''}
     </span>
   </button>`;
@@ -508,7 +547,7 @@ function editDetails(b) {
       <div class="field"><label for="ed-title">Title</label><input id="ed-title" name="title" value="${escapeHtml(b.title)}" maxlength="500"></div>
       <div class="field"><label for="ed-author">Author</label><input id="ed-author" name="author" value="${escapeHtml(b.author || '')}" maxlength="500"></div>
       <div class="lookup">
-        <button type="button" class="btn small" data-lookup>Look up on Open Library</button>
+        <button type="button" class="btn small" data-lookup>Look up online</button>
         <div data-matches aria-live="polite"></div>
       </div>
       <fieldset class="field">
@@ -529,29 +568,35 @@ function editDetails(b) {
   const fail = (message) => { error.textContent = message; error.classList.remove('hidden'); };
   const addRow = () => { rows.insertAdjacentHTML('beforeend', seriesRow()); return rows.lastElementChild; };
   let found = [];
+  let picked = null; // the match the form was filled in from
 
-  // Searches Open Library for the title and author as typed (and the ISBN in the file).
+  // Searches the catalogues for the title and author as typed (and the ISBN in the file).
   async function lookUp() {
     lookupBtn.disabled = true;
     lookupBtn.textContent = 'Looking up…';
     matches.innerHTML = '';
     try {
       const query = new URLSearchParams({ title: form.elements.title.value.trim(), author: form.elements.author.value.trim() });
-      ({ results: found } = await api(`/api/books/${b.id}/lookup?${query}`));
-      matches.innerHTML = found.length
+      const answer = await api(`/api/books/${b.id}/lookup?${query}`);
+      found = answer.results;
+      // A catalogue that could not be asked, such as Hardcover with an expired token.
+      const notes = answer.notes.map((note) => `<p class="muted hint">${escapeHtml(note)}</p>`).join('');
+      matches.innerHTML = (found.length
         ? `<p class="muted hint">Choose the matching book to fill in the details. Nothing changes until you save.</p><div class="matches">${found.map(matchRow).join('')}</div>`
-        : '<p class="muted hint">No match on Open Library. Try a shorter title, or leave out the author.</p>';
+        : '<p class="muted hint">No match found. Try a shorter title, or leave out the author.</p>') + notes;
     } catch (err) {
       matches.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     } finally {
       lookupBtn.disabled = false;
-      lookupBtn.textContent = 'Look up on Open Library';
+      lookupBtn.textContent = 'Look up online';
     }
   }
 
   // Fills in the form from a match. Its series join the rows already there; a series that is
-  // already listed takes the match's number.
+  // already listed takes the match's number. Its cover is offered too, and chosen by default
+  // when the book has none.
   function useMatch(m) {
+    picked = m;
     form.elements.title.value = m.title;
     if (m.author) form.elements.author.value = m.author;
     const nameKey = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -562,7 +607,9 @@ function editDetails(b) {
       if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
       if (s.position != null) row.querySelector('[name="series-no"]').value = s.position;
     }
-    matches.innerHTML = `<p class="hint">Filled in from <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">Open Library</a>. Check the details, then save.</p>`;
+    matches.innerHTML = `<p class="hint">Filled in from <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${CATALOGUES[m.source]}</a>. Check the details, then save.</p>
+      ${m.cover && m.coverId ? `<label class="use-cover"><input type="checkbox" name="useCover"${b.hasCover ? '' : ' checked'}>
+        <img class="cover" src="${escapeHtml(m.cover)}" alt=""><span>${b.hasCover ? 'Use this cover instead of the current one' : 'Use this cover'}</span></label>` : ''}`;
     lookupBtn.focus();
   }
 
@@ -586,11 +633,21 @@ function editDetails(b) {
     const bad = series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?$/.test(s.position));
     if (!title) return fail('The book needs a title.');
     if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5.`);
+    const saveBtn = form.querySelector('[type="submit"]');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
     try {
+      // The cover first: when the catalogue cannot send it, nothing has changed yet.
+      if (form.elements.useCover?.checked) await api(`/api/books/${b.id}/cover`, { method: 'PUT', body: { source: picked.coverSource, coverId: picked.coverId } });
       await api(`/api/books/${b.id}`, { method: 'PATCH', body: { title, author: form.elements.author.value.trim(), series } });
       close();
       await load();
-    } catch (err) { fail(err.message); }
+    } catch (err) {
+      fail(err.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    }
   });
 }
 
@@ -797,12 +854,16 @@ els.filter.addEventListener('change', () => { savePrefs(); render(); });
 els.sort.addEventListener('change', () => { savePrefs(); render(); });
 els.layout.addEventListener('change', () => { layout = els.layout.value; savePrefs(); render(); });
 els.display.addEventListener('change', () => { display = els.display.value; savePrefs(); render(); });
-document.getElementById('btn-logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.href = '/login'; });
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
+document.getElementById('btn-logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); localStorage.removeItem(SAVED); location.href = '/login'; });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') (offline ? start : load)(); });
+window.addEventListener('online', () => { if (offline) start(); });
 
-requireUser().then((u) => {
-  me = u;
-  adoptAccountFont(u); // so books open in the account's font without a second layout
-  if (u.isAdmin) document.getElementById('nav-users').classList.remove('hidden');
-  return load();
-}).catch(() => {});
+function start() {
+  return requireUser().then((u) => {
+    me = u;
+    adoptAccountFont(u); // so books open in the account's font without a second layout
+    if (u.isAdmin) document.getElementById('nav-users').classList.remove('hidden');
+    return load();
+  }).catch((err) => { if (!(err instanceof ApiError)) return showOffline(); });
+}
+start();

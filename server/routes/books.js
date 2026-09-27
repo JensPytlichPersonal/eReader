@@ -8,7 +8,7 @@ import { now, transaction } from '../db.js';
 import { detectFormat, readMetadata, SUPPORTED_EXTENSIONS } from '../converters/index.js';
 import { sniffImage, titleFromFilename } from '../converters/bundle.js';
 import { cleanSeriesName, knownSeriesName, parsePosition } from '../converters/series.js';
-import { LookupError } from '../openlibrary.js';
+import { LookupError } from '../lookup.js';
 
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
 const COVER_TYPES = ['jpg', 'png', 'gif', 'webp'];
@@ -37,7 +37,7 @@ export function parseSeriesInput(input) {
   return { series };
 }
 
-export function bookRoutes(db, auth, config, processor, series, openLibrary) {
+export function bookRoutes(db, auth, config, processor, series, lookups) {
   const r = Router();
   const stmts = {
     list: db.prepare(`SELECT b.*, u.username AS added_by_name,
@@ -151,8 +151,9 @@ export function bookRoutes(db, auth, config, processor, series, openLibrary) {
     res.json({ book: shapeBook(stmts.get.get(b.id)) });
   });
 
-  // Finds the book on Open Library by the ISBN in its file and by the title and author typed in
-  // the edit form. Nothing changes here: picking a match fills in the form, which is then saved.
+  // Finds the book on Hardcover (when set up) and Open Library by the ISBN in its file and by the
+  // title and author typed in the edit form. Nothing changes here: picking a match fills in the form,
+  // which is then saved. `notes` says which catalogue could not be asked, and why.
   r.get('/:id/lookup', async (req, res) => {
     const b = stmts.get.get(req.params.id);
     if (!b) return res.status(404).json({ error: 'No such book' });
@@ -161,16 +162,17 @@ export function bookRoutes(db, auth, config, processor, series, openLibrary) {
     const title = field(req.query.title);
     const isbns = await readIsbns(b);
     if (!title && !isbns.length) return res.status(400).json({ error: 'Type a title to look up' });
-    let results;
+    let found;
     try {
-      results = await openLibrary.lookup({ title, author: field(req.query.author), isbns, language: b.language });
+      found = await lookups.lookup({ title, author: field(req.query.author), isbns, language: b.language });
     } catch (err) {
       if (err instanceof LookupError) return res.status(502).json({ error: err.message });
       throw err;
     }
     // A series the library already has keeps its name there, so the book joins it.
     const known = series.names();
-    res.json({ results: results.map((m) => ({ ...m, series: m.series.map((s) => ({ ...s, name: knownSeriesName(s.name, known) })) })) });
+    const results = found.results.map((m) => ({ ...m, series: m.series.map((s) => ({ ...s, name: knownSeriesName(s.name, known) })) }));
+    res.json({ results, notes: found.problems });
   });
 
   r.delete('/:id', async (req, res) => {
@@ -191,25 +193,46 @@ export function bookRoutes(db, auth, config, processor, series, openLibrary) {
     res.status(202).json({ book: shapeBook(stmts.get.get(b.id)) });
   });
 
+  // Keeps an image as the cover picked for the book. Checked by content, not by name: an SVG could
+  // carry scripts. False when it is not a JPEG, PNG, GIF or WebP image.
+  const useCoverImage = async (b, image) => {
+    const ext = sniffImage(image);
+    if (!COVER_TYPES.includes(ext)) return false;
+    const name = `custom-cover.${ext}`;
+    await removeCustomCovers(b.id, name);
+    await fsp.writeFile(path.join(bookDir(b.id), name), image);
+    stmts.setCover.run('custom', now(), b.id);
+    return true;
+  };
+
   // The cover the library shows. Send an image (JPEG, PNG, GIF or WebP) to use it, or JSON
-  // { source: 'file' } for the cover in the book's own file or { source: 'none' } for no cover.
+  // { source: 'file' } for the cover in the book's own file, { source: 'none' } for no cover, or the
+  // coverSource and coverId of a match from the lookup ({ source: 'openlibrary', coverId }), which
+  // the server fetches from that catalogue.
   // The image is kept apart from the book's own cover, so converting the book again keeps it.
   r.put('/:id/cover', express.raw({ type: (req) => !req.is('json'), limit: MAX_COVER_BYTES }), async (req, res) => {
     const b = stmts.get.get(req.params.id);
     if (!b) return res.status(404).json({ error: 'No such book' });
     if (!req.user.isAdmin && b.added_by !== req.user.id) return res.status(403).json({ error: 'Only the uploader or an admin can change the cover' });
+    const source = req.body?.source;
     if (Buffer.isBuffer(req.body)) {
       if (!req.body.length) return res.status(400).json({ error: 'No image received' });
-      // Checked by content, not by name: an SVG could carry scripts.
-      const ext = sniffImage(req.body);
-      if (!COVER_TYPES.includes(ext)) return res.status(415).json({ error: 'The cover must be a JPEG, PNG, GIF or WebP image' });
-      const name = `custom-cover.${ext}`;
-      await removeCustomCovers(b.id, name);
-      await fsp.writeFile(path.join(bookDir(b.id), name), req.body);
-      stmts.setCover.run('custom', now(), b.id);
+      if (!(await useCoverImage(b, req.body))) return res.status(415).json({ error: 'The cover must be a JPEG, PNG, GIF or WebP image' });
+    } else if (source === 'openlibrary' || source === 'hardcover') {
+      if (!lookups.sources.includes(source)) return res.status(400).json({ error: 'Hardcover is not set up on this server' });
+      const { coverId } = req.body;
+      if (!Number.isInteger(coverId) || coverId <= 0) return res.status(400).json({ error: 'coverId must be the number the catalogue gave with the match' });
+      let image;
+      try {
+        image = await lookups.cover(source, coverId);
+      } catch (err) {
+        if (err instanceof LookupError) return res.status(502).json({ error: err.message });
+        throw err;
+      }
+      if (!stmts.get.get(b.id)) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
+      if (image.length > MAX_COVER_BYTES || !(await useCoverImage(b, image))) return res.status(502).json({ error: 'The catalogue sent something that is not a cover picture' });
     } else {
-      const source = req.body?.source;
-      if (source !== 'file' && source !== 'none') return res.status(400).json({ error: "Send an image, or a source of 'file' or 'none'" });
+      if (source !== 'file' && source !== 'none') return res.status(400).json({ error: "Send an image, or a source of 'file', 'none', 'openlibrary' or 'hardcover'" });
       stmts.setCover.run(source, now(), b.id);
       await removeCustomCovers(b.id);
     }

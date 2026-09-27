@@ -35,8 +35,8 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're
   on; opening it lists the books in reading order with a button that continues where you are. Series
   are picked up from the books themselves, and any books can be grouped by hand.
-- **Details from Open Library.** When a book's title, author or series is missing or wrong, look it up
-  on Open Library from its details and pick the matching book to fill them in.
+- **Details from Open Library and Hardcover.** When a book's title, author, series or cover is missing
+  or wrong, look it up online from its details and pick the matching book to fill them in.
 - **Covers.** EPUB and MOBI books bring their own. Where one is missing (most PDFs) or wrong, pick an
   image, use a page of the PDF, or show the title instead.
 - **List or cards.** The View menu shows the library as a list or as cards in three sizes. On a phone
@@ -44,8 +44,9 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   the ☰ button so the books fill the screen.
 - **Table of contents, bookmarks, progress slider, chapter titles** and a "who else is reading" peek.
 - **Upload from the app** (button or drag and drop). Conversion runs in the background.
-- **Installable.** Add it to the home screen on iOS or Android for a full-screen app. Books you have
-  opened are cached for offline reading when served over https.
+- **Installable, and readable offline.** Add it to the home screen on iOS or Android for a full-screen
+  app. When served over https, every book you open is kept on the device, all of it, so it can be read
+  without a connection.
 
 ## Quick start
 
@@ -159,6 +160,7 @@ them in the `command=` of the authorized key, for example
 | `MAX_UPLOAD_MB` | `500` | Maximum upload size |
 | `SECURE_COOKIES` | `false` | Set to `true` when the server is only reachable over https |
 | `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy that sets `X-Forwarded-*` |
+| `HARDCOVER_TOKEN` | (none) | A Hardcover API token, so looking books up asks Hardcover as well as Open Library (see below) |
 
 Run it behind a reverse proxy with https (Caddy, nginx, Traefik) for use outside your home network.
 https also enables the offline cache and lets the app be installed as a proper web app.
@@ -184,6 +186,12 @@ book, *Reload* in the **Aa** panel reopens it where you are, and *Reload the app
 again from the library. A book that can't be shown offers *Reload* and the way back to the library.
 After an update, the new version arrives with the next page the app loads: scripts and styles are
 checked for changes every time, like the pages.
+
+**Offline.** Every book you open is kept on the device, with all its chapters and pictures, so it opens
+and reads without a connection (this needs https). Offline, the library shows the books from the last
+time it was online, and fades the ones this device doesn't have. Books opened before this was added are
+kept the next time they open online. Reading positions sync when the connection is back. A PDF's
+*Original pages* view needs a connection.
 
 **Laptop.** Arrow keys, space, Page Up/Down turn pages; `t` opens the contents, `b` bookmarks, `s`
 the display settings, `m` the menu, `+`/`-` change the text size, Home/End jump to the start or end.
@@ -255,24 +263,47 @@ its books in the library.
 Books already in the library when series support arrived are checked once in the background when the
 server starts. Their series are read from the original files, without converting the books again.
 
-## Looking up details on Open Library
+## Looking up details online
 
-*Edit details and series* has a **Look up on Open Library** button. It searches
-[Open Library](https://openlibrary.org), a free book catalogue that needs no account or key, by the
-ISBN in the book's file (EPUB and MOBI files usually carry one) and by the title and author as they
-are in the form, so a messy title can be tidied before looking up. Up to five matches are listed,
-the one with the file's ISBN first. Choosing one fills in the title, author and series; nothing
-changes until you press *Save*.
+*Edit details and series* has a **Look up online** button. It searches
+[Open Library](https://openlibrary.org), a free book catalogue that needs no account or key, and
+[Hardcover](https://hardcover.app) when the server has a token for it. It looks for the ISBN in the
+book's file (EPUB and MOBI files usually carry one) and for the title and author as they are in the
+form, so a messy title can be tidied before looking up. Up to five matches are listed, the one with
+the file's ISBN first, each with the catalogue it came from. A book both catalogues have is listed
+once, from Hardcover, with Open Library filling in a series or cover Hardcover lacks. Choosing a match
+fills in the title, author and series; nothing changes until you press *Save*.
 
-- A series Open Library names joins the library's series of that name, however it is spelled there
+When the match has a cover, the dialog shows it with *Use this cover*, ticked when the book has no cover
+yet and left for you to tick when it has one. On saving, the server fetches the large version of the
+picture and keeps it like a cover picked by hand, so *Change cover* can still go back to the book's own.
+
+- A series the catalogue names joins the library's series of that name, however it is spelled there
   ("The Expanse" joins "Expanse").
 - A translation keeps its own title: the Danish "Harry Potter og De Vises Sten" rather than the
   English original, when the ISBN or the title typed points to that edition. The book's language
   tells Open Library which edition to prefer.
-- Only the server talks to Open Library, and only when someone presses the button: the title, author
-  and ISBN go out. The covers in the list of matches load from covers.openlibrary.org.
+- Only the server talks to the catalogues, and only when someone presses the button or saves a cover
+  from one: the title, author and ISBN go out. The small covers in the list of matches load from the
+  catalogues' own sites.
 
 Like editing, looking up is for the uploader of a book or an admin.
+
+### Hardcover
+
+Hardcover records each book's series and its number in them, and can have books Open Library lacks.
+To use it, sign in at hardcover.app and create an API token at
+<https://hardcover.app/account/api/keys/new?scope=read:catalog>, which asks only for permission to read
+the book catalogue. Choose how long it lasts; when it runs out, make a new one. Give it to the server as
+`HARDCOVER_TOKEN` (with or without `Bearer ` in front), for example in the systemd unit:
+
+```ini
+Environment=HARDCOVER_TOKEN=Bearer eyJ...
+```
+
+Keep the token on the server: anyone holding it can act as your Hardcover account within its
+permissions. If Hardcover stops answering, for example because the token has expired, the lookup still
+shows what Open Library found and says what went wrong with Hardcover.
 
 ## Covers
 
@@ -290,7 +321,8 @@ choose *Add a cover* or *Change cover* in a book's menu (the uploader or an admi
 The browser scales a large picture down to 1200 pixels on its longer side and sends it as a JPEG, so the
 library stays quick on phones and e-readers; a small JPEG or PNG is sent as it is. The server takes
 JPEG, PNG, GIF and WebP images of up to 10 MB. A cover picked by hand is stored beside the book as
-`custom-cover.<ext>` and kept when the book is converted again.
+`custom-cover.<ext>` and kept when the book is converted again. A cover can also come from Open Library
+or Hardcover (see above).
 
 ## How position sync works
 
@@ -311,7 +343,7 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, and the Open Library lookup (`openlibrary.js`)
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, and the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`)
 - `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
 - `public/` the web app: library, reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)

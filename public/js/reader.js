@@ -941,7 +941,9 @@ function bindSettings() {
   });
   const b = state.book;
   const inSeries = (b.series || []).map((s) => `<a href="/?series=${s.id}">${escapeHtml(s.position != null ? `${s.name} #${s.position}` : s.name)}</a>`);
-  $('book-info').innerHTML = [...inSeries, escapeHtml(`${b.format.toUpperCase()} · ${(b.size / 1048576).toFixed(1)} MB · ${sections().length} sections · added by ${b.addedBy || 'unknown'}`)].join(' · ');
+  // Opened offline, the book's details file has no size or uploader.
+  const facts = [b.format.toUpperCase(), b.size && `${(b.size / 1048576).toFixed(1)} MB`, `${sections().length} sections`, 'addedBy' in b && `added by ${b.addedBy || 'unknown'}`];
+  $('book-info').innerHTML = [...inSeries, escapeHtml(facts.filter(Boolean).join(' · '))].join(' · ');
 }
 
 // ---------------------------------------------------------------- input
@@ -1064,6 +1066,37 @@ async function dropStaleCache() {
   } catch { /* ignore */ }
 }
 
+/**
+ * Keeps the whole book on this device, so it opens and reads without a connection: every section with its images,
+ * the styles, and last the book's details, which the reader needs offline (see init) and which, once stored, say the
+ * rest is too. The service worker stores each book file as it is fetched. Without a connection this stops quietly,
+ * and the next time the book opens it starts again.
+ */
+async function keepOffline() {
+  if (!('caches' in window) || !navigator.serviceWorker) return;
+  if (!navigator.serviceWorker.controller) await new Promise((resolve) => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
+  const kept = await caches.match(`${base}book.json`).then((res) => res?.json()).catch(() => null);
+  if (kept?.convertedAt === ver()) return;
+  await dropStaleCache();
+  const get = async (url) => {
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(`${res.status} ${url}`);
+    return res;
+  };
+  try {
+    if (state.manifest.hasStyles) await get(bookUrl('styles.css'));
+    const todo = sections().map((_, i) => i);
+    const worker = async () => {
+      for (let i = todo.shift(); i !== undefined; i = todo.shift()) {
+        const html = await (await get(bookUrl(`sections/${i}.html`))).text();
+        for (const img of new DOMParser().parseFromString(html, 'text/html').querySelectorAll('img[data-src]')) await get(bookUrl(img.dataset.src));
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    await get(`${base}book.json`);
+  } catch { /* offline, or signed out */ }
+}
+
 // ---------------------------------------------------------------- start
 /** Says why the book can't be shown. On the home screen the app has no browser buttons, so it offers a reload and the way back. */
 function showProblem(html) {
@@ -1098,7 +1131,7 @@ async function init() {
       if (!res.ok) throw new Error('offline');
       const manifest = await res.json();
       const local = JSON.parse(localStorage.getItem(localKey) || 'null');
-      data = { book: { id: bookId, title: manifest.title, format: manifest.format, size: 0, originalName: '' }, manifest, progress: local, bookmarks: [] };
+      data = { book: { id: bookId, title: manifest.title, author: manifest.author, format: manifest.format }, manifest, progress: local, bookmarks: [] };
       toast('Offline - reading from this device\'s cache');
     } catch {
       showProblem('Could not load the book. Check your connection and try again.');
@@ -1118,7 +1151,6 @@ async function init() {
   await fontReady(settings);
   els.title.textContent = book.title || manifest.title;
   if (manifest.hasStyles) { const l = $('book-styles'); l.href = bookUrl('styles.css'); l.disabled = false; }
-  dropStaleCache();
 
   // Where to start: the newest of the server position and this device's last local position.
   const local = (() => { try { return JSON.parse(localStorage.getItem(localKey) || 'null'); } catch { return null; } })();
@@ -1154,6 +1186,7 @@ async function init() {
     els.tapHint.classList.remove('hidden');
     setTimeout(() => els.tapHint.classList.add('hidden'), 3000);
   }
+  keepOffline();
 }
 
 init().catch((err) => { showProblem(`Something went wrong: ${escapeHtml(err.message)}`); console.error(err); });

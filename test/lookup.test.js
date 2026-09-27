@@ -4,9 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createApp } from '../server/app.js';
-import { createOpenLibrary, LookupError } from '../server/openlibrary.js';
+import { createOpenLibrary } from '../server/openlibrary.js';
+import { LookupError } from '../server/lookup.js';
 import { readIsbn } from '../server/converters/isbn.js';
 import { readMetadata } from '../server/converters/index.js';
+import { encodePng } from '../server/converters/png.js';
 import { makeEpub } from './helpers/make-epub.mjs';
 import { makeMobi, fixtureMobiHtml } from './helpers/make-mobi.mjs';
 
@@ -22,17 +24,23 @@ const philosopher = {
 };
 const unrelated = { key: '/works/OL15980749W', title: 'The 7 principles of highly accountable men', author_name: ['Mark R. Laaser'] };
 
-/** A stand-in for Open Library's search. `answer(params, i)` gives { docs } or { status, body }, or throws. */
+/**
+ * A stand-in for Open Library's search and covers. `answer(params, i, path)` gives { docs } or
+ * { status, body } (a body can be an image), or throws.
+ */
 function standIn(answer) {
   const calls = [];
   const fetch = async (url, { headers }) => {
-    const params = Object.fromEntries(new URL(url).searchParams);
-    calls.push({ params, headers, at: Date.now() });
-    const reply = await answer(params, calls.length - 1);
+    const { searchParams, pathname } = new URL(url);
+    const params = Object.fromEntries(searchParams);
+    calls.push({ path: pathname, params, headers, at: Date.now() });
+    const reply = await answer(params, calls.length - 1, pathname);
     return new Response(reply.body ?? JSON.stringify({ docs: reply.docs ?? [] }), { status: reply.status ?? 200 });
   };
   return { calls, fetch };
 }
+// A 2×3 picture, unlike the cover in the fixture EPUB.
+const PNG = encodePng({ width: 2, height: 3, kind: 2, data: new Uint8Array(18).fill(200) });
 /** Answers the requests in turn. */
 const inTurn = (...replies) => (params, i) => {
   if (replies[i] instanceof Error) throw replies[i];
@@ -69,8 +77,8 @@ test('Open Library lookup: the file\'s ISBN first, and only books like the title
   assert.match(ol.calls[0].headers['User-Agent'], /^eReader/);
   // The ISBN names the Danish edition, so its title wins over the work's (the English original).
   assert.deepEqual(results, [{
-    key: '/works/OL82563W', title: 'Harry Potter og De Vises Sten', author: 'J. K. Rowling', year: 1997, series: [{ name: 'Harry Potter', position: 1 }],
-    cover: 'https://covers.openlibrary.org/b/id/12917614-M.jpg', url: 'https://openlibrary.org/books/OL39797842M', byIsbn: true,
+    key: '/works/OL82563W', source: 'openlibrary', title: 'Harry Potter og De Vises Sten', author: 'J. K. Rowling', year: 1997, series: [{ name: 'Harry Potter', position: 1 }],
+    cover: 'https://covers.openlibrary.org/b/id/12917614-M.jpg', coverSource: 'openlibrary', coverId: 12917614, url: 'https://openlibrary.org/books/OL39797842M', byIsbn: true,
   }]);
 });
 
@@ -100,6 +108,19 @@ test('Open Library lookup: the title typed picks the work or a translation, and 
   ]);
 });
 
+test('Open Library lookup: books sharing no word with the title are only offered by the same author', async () => {
+  // As Open Library answers for "Omega Force: Hunted", which it does not have.
+  const encyclopedia = { key: '/works/OL3532958W', title: 'The Encyclopedia of Arcade Video Games', author_name: ['Bill Kurtz'] };
+  const nameless = { key: '/works/OL16799547W', title: 'THE ENEMY INSIDE' };
+  const keeper = { key: '/works/OL15936393W', title: 'The keeper of lost causes', author_name: ['Jussi Adler-Olsen'] };
+  const lookup = (answer, book) => createOpenLibrary({ interval: 0, fetch: standIn(answer).fetch }).lookup(book);
+  assert.deepEqual(await lookup(inTurn({ docs: [] }, { docs: [encyclopedia, nameless] }), { title: 'Omega Force: Hunted', author: 'Joshua Dalzelle' }), []);
+  assert.deepEqual(await lookup(() => ({ docs: [encyclopedia] }), { title: 'The Hunted' }), [], '"The" is not enough');
+  // The same author under another title: most likely a translation.
+  const translated = await lookup(() => ({ docs: [encyclopedia, keeper] }), { title: 'Kvinden i buret', author: 'Adler-Olsen, Jussi' });
+  assert.deepEqual(translated.map((m) => m.title), ['The keeper of lost causes']);
+});
+
 test('Open Library failures are reported, and what was found before is kept', async () => {
   const failing = async (reply) => createOpenLibrary({ interval: 0, fetch: standIn(inTurn(reply)).fetch }).lookup({ title: 'Dune' });
   await assert.rejects(failing({ status: 503, body: 'Down for maintenance' }), (err) => err instanceof LookupError && /\(error 503\)/.test(err.message));
@@ -110,6 +131,18 @@ test('Open Library failures are reported, and what was found before is kept', as
   const ol = standIn(inTurn({ docs: [leviathan] }, { status: 500 }));
   const results = await createOpenLibrary({ interval: 0, fetch: ol.fetch }).lookup({ title: 'Leviathan Wakes', isbns: ['9780316129084'] });
   assert.deepEqual(results.map((m) => [m.title, m.byIsbn]), [['Leviathan Wakes', true]]);
+});
+
+test('covers come from Open Library in their large size', async () => {
+  const covers = standIn((params, i, pathname) => (pathname === '/b/id/7314237-L.jpg' ? { body: PNG } : { status: 404, body: '' }));
+  const openLibrary = createOpenLibrary({ interval: 0, fetch: covers.fetch });
+  assert.deepEqual(await openLibrary.cover(7314237), PNG);
+  assert.deepEqual(covers.calls[0].params, { default: 'false' }, 'a missing cover is an error, not a blank picture');
+  assert.match(covers.calls[0].headers['User-Agent'], /^eReader/);
+  await assert.rejects(openLibrary.cover(1), (err) => err instanceof LookupError && /no longer has this cover/.test(err.message));
+  await assert.rejects(openLibrary.cover('7314237'), TypeError);
+  const offline = createOpenLibrary({ fetch: standIn(inTurn(new TypeError('fetch failed'))).fetch });
+  await assert.rejects(offline.cover(7314237), /did not send the cover/);
 });
 
 test('requests to Open Library are spaced out', async () => {
@@ -124,10 +157,10 @@ test('requests to Open Library are spaced out', async () => {
 
 let server, origin, dataDir, jens, anna;
 let answer = () => ({ docs: [] });
-const site = standIn((params, i) => answer(params, i));
+const site = standIn((params, i, pathname) => answer(params, i, pathname));
 before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ereader-lookup-'));
-  const created = createApp({ dataDir, quiet: true, sessionDays: 1, openLibrary: createOpenLibrary({ interval: 0, fetch: site.fetch }) });
+  const created = createApp({ dataDir, quiet: true, sessionDays: 1, openLibrary: createOpenLibrary({ interval: 0, fetch: site.fetch }), hardcover: null });
   server = created.app.listen(0);
   await new Promise((r) => server.once('listening', r));
   origin = `http://127.0.0.1:${server.address().port}`;
@@ -202,4 +235,30 @@ test('looking a book up from the edit form', async () => {
   r = await lookup(jens, cw.id, { title: "Caliban's War" });
   assert.equal(r.status, 502);
   assert.match(r.data.error, /Open Library could not search just now/);
+});
+
+test('a cover found on Open Library becomes the book\'s cover', async () => {
+  const book = await upload(jens, 'plain.epub', makeEpub({ title: 'Plain' }));
+  assert.equal(book.coverSource, 'file');
+  const setCover = (c, body) => c(`/api/books/${book.id}/cover`, { method: 'PUT', body });
+  const customCover = () => fs.readdirSync(path.join(dataDir, 'books', book.id)).filter((f) => f.startsWith('custom-cover.'));
+  answer = (params, i, pathname) => ({ '/b/id/7314237-L.jpg': { body: PNG }, '/b/id/2-L.jpg': { body: '<html>Not here</html>' } }[pathname] ?? { status: 404, body: '' });
+
+  let r = await setCover(jens, { source: 'openlibrary', coverId: 7314237 });
+  assert.equal(r.status, 200);
+  assert.deepEqual([r.data.book.hasCover, r.data.book.coverSource], [true, 'custom']);
+  assert.deepEqual(customCover(), ['custom-cover.png']);
+  assert.deepEqual(fs.readFileSync(path.join(dataDir, 'books', book.id, 'custom-cover.png')), PNG);
+
+  // Nothing below changes it.
+  r = await setCover(jens, { source: 'openlibrary', coverId: 1 });
+  assert.equal(r.status, 502);
+  assert.match(r.data.error, /no longer has this cover/);
+  r = await setCover(jens, { source: 'openlibrary', coverId: 2 });
+  assert.equal(r.status, 502);
+  assert.match(r.data.error, /not a cover picture/);
+  for (const coverId of ['7314237', -1, 1.5, undefined]) assert.equal((await setCover(jens, { source: 'openlibrary', coverId })).status, 400, String(coverId));
+  assert.equal((await setCover(anna, { source: 'openlibrary', coverId: 7314237 })).status, 403);
+  assert.deepEqual(customCover(), ['custom-cover.png']);
+  assert.equal((await jens(`/api/books/${book.id}`)).data.book.coverSource, 'custom');
 });

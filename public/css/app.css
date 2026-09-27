@@ -145,6 +145,8 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 }
 .card { position: relative; display: flex; flex-direction: column; border: 2px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); text-decoration: none; }
 .card:focus-within, .card:hover { border-color: var(--fg); }
+/* Offline: a book this device doesn't keep, so it needs a connection (see showOffline in library.js). */
+.card.unavailable, .list-row.unavailable { opacity: .4; }
 .card .cover { display: block; aspect-ratio: 2 / 3; width: 100%; object-fit: cover; background: var(--panel); border-bottom: 2px solid var(--line); }
 .card .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 12px; gap: 6px; font-weight: 700; }
 .card .cover.placeholder .t { font-size: var(--ph-title, 16px); line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
@@ -268,6 +270,9 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .match .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .match .title { font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .match .about { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.use-cover { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-weight: 600; cursor: pointer; }
+.use-cover input { flex: none; width: 22px; height: 22px; margin: 0; }
+.use-cover .cover { flex: none; width: 40px; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
 /* Cover dialog: the cover as the library shows it, beside the ways to change it */
 .cover-edit { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
 .cover-preview { flex: 0 0 110px; }
