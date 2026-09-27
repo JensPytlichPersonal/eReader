@@ -226,3 +226,17 @@ test('the font is kept on the account, so each device of a user gets the same on
   assert.equal(r.data.user.font, '');
   assert.equal((await laptop('/api/auth/me')).data.user.font, '');
 });
+
+test('the bundled fonts are served with the app', async () => {
+  const css = await client()('/css/fonts.css');
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /^text\/css/);
+  const families = new Set([...css.data.matchAll(/font-family: '([^']+)'/g)].map((m) => m[1]));
+  assert.deepEqual([...families], ['Literata', 'Merriweather', 'Libre Baskerville', 'Bitter', 'Atkinson Hyperlegible', 'OpenDyslexic']);
+  const urls = [...new Set([...css.data.matchAll(/url\(([^)]+)\)/g)].map((m) => m[1]))];
+  assert.ok(urls.length > 100 && urls.every((u) => u.startsWith('/vendor/fonts/')));
+  for (const url of urls.filter((u) => u.includes('-latin-'))) {
+    const res = await fetch(origin + url, { method: 'HEAD' });
+    assert.equal(res.status, 200, url);
+  }
+});

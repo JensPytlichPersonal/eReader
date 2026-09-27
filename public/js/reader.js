@@ -2,7 +2,7 @@
 // (section, character offset) so it is stable across devices, fonts and screen sizes, and
 // keeps that position in sync with the server.
 import { api, toast, escapeHtml, guessDeviceName, registerServiceWorker, formatDate } from './api.js';
-import { loadSettings, saveSettings, applyTheme, applyTypography, FONTS, adoptAccountFont, saveAccountFont } from './settings.js';
+import { loadSettings, saveSettings, applyTheme, applyTypography, fontOptions, fontReady, adoptAccountFont, saveAccountFont } from './settings.js';
 import { PdfPageView } from './pdf-view.js';
 
 registerServiceWorker();
@@ -852,9 +852,9 @@ function bindSettings() {
   check('opt-swipe', 'swipe', () => {});
   check('opt-tapzones', 'tapZones', () => {});
   const font = $('font');
-  font.innerHTML = FONTS.map((f) => `<option value="${f.id}">${f.label}</option>`).join('');
+  font.innerHTML = fontOptions();
   font.value = settings.font;
-  font.addEventListener('change', () => { settings.font = font.value; saveSettings(settings); saveAccountFont(font.value); typo(); });
+  font.addEventListener('change', async () => { settings.font = font.value; saveSettings(settings); saveAccountFont(font.value); await fontReady(settings); typo(); });
   const out = $('size-out');
   const showSize = () => { out.textContent = `${settings.fontSize}px`; };
   showSize();
@@ -1014,6 +1014,7 @@ async function checkAccountFont() {
     if (!adoptAccountFont(user)) return;
     settings.font = user.font;
     $('font').value = user.font;
+    await fontReady(settings);
     relayout();
   } catch { /* offline */ }
 }
@@ -1050,6 +1051,7 @@ async function init() {
   state.bookmarks = bookmarks || [];
   const user = await account;
   if (adoptAccountFont(user)) settings.font = user.font;
+  await fontReady(settings);
   els.title.textContent = book.title || manifest.title;
   if (manifest.hasStyles) { const l = $('book-styles'); l.href = bookUrl('styles.css'); l.disabled = false; }
   dropStaleCache();
@@ -1078,6 +1080,10 @@ async function init() {
   updateStatus();
   if (state.dirty) scheduleSync(300);
   els.loading.classList.add('hidden');
+  // A font that arrives after this first layout (a slow connection, a weight not loaded yet) moves the page breaks.
+  const fontsArrived = debounce(() => { if (state.mode === 'text') relayout(); }, 150);
+  document.fonts?.addEventListener?.('loadingdone', fontsArrived);
+  if (document.fonts?.status === 'loading') document.fonts.ready.then(fontsArrived);
   if (!localStorage.getItem('ereader.hinted')) {
     localStorage.setItem('ereader.hinted', '1');
     els.tapHint.classList.remove('hidden');

@@ -3,6 +3,8 @@ import { loadSettings, applyTheme, adoptAccountFont } from './settings.js';
 
 registerServiceWorker();
 applyTheme(loadSettings());
+// A theme that follows the device changes with it.
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(loadSettings()));
 
 const els = {
   library: document.getElementById('library'),

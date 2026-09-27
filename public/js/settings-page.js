@@ -1,5 +1,5 @@
 import { api, requireUser, guessDeviceName } from './api.js';
-import { loadSettings, saveSettings, applyTheme, FONTS, adoptAccountFont, saveAccountFont } from './settings.js';
+import { loadSettings, saveSettings, applyTheme, fontOptions, adoptAccountFont, saveAccountFont } from './settings.js';
 
 const s = loadSettings();
 const device = document.getElementById('device');
@@ -16,10 +16,11 @@ function persist() {
 device.addEventListener('change', persist);
 theme.addEventListener('change', persist);
 eink.addEventListener('change', persist);
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(loadSettings()));
 
 // The font belongs to the account, so it is the same on every device.
 const font = document.getElementById('font');
-font.innerHTML = FONTS.map((f) => `<option value="${f.id}">${f.label}</option>`).join('');
+font.innerHTML = fontOptions();
 font.value = s.font;
 font.addEventListener('change', () => { saveSettings({ ...loadSettings(), font: font.value }); saveAccountFont(font.value); });
 
