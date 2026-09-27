@@ -135,6 +135,8 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
 
 /* Overlays */
 #loading { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); z-index: 30; font-family: var(--ui-font); color: var(--muted); }
+#loading .problem { max-width: 32em; padding: 16px; text-align: center; }
+#loading .problem .row { justify-content: center; }
 .toast { font-family: var(--ui-font); }
 #tap-hint { position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 12; display: grid; grid-template-columns: 1fr 1fr 1fr; pointer-events: none; font-family: var(--ui-font); }
 #tap-hint div { display: flex; align-items: center; justify-content: center; border: 2px dashed var(--muted); margin: 12px; font-weight: 700; }

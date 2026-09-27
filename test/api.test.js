@@ -314,6 +314,22 @@ test('the bundled fonts are served with the app', async () => {
   }
 });
 
+test('scripts and styles are checked for changes on every load, so a reload gets a new version', async () => {
+  for (const file of ['/js/reader.js', '/js/settings-page.js', '/css/app.css', '/css/reader.css']) {
+    const res = await fetch(origin + file);
+    await res.text();
+    assert.equal(res.status, 200, file);
+    assert.equal(res.headers.get('cache-control'), 'no-cache', file);
+    // As a browser revalidates. (fetch would add "cache-control: no-cache" to a conditional request, which skips the 304.)
+    const again = await fetch(origin + file, { headers: { 'if-none-match': res.headers.get('etag'), 'cache-control': 'max-age=0' } });
+    assert.equal(again.status, 304, file);
+  }
+  // Icons change rarely and may be kept for an hour.
+  const icon = await fetch(origin + '/icons/icon.svg');
+  await icon.text();
+  assert.equal(icon.headers.get('cache-control'), 'public, max-age=3600');
+});
+
 test('the bundled fonts with every weight come drawn heavier, for the text weight setting', async () => {
   const get = client();
   const faces = (css) => [...css.matchAll(/font-family: '([^']+)';\s*font-style: (\w+);[^}]*?font-weight: (\d+);\s*src: url\(([^)]+)\)/g)]
