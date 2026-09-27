@@ -85,6 +85,59 @@ sudo systemctl enable --now ereader
 Everything the app stores (database, uploaded originals, converted books) lives in `DATA_DIR`.
 Back up that directory and you have everything.
 
+### Deploying on merge
+
+`.github/workflows/deploy.yml` deploys `main` whenever a pull request is merged (or on demand from
+the **Actions** tab with **Run workflow**). It runs the tests, then connects to the server over SSH
+with a key that is allowed to do exactly one thing: run `deploy/ereader-deploy.sh`. That script
+fetches `main`, reinstalls dependencies when the lockfile changed, restarts the service and waits for
+`/api/health` to answer, rolling back to the previous commit if it does not. Pull requests get the
+same tests as a check from `.github/workflows/test.yml`.
+
+One-time setup, assuming the checkout in `/opt/ereader` and the unit above:
+
+1. On the server, create a user that owns the checkout and may restart the service, and nothing else:
+
+   ```bash
+   sudo adduser --disabled-password --gecos "eReader deploys" deploy
+   sudo chown -R deploy:deploy /opt/ereader
+   echo 'deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart ereader' | sudo tee /etc/sudoers.d/ereader-deploy
+   sudo chmod 440 /etc/sudoers.d/ereader-deploy && sudo visudo -cf /etc/sudoers.d/ereader-deploy
+   ```
+
+2. On your own machine, make a key for GitHub Actions, without a passphrase:
+
+   ```bash
+   ssh-keygen -t ed25519 -N '' -C 'github-actions ereader deploy' -f ereader-deploy
+   ```
+
+   Put the public half (`ereader-deploy.pub`) on the server as the single line of
+   `/home/deploy/.ssh/authorized_keys` (directory mode 700, file mode 600, both owned by `deploy`),
+   prefixed with the options that pin it to the deploy script:
+
+   ```
+   command="/opt/ereader/deploy/ereader-deploy.sh",no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding ssh-ed25519 AAAA… github-actions ereader deploy
+   ```
+
+   Whatever a client asks for, this key only ever runs that script. Try it from your machine:
+   `ssh -i ereader-deploy deploy@books.pytlich.dk` should print `already at …` or deploy.
+
+3. In the repository on GitHub, under **Settings → Secrets and variables → Actions**, add two secrets:
+
+   - `DEPLOY_SSH_KEY`: the contents of the private key file `ereader-deploy`
+   - `DEPLOY_KNOWN_HOSTS`: the server's host key, the output of `ssh-keyscan -t ed25519 books.pytlich.dk`.
+     Check it against `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server before trusting it.
+
+   The host, user and port are the `env` block at the top of the workflow file. Once the secret is
+   in place you can delete the private key from your machine; only the workflow needs it.
+
+The server must accept SSH from GitHub's runners, whose addresses change, so port 22 cannot be
+limited to your own network. Because `deploy` owns the checkout, run manual deploys and git
+commands there as that user: `sudo -u deploy /opt/ereader/deploy/ereader-deploy.sh`. The script
+reads `EREADER_DIR`, `EREADER_BRANCH`, `EREADER_SERVICE` and `EREADER_HEALTH` for other layouts; set
+them in the `command=` of the authorized key, for example
+`command="EREADER_SERVICE=books /opt/ereader/deploy/ereader-deploy.sh"`.
+
 ### Configuration
 
 | Variable | Default | Meaning |
