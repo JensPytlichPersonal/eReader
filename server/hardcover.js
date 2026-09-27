@@ -22,6 +22,16 @@ const COVER = 'query Cover($id: Int!) { books(where: {id: {_eq: $id}}, limit: 1)
 const list = (v) => (Array.isArray(v) ? v : []);
 const isBook = (b) => Number.isInteger(b?.id) && b.id > 0 && typeof b.title === 'string' && b.title.trim() !== '';
 
+/** The ids of the books a search found, in order. An answer without them is reported, not taken as "nothing found". */
+function foundIds(search) {
+  let ids = search?.ids;
+  if (typeof ids === 'string') {
+    try { ids = JSON.parse(ids); } catch { ids = null; }
+  }
+  if (!Array.isArray(ids)) throw new LookupError('Hardcover answered the search without a list of books. Try again in a moment.');
+  return ids.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+}
+
 /** A picture to fetch: https, and not an address inside a network. */
 function publicImageUrl(value) {
   try {
@@ -71,15 +81,18 @@ function toMatch(book, { byIsbn = false, editionTitle } = {}) {
  * @param {number} [options.timeout] how long to wait for an answer, in ms
  */
 export function createHardcover({ token, url = API, timeout = 10000, fetch = globalThis.fetch }) {
-  const authorization = /^bearer\s/i.test(token.trim()) ? token.trim() : `Bearer ${token.trim()}`;
+  const bare = token.trim().replace(/^bearer(\s+|$)/i, '');
+  // systemd splits Environment= settings at spaces, so HARDCOVER_TOKEN=Bearer eyJ... leaves only "Bearer".
+  const unusable = bare ? null : 'HARDCOVER_TOKEN holds "Bearer" but no token. In the systemd unit, put the whole setting in quotes or leave "Bearer " out, then run systemctl daemon-reload and restart the eReader.';
 
   async function query(text, variables) {
+    if (unusable) throw new LookupError(unusable);
     let res;
     let body;
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: { authorization, 'content-type': 'application/json', 'user-agent': USER_AGENT },
+        headers: { authorization: `Bearer ${bare}`, 'content-type': 'application/json', 'user-agent': USER_AGENT },
         body: JSON.stringify({ query: text, variables }),
         signal: AbortSignal.timeout(timeout),
       });
@@ -106,9 +119,7 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
    */
   async function lookup({ title = '', author = '', isbns = [] }) {
     const typed = String(title).trim();
-    const ids = typed
-      ? list((await query(SEARCH, { q: `${typed} ${String(author).trim()}`.trim().slice(0, 300) })).search?.ids).map(Number).filter((id) => Number.isInteger(id) && id > 0)
-      : [];
+    const ids = typed ? foundIds((await query(SEARCH, { q: `${typed} ${String(author).trim()}`.trim().slice(0, 300) })).search) : [];
     const isbn13 = isbns.filter((i) => /^\d{13}$/.test(i)).slice(0, 2);
     if (!ids.length && !isbn13.length) return [];
     const data = await query(DETAILS, { ids, isbns: isbn13 });
@@ -139,5 +150,6 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     return image;
   }
 
-  return { lookup, cover };
+  /** Why the token cannot work, when that is plain from the start. */
+  return { lookup, cover, problem: unusable };
 }

@@ -81,6 +81,17 @@ test('Hardcover failures say what to do', async () => {
   await assert.rejects(failing({ status: 429 }), /busy/);
   await assert.rejects(failing({ errors: [{ message: "field 'ids' not found in type: 'SearchOutput'" }] }), /Hardcover could not look it up: field 'ids' not found/);
   await assert.rejects(failing(new TypeError('fetch failed')), /Hardcover did not answer/);
+  // An answer without the list of books found is reported, not taken for "nothing found".
+  await assert.rejects(failing({ search: { results: {} } }), /without a list of books/);
+
+  // systemd splits Environment=HARDCOVER_TOKEN=Bearer eyJ... at the space, leaving only "Bearer".
+  const site = standIn(() => ({ search: { ids: [] } }));
+  await assert.rejects(createHardcover({ token: 'Bearer', fetch: site.fetch }).lookup({ title: 'Dune' }), /holds "Bearer" but no token.*daemon-reload/);
+  assert.equal(site.calls.length, 0, 'nothing is sent without a token');
+  // A list sent as text is still read.
+  const asText = standIn((operation) => (operation === 'Search' ? { search: { ids: '[427]' } } : { books: [leviathan], editions: [] }));
+  const [found] = await createHardcover({ token: 'abc', fetch: asText.fetch }).lookup({ title: 'Leviathan Wakes' });
+  assert.equal(found.key, 'hardcover:427');
 });
 
 test('Hardcover covers are fetched from the address Hardcover gives, if it is a public one', async () => {
@@ -196,6 +207,9 @@ test('looking up with Hardcover, and using its cover', async () => {
   assert.equal(r.status, 200);
   assert.deepEqual(r.data.results.map((m) => [m.source, m.title, m.series]), [['hardcover', 'Leviathan Wakes', [{ name: 'The Expanse', position: 1 }]]]);
   assert.deepEqual(r.data.notes, ['Open Library did not answer. Try again in a moment.']);
+  // Which catalogues were asked, for the dialog's "No match on …" and for an admin checking the token.
+  assert.deepEqual(r.data.sources, ['hardcover', 'openlibrary']);
+  assert.deepEqual((await jens('/api/health')).data.lookup, ['hardcover', 'openlibrary']);
 
   r = await jens(`/api/books/${book.id}/cover`, { method: 'PUT', body: { source: 'hardcover', coverId: 427 } });
   assert.equal(r.status, 200);
@@ -218,6 +232,7 @@ test('a server without a Hardcover token does not take Hardcover covers', async 
     const r = await fetch(`${at}/api/books/${book.id}/cover`, { method: 'PUT', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ source: 'hardcover', coverId: 427 }) });
     assert.equal(r.status, 400);
     assert.match((await r.json()).error, /Hardcover is not set up/);
+    assert.deepEqual((await (await fetch(`${at}/api/health`)).json()).lookup, ['openlibrary']);
   } finally {
     other.close();
     fs.rmSync(dir, { recursive: true, force: true });

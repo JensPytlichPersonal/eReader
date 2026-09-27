@@ -287,11 +287,17 @@ Hardcover records each book's series and its number in them, and can have books 
 To use it, sign in at hardcover.app and create an API token at
 <https://hardcover.app/account/api/keys/new?scope=read:catalog>, which asks only for permission to read
 the book catalogue. Choose how long it lasts; when it runs out, make a new one. Give it to the server as
-`HARDCOVER_TOKEN` (with or without `Bearer ` in front), for example in the systemd unit:
+`HARDCOVER_TOKEN`, for example in the systemd unit, without the `Bearer ` Hardcover shows in front:
 
 ```ini
-Environment=HARDCOVER_TOKEN=Bearer eyJ...
+Environment=HARDCOVER_TOKEN=eyJ...
 ```
+
+systemd splits settings at spaces, so with `Bearer ` the whole setting goes in quotes:
+`Environment="HARDCOVER_TOKEN=Bearer eyJ..."`. After changing the unit, run `sudo systemctl daemon-reload`
+before restarting the service; without it systemd keeps the settings it had. The server's log says at
+startup which catalogues it looks books up in, and so does `curl http://127.0.0.1:8080/api/health`,
+under `lookup`.
 
 Keep the token on the server: anyone holding it can act as your Hardcover account within its
 permissions. If Hardcover stops answering, for example because the token has expired, the lookup still

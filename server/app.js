@@ -27,10 +27,9 @@ export function createApp(overrides = {}) {
   const series = createSeriesStore(db);
   const processor = createProcessor(db, config, series, log);
   // Tests hand in clients for stand-in catalogues (null for none).
-  const lookups = createLookup({
-    openLibrary: overrides.openLibrary ?? createOpenLibrary(),
-    hardcover: overrides.hardcover !== undefined ? overrides.hardcover : config.hardcoverToken ? createHardcover({ token: config.hardcoverToken }) : null,
-  });
+  const hardcover = overrides.hardcover !== undefined ? overrides.hardcover : config.hardcoverToken ? createHardcover({ token: config.hardcoverToken }) : null;
+  if (hardcover?.problem) log.error?.(`[lookup] ${hardcover.problem}`);
+  const lookups = createLookup({ openLibrary: overrides.openLibrary ?? createOpenLibrary(), hardcover });
 
   const app = express();
   app.disable('x-powered-by');
@@ -48,7 +47,8 @@ export function createApp(overrides = {}) {
   app.use('/api/books', bookRoutes(db, auth, config, processor, series, lookups));
   app.use('/api/series', seriesRoutes(auth, series));
   app.use('/books', bookFiles(db, auth, config));
-  app.get('/api/health', (req, res) => res.json({ ok: true, processing: processor.isBusy() }));
+  // `lookup`: the catalogues books are looked up in, so an admin can see whether HARDCOVER_TOKEN was picked up.
+  app.get('/api/health', (req, res) => res.json({ ok: true, processing: processor.isBusy(), lookup: lookups.sources }));
 
   // Third-party client libraries served straight from node_modules.
   const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
@@ -93,5 +93,5 @@ export function createApp(overrides = {}) {
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  return { app, db, auth, config, processor, series };
+  return { app, db, auth, config, processor, series, lookups };
 }
