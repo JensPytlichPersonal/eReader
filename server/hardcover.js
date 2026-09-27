@@ -8,19 +8,33 @@ import { LookupError, USER_AGENT, rankMatches } from './lookup.js';
 const API = 'https://api.hardcover.app/v1/graphql';
 const SITE = 'https://hardcover.app';
 
+// A book's cover can be in three places: the edition Hardcover shows it with (the cover on its
+// website), a cached copy of that, and the book's own image, which can be an older, smaller one.
+const COVERS = 'image { url width height } cached_image default_cover_edition { image { url width height } }';
 // What a match needs of a book. Contributions include translators and illustrators; authors have
 // no role or "Author".
-const BOOK = 'id title release_year image { url } contributions { contribution author { name } } book_series { position featured series { name } }';
+const BOOK = `id title release_year ${COVERS} contributions { contribution author { name } } book_series { position featured series { name } }`;
 // A request may hold one search and nothing else, so the books it finds are fetched in a second one.
-const SEARCH = 'query Search($q: String!) { search(query: $q, query_type: "Book", per_page: 8, page: 1) { ids } }';
+const SEARCH = 'query Search($q: String!) { search(query: $q, query_type: "Book", per_page: 8, page: 1) { ids error } }';
 const DETAILS = `query Details($ids: [Int!]!, $isbns: [String!]!) {
   books(where: {id: {_in: $ids}}) { ${BOOK} }
   editions(where: {isbn_13: {_in: $isbns}}, limit: 2) { title book { ${BOOK} } }
 }`;
-const COVER = 'query Cover($id: Int!) { books(where: {id: {_eq: $id}}, limit: 1) { image { url } } }';
+const COVER = `query Cover($id: Int!) { books(where: {id: {_eq: $id}}, limit: 1) { ${COVERS} } }`;
 
 const list = (v) => (Array.isArray(v) ? v : []);
 const isBook = (b) => Number.isInteger(b?.id) && b.id > 0 && typeof b.title === 'string' && b.title.trim() !== '';
+
+/** The ids of the books a search found, in order. An answer without them is reported, not taken as "nothing found". */
+function foundIds(search) {
+  if (typeof search?.error === 'string' && search.error.trim()) throw new LookupError(`Hardcover could not search: ${search.error.trim().slice(0, 200)}`);
+  let ids = search?.ids;
+  if (typeof ids === 'string') {
+    try { ids = JSON.parse(ids); } catch { ids = null; }
+  }
+  if (!Array.isArray(ids)) throw new LookupError('Hardcover answered the search without a list of books. Try again in a moment.');
+  return ids.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+}
 
 /** A picture to fetch: https, and not an address inside a network. */
 function publicImageUrl(value) {
@@ -32,6 +46,24 @@ function publicImageUrl(value) {
   } catch {
     return null;
   }
+}
+
+/**
+ * The address of a book's largest cover. With the same size, or sizes not known, the one Hardcover
+ * shows on its website comes first.
+ */
+function bestCover(book) {
+  let cached = book.cached_image;
+  if (typeof cached === 'string') {
+    try { cached = JSON.parse(cached); } catch { cached = null; }
+  }
+  const size = (image) => (Number(image?.width) || 0) * (Number(image?.height) || 0);
+  let best = null;
+  for (const image of [book.default_cover_edition?.image, cached, book.image]) {
+    const url = publicImageUrl(image?.url);
+    if (url && (!best || size(image) > best.size)) best = { url, size: size(image) };
+  }
+  return best?.url ?? null;
 }
 
 /** A Hardcover book as a match to offer. With `editionTitle`, the book was found by an edition's ISBN. */
@@ -47,7 +79,7 @@ function toMatch(book, { byIsbn = false, editionTitle } = {}) {
     .map((s) => ({ name: s.series.name, position: s.position }));
   // Titles such as "Caliban's War (The Expanse, #2)" are tidied the way uploaded books are.
   const details = withTitleSeries({ title: String((byIsbn && editionTitle) || book.title).trim(), series });
-  const cover = publicImageUrl(book.image?.url);
+  const cover = bestCover(book);
   return {
     key: `hardcover:${book.id}`,
     source: 'hardcover',
@@ -71,15 +103,18 @@ function toMatch(book, { byIsbn = false, editionTitle } = {}) {
  * @param {number} [options.timeout] how long to wait for an answer, in ms
  */
 export function createHardcover({ token, url = API, timeout = 10000, fetch = globalThis.fetch }) {
-  const authorization = /^bearer\s/i.test(token.trim()) ? token.trim() : `Bearer ${token.trim()}`;
+  const bare = token.trim().replace(/^bearer(\s+|$)/i, '');
+  // systemd splits Environment= settings at spaces, so HARDCOVER_TOKEN=Bearer eyJ... leaves only "Bearer".
+  const unusable = bare ? null : 'HARDCOVER_TOKEN holds "Bearer" but no token. In the systemd unit, put the whole setting in quotes or leave "Bearer " out, then run systemctl daemon-reload and restart the eReader.';
 
   async function query(text, variables) {
+    if (unusable) throw new LookupError(unusable);
     let res;
     let body;
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: { authorization, 'content-type': 'application/json', 'user-agent': USER_AGENT },
+        headers: { authorization: `Bearer ${bare}`, 'content-type': 'application/json', 'user-agent': USER_AGENT },
         body: JSON.stringify({ query: text, variables }),
         signal: AbortSignal.timeout(timeout),
       });
@@ -106,9 +141,7 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
    */
   async function lookup({ title = '', author = '', isbns = [] }) {
     const typed = String(title).trim();
-    const ids = typed
-      ? list((await query(SEARCH, { q: `${typed} ${String(author).trim()}`.trim().slice(0, 300) })).search?.ids).map(Number).filter((id) => Number.isInteger(id) && id > 0)
-      : [];
+    const ids = typed ? foundIds((await query(SEARCH, { q: `${typed} ${String(author).trim()}`.trim().slice(0, 300) })).search) : [];
     const isbn13 = isbns.filter((i) => /^\d{13}$/.test(i)).slice(0, 2);
     if (!ids.length && !isbn13.length) return [];
     const data = await query(DETAILS, { ids, isbns: isbn13 });
@@ -125,7 +158,7 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
    */
   async function cover(id) {
     if (!Number.isInteger(id) || id <= 0) throw new TypeError(`Not a Hardcover book id: ${id}`);
-    const address = publicImageUrl(list((await query(COVER, { id })).books)[0]?.image?.url);
+    const address = bestCover(list((await query(COVER, { id })).books)[0] ?? {});
     if (!address) throw new LookupError('Hardcover has no cover for this book.');
     let res;
     let image;
@@ -139,5 +172,6 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     return image;
   }
 
-  return { lookup, cover };
+  /** Why the token cannot work, when that is plain from the start. */
+  return { lookup, cover, problem: unusable };
 }

@@ -10,8 +10,12 @@ import { encodePng } from '../server/converters/png.js';
 import { makeEpub } from './helpers/make-epub.mjs';
 
 // Books as Hardcover's GraphQL API sends them, with the fields asked for.
+// Its own image is small; the edition Hardcover shows it with has a larger cover, as on the website.
 const leviathan = {
-  id: 427, title: 'Leviathan Wakes', release_year: 2011, image: { url: 'https://assets.hardcover.app/books/427/cover.jpg' },
+  id: 427, title: 'Leviathan Wakes', release_year: 2011,
+  image: { url: 'https://assets.hardcover.app/books/427/cover.jpg', width: 98, height: 150 },
+  cached_image: { url: 'https://assets.hardcover.app/editions/31/cover.jpg', width: 500, height: 765 },
+  default_cover_edition: { image: { url: 'https://assets.hardcover.app/editions/31/cover.jpg', width: 500, height: 765 } },
   contributions: [{ contribution: null, author: { name: 'James S. A. Corey' } }, { contribution: 'Narrator', author: { name: 'Jefferson Mays' } }],
   book_series: [{ position: 1, featured: false, series: { name: 'The Expanse Universe' } }, { position: 1, featured: true, series: { name: 'The Expanse' } }],
 };
@@ -59,7 +63,7 @@ test('Hardcover lookup: a search, then the books it found and the file\'s editio
       key: 'hardcover:427', source: 'hardcover', title: 'Leviathan Wakes', author: 'James S. A. Corey', year: 2011,
       // The featured series first; the narrator is not an author.
       series: [{ name: 'The Expanse', position: 1 }, { name: 'The Expanse Universe', position: 1 }],
-      cover: 'https://assets.hardcover.app/books/427/cover.jpg', coverSource: 'hardcover', coverId: 427,
+      cover: 'https://assets.hardcover.app/editions/31/cover.jpg', coverSource: 'hardcover', coverId: 427,
       url: 'https://hardcover.app/id/book/427', byIsbn: true,
     },
     {
@@ -81,6 +85,33 @@ test('Hardcover failures say what to do', async () => {
   await assert.rejects(failing({ status: 429 }), /busy/);
   await assert.rejects(failing({ errors: [{ message: "field 'ids' not found in type: 'SearchOutput'" }] }), /Hardcover could not look it up: field 'ids' not found/);
   await assert.rejects(failing(new TypeError('fetch failed')), /Hardcover did not answer/);
+  // An answer without the list of books found is reported, not taken for "nothing found".
+  await assert.rejects(failing({ search: { results: {} } }), /without a list of books/);
+  await assert.rejects(failing({ search: { ids: null, error: 'Search timed out' } }), /Hardcover could not search: Search timed out/);
+
+  // systemd splits Environment=HARDCOVER_TOKEN=Bearer eyJ... at the space, leaving only "Bearer".
+  const site = standIn(() => ({ search: { ids: [] } }));
+  await assert.rejects(createHardcover({ token: 'Bearer', fetch: site.fetch }).lookup({ title: 'Dune' }), /holds "Bearer" but no token.*daemon-reload/);
+  assert.equal(site.calls.length, 0, 'nothing is sent without a token');
+  // A list sent as text is still read.
+  const asText = standIn((operation) => (operation === 'Search' ? { search: { ids: '[427]' } } : { books: [leviathan], editions: [] }));
+  const [found] = await createHardcover({ token: 'abc', fetch: asText.fetch }).lookup({ title: 'Leviathan Wakes' });
+  assert.equal(found.key, 'hardcover:427');
+});
+
+test('the largest of a book\'s covers is used, the one Hardcover shows first when sizes do not tell', async () => {
+  const coverOf = async (book) => {
+    const site = standIn(() => ({ search: { ids: [1] }, books: [{ id: 1, title: 'Book', ...book }], editions: [] }));
+    const [found] = await createHardcover({ token: 'abc', fetch: site.fetch }).lookup({ title: 'Book' });
+    return found.cover;
+  };
+  const at = (name, width, height) => ({ url: `https://assets.hardcover.app/${name}.jpg`, width, height });
+  assert.equal(await coverOf({ image: at('own', 98, 150), default_cover_edition: { image: at('shown', 500, 765) } }), 'https://assets.hardcover.app/shown.jpg');
+  assert.equal(await coverOf({ image: at('own', 1000, 1530), default_cover_edition: { image: at('shown', 500, 765) } }), 'https://assets.hardcover.app/own.jpg');
+  assert.equal(await coverOf({ image: { url: at('own').url }, cached_image: { url: at('cached').url }, default_cover_edition: { image: { url: at('shown').url } } }), 'https://assets.hardcover.app/shown.jpg');
+  assert.equal(await coverOf({ image: at('own', 98, 150), cached_image: JSON.stringify(at('cached', 500, 765)) }), 'https://assets.hardcover.app/cached.jpg');
+  assert.equal(await coverOf({ image: at('own', 98, 150), default_cover_edition: { image: { url: 'https://10.0.0.8/big.jpg', width: 900, height: 1400 } } }), 'https://assets.hardcover.app/own.jpg');
+  assert.equal(await coverOf({ image: null, cached_image: {}, default_cover_edition: null }), null);
 });
 
 test('Hardcover covers are fetched from the address Hardcover gives, if it is a public one', async () => {
@@ -196,6 +227,9 @@ test('looking up with Hardcover, and using its cover', async () => {
   assert.equal(r.status, 200);
   assert.deepEqual(r.data.results.map((m) => [m.source, m.title, m.series]), [['hardcover', 'Leviathan Wakes', [{ name: 'The Expanse', position: 1 }]]]);
   assert.deepEqual(r.data.notes, ['Open Library did not answer. Try again in a moment.']);
+  // Which catalogues were asked, for the dialog's "No match on …" and for an admin checking the token.
+  assert.deepEqual(r.data.sources, ['hardcover', 'openlibrary']);
+  assert.deepEqual((await jens('/api/health')).data.lookup, ['hardcover', 'openlibrary']);
 
   r = await jens(`/api/books/${book.id}/cover`, { method: 'PUT', body: { source: 'hardcover', coverId: 427 } });
   assert.equal(r.status, 200);
@@ -218,6 +252,7 @@ test('a server without a Hardcover token does not take Hardcover covers', async 
     const r = await fetch(`${at}/api/books/${book.id}/cover`, { method: 'PUT', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ source: 'hardcover', coverId: 427 }) });
     assert.equal(r.status, 400);
     assert.match((await r.json()).error, /Hardcover is not set up/);
+    assert.deepEqual((await (await fetch(`${at}/api/health`)).json()).lookup, ['openlibrary']);
   } finally {
     other.close();
     fs.rmSync(dir, { recursive: true, force: true });

@@ -583,7 +583,7 @@ function editDetails(b) {
       const notes = answer.notes.map((note) => `<p class="muted hint">${escapeHtml(note)}</p>`).join('');
       matches.innerHTML = (found.length
         ? `<p class="muted hint">Choose the matching book to fill in the details. Nothing changes until you save.</p><div class="matches">${found.map(matchRow).join('')}</div>`
-        : '<p class="muted hint">No match found. Try a shorter title, or leave out the author.</p>') + notes;
+        : `<p class="muted hint">No match on ${escapeHtml(answer.sources.map((s) => CATALOGUES[s]).join(' or '))}. Try a shorter title, or leave out the author.</p>`) + notes;
     } catch (err) {
       matches.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     } finally {

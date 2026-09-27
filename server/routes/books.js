@@ -172,7 +172,7 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
     // A series the library already has keeps its name there, so the book joins it.
     const known = series.names();
     const results = found.results.map((m) => ({ ...m, series: m.series.map((s) => ({ ...s, name: knownSeriesName(s.name, known) })) }));
-    res.json({ results, notes: found.problems });
+    res.json({ results, notes: found.problems, sources: lookups.sources });
   });
 
   r.delete('/:id', async (req, res) => {
