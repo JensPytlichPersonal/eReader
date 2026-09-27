@@ -28,5 +28,7 @@ export function loadConfig(overrides = {}) {
     // Set when the server is only reachable over https, so cookies are marked secure.
     secureCookies: overrides.secureCookies ?? /^(1|true|yes)$/i.test(process.env.SECURE_COOKIES ?? ''),
     trustProxy: overrides.trustProxy ?? /^(1|true|yes)$/i.test(process.env.TRUST_PROXY ?? ''),
+    // A Hardcover API token, so looking books up asks Hardcover as well as Open Library.
+    hardcoverToken: overrides.hardcoverToken ?? process.env.HARDCOVER_TOKEN ?? '',
   };
 }

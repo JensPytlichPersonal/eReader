@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createApp } from '../server/app.js';
-import { createOpenLibrary, LookupError } from '../server/openlibrary.js';
+import { createOpenLibrary } from '../server/openlibrary.js';
+import { LookupError } from '../server/lookup.js';
 import { readIsbn } from '../server/converters/isbn.js';
 import { readMetadata } from '../server/converters/index.js';
 import { encodePng } from '../server/converters/png.js';
@@ -76,8 +77,8 @@ test('Open Library lookup: the file\'s ISBN first, and only books like the title
   assert.match(ol.calls[0].headers['User-Agent'], /^eReader/);
   // The ISBN names the Danish edition, so its title wins over the work's (the English original).
   assert.deepEqual(results, [{
-    key: '/works/OL82563W', title: 'Harry Potter og De Vises Sten', author: 'J. K. Rowling', year: 1997, series: [{ name: 'Harry Potter', position: 1 }],
-    cover: 'https://covers.openlibrary.org/b/id/12917614-M.jpg', coverId: 12917614, url: 'https://openlibrary.org/books/OL39797842M', byIsbn: true,
+    key: '/works/OL82563W', source: 'openlibrary', title: 'Harry Potter og De Vises Sten', author: 'J. K. Rowling', year: 1997, series: [{ name: 'Harry Potter', position: 1 }],
+    cover: 'https://covers.openlibrary.org/b/id/12917614-M.jpg', coverSource: 'openlibrary', coverId: 12917614, url: 'https://openlibrary.org/books/OL39797842M', byIsbn: true,
   }]);
 });
 
@@ -159,7 +160,7 @@ let answer = () => ({ docs: [] });
 const site = standIn((params, i, pathname) => answer(params, i, pathname));
 before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ereader-lookup-'));
-  const created = createApp({ dataDir, quiet: true, sessionDays: 1, openLibrary: createOpenLibrary({ interval: 0, fetch: site.fetch }) });
+  const created = createApp({ dataDir, quiet: true, sessionDays: 1, openLibrary: createOpenLibrary({ interval: 0, fetch: site.fetch }), hardcover: null });
   server = created.app.listen(0);
   await new Promise((r) => server.once('listening', r));
   origin = `http://127.0.0.1:${server.address().port}`;

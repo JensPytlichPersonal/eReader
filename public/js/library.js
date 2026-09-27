@@ -522,14 +522,17 @@ const seriesRow = (s = { name: '', position: null }) => `<div class="series-row"
     <button type="button" class="btn icon" data-remove-row aria-label="Remove">&times;</button>
   </div>`;
 
-/** A book found on Open Library, offered in the edit dialog. */
+// The catalogues the server looks books up in.
+const CATALOGUES = { hardcover: 'Hardcover', openlibrary: 'Open Library' };
+
+/** A book found online, offered in the edit dialog. */
 const matchRow = (m, i) => {
   const about = [m.series.map(seriesLabel).join(', '), m.byIsbn ? 'Same ISBN as the file' : ''].filter(Boolean).join(' · ');
   return `<button type="button" class="match" data-match="${i}">
     ${m.cover ? `<img class="cover" src="${escapeHtml(m.cover)}" alt="" loading="lazy">` : '<span class="cover"></span>'}
     <span class="body">
       <span class="title">${escapeHtml(m.title)}</span>
-      <span class="about">${escapeHtml([m.author, m.year].filter(Boolean).join(' · '))}</span>
+      <span class="about">${escapeHtml([m.author, m.year, CATALOGUES[m.source]].filter(Boolean).join(' · '))}</span>
       ${about ? `<span class="about">${escapeHtml(about)}</span>` : ''}
     </span>
   </button>`;
@@ -544,7 +547,7 @@ function editDetails(b) {
       <div class="field"><label for="ed-title">Title</label><input id="ed-title" name="title" value="${escapeHtml(b.title)}" maxlength="500"></div>
       <div class="field"><label for="ed-author">Author</label><input id="ed-author" name="author" value="${escapeHtml(b.author || '')}" maxlength="500"></div>
       <div class="lookup">
-        <button type="button" class="btn small" data-lookup>Look up on Open Library</button>
+        <button type="button" class="btn small" data-lookup>Look up online</button>
         <div data-matches aria-live="polite"></div>
       </div>
       <fieldset class="field">
@@ -567,22 +570,25 @@ function editDetails(b) {
   let found = [];
   let picked = null; // the match the form was filled in from
 
-  // Searches Open Library for the title and author as typed (and the ISBN in the file).
+  // Searches the catalogues for the title and author as typed (and the ISBN in the file).
   async function lookUp() {
     lookupBtn.disabled = true;
     lookupBtn.textContent = 'Looking up…';
     matches.innerHTML = '';
     try {
       const query = new URLSearchParams({ title: form.elements.title.value.trim(), author: form.elements.author.value.trim() });
-      ({ results: found } = await api(`/api/books/${b.id}/lookup?${query}`));
-      matches.innerHTML = found.length
+      const answer = await api(`/api/books/${b.id}/lookup?${query}`);
+      found = answer.results;
+      // A catalogue that could not be asked, such as Hardcover with an expired token.
+      const notes = answer.notes.map((note) => `<p class="muted hint">${escapeHtml(note)}</p>`).join('');
+      matches.innerHTML = (found.length
         ? `<p class="muted hint">Choose the matching book to fill in the details. Nothing changes until you save.</p><div class="matches">${found.map(matchRow).join('')}</div>`
-        : '<p class="muted hint">No match on Open Library. Try a shorter title, or leave out the author.</p>';
+        : '<p class="muted hint">No match found. Try a shorter title, or leave out the author.</p>') + notes;
     } catch (err) {
       matches.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     } finally {
       lookupBtn.disabled = false;
-      lookupBtn.textContent = 'Look up on Open Library';
+      lookupBtn.textContent = 'Look up online';
     }
   }
 
@@ -601,8 +607,8 @@ function editDetails(b) {
       if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
       if (s.position != null) row.querySelector('[name="series-no"]').value = s.position;
     }
-    matches.innerHTML = `<p class="hint">Filled in from <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">Open Library</a>. Check the details, then save.</p>
-      ${m.coverId ? `<label class="use-cover"><input type="checkbox" name="useCover"${b.hasCover ? '' : ' checked'}>
+    matches.innerHTML = `<p class="hint">Filled in from <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${CATALOGUES[m.source]}</a>. Check the details, then save.</p>
+      ${m.cover && m.coverId ? `<label class="use-cover"><input type="checkbox" name="useCover"${b.hasCover ? '' : ' checked'}>
         <img class="cover" src="${escapeHtml(m.cover)}" alt=""><span>${b.hasCover ? 'Use this cover instead of the current one' : 'Use this cover'}</span></label>` : ''}`;
     lookupBtn.focus();
   }
@@ -631,8 +637,8 @@ function editDetails(b) {
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving…';
     try {
-      // The cover first: when Open Library cannot send it, nothing has changed yet.
-      if (form.elements.useCover?.checked) await api(`/api/books/${b.id}/cover`, { method: 'PUT', body: { source: 'openlibrary', coverId: picked.coverId } });
+      // The cover first: when the catalogue cannot send it, nothing has changed yet.
+      if (form.elements.useCover?.checked) await api(`/api/books/${b.id}/cover`, { method: 'PUT', body: { source: picked.coverSource, coverId: picked.coverId } });
       await api(`/api/books/${b.id}`, { method: 'PATCH', body: { title, author: form.elements.author.value.trim(), series } });
       close();
       await load();
