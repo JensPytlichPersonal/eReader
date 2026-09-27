@@ -119,6 +119,11 @@ Wide windows show two columns; switch to one column in the display settings if y
 | Markdown | CommonMark + GitHub tables, YAML front matter for title/author, headings become the table of contents. |
 | Text | Paragraph and heading detection, including hard-wrapped Gutenberg-style text; UTF-8, UTF-16 and Latin-1. |
 
+Books from OceanofPDF have an "OceanofPDF.com" link stamped into every chapter (or onto the pages
+of a PDF) and the site's name at the start of the file name. Conversion removes the stamp in every
+format and keeps the site's name out of titles taken from the file name. The uploaded original is
+kept as it is, so a PDF's *Original pages* view still shows the stamp.
+
 Converted books are stored as small HTML sections under `data/books/<id>/`. If a book converts
 badly, choose *Convert again* from its menu, or re-run every book with `npm run reprocess` after an
 update to the converters.
@@ -143,7 +148,7 @@ npm test         # converter unit tests and API integration tests
 Layout of the code:
 
 - `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload and progress API
-- `server/converters/` one module per format plus the shared HTML normaliser, chunker and bundle writer
+- `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns
 - `public/` the web app: library, reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)
 

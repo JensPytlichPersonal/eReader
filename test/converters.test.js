@@ -257,3 +257,52 @@ test('pdf reflow: running headers, hanging-indent lists, footnotes, hyphens, sup
   assert.match(html, /<p>respect of any computer game<sup>21<\/sup>\.<\/p>/);
   assert.match(html, /<p class="footnote"><sup>21<\/sup> Actually, it used a <i>DOOM<\/i>-like engine\.<\/p>/);
 });
+
+test('OceanofPDF.com watermarks are removed whatever the markup around them', () => {
+  const html = (body) => serialize(normalizeDocument(`<body>${body}</body>`).root.children);
+  // The usual stamp at the end of a chapter leaves no empty paragraph behind, even inside a wrapper.
+  assert.equal(html('<div class="calibre1"><p>The end.</p><p class="calibre3"><a href="https://oceanofpdf.com"><i>OceanofPDF.com</i></a></p></div>'),
+    '<div class="calibre1"><p>The end.</p></div>');
+  // Run into a paragraph, written as a URL, or letter-spaced as on some PDF pages.
+  assert.equal(html('<p>The end. OceanofPDF.com</p>'), '<p>The end.</p>');
+  assert.equal(html('<p>Visit https://www.oceanofpdf.com/ now</p>'), '<p>Visit now</p>');
+  assert.equal(html('<p>O c e a n o f P D F . c o m</p><p>Next</p>'), '<p>Next</p>');
+  // A link to the site is unlinked but keeps any other text it wraps, and its id.
+  assert.equal(html('<p>Read <a id="k" href="http://oceanofpdf.com/authors/x/">more</a>.</p>'), '<p>Read <span id="k">more</span>.</p>');
+  assert.equal(html('<p>An ocean of PDF. Complete.</p>'), '<p>An ocean of PDF. Complete.</p>');
+});
+
+test('epub stamped with OceanofPDF.com converts exactly like the clean book', async () => {
+  // As found in a real OceanofPDF book, at the end of every chapter file.
+  const stamp = '<div style="float: none; margin: 10px 0px 10px 0px; text-align: center;"><p><a href="https://oceanofpdf.com"><i>OceanofPDF.com</i></a></p></div>';
+  const chapters = [
+    { id: 'ch1', file: 'ch1.xhtml', title: 'Chapter One', body: '<h1 class="calibre2">Chapter One</h1><div class="calibre10"> </div>\n' },
+    { id: 'ch2', file: 'ch2.xhtml', title: 'Chapter Two', body: '<div class="calibre1"><h1>Chapter Two</h1><p>It ends.</p></div>' },
+  ];
+  const stamped = [
+    { ...chapters[0], body: chapters[0].body + stamp },
+    { ...chapters[1], body: chapters[1].body.replace('</div>', `${stamp}</div>`) },
+  ];
+  const clean = await convertEpub(makeEpub({ chapters }), { filename: 'f.epub' });
+  const book = await convertEpub(makeEpub({ chapters: stamped }), { filename: 'f.epub' });
+  const html = (b) => b.sections.map((s) => serialize(s.nodes));
+  assert.deepEqual(html(book), html(clean));
+  assert.deepEqual(book.sections.map((s) => s.chars), clean.sections.map((s) => s.chars));
+});
+
+test('pdf: OceanofPDF.com lines are dropped before paragraphs are built', async () => {
+  const buf = makePdf([
+    ['Chapter One', '', 'The hallway smelt of boiled cabbage and it', 'continued on the next page because the sentence', '', 'OceanofPDF.com'],
+    ['runs across the page break like this.'],
+    ['O c e a n o f P D F . c o m'],
+  ]);
+  const book = await convertPdf(buf, { filename: '_OceanofPDF.com_Nineteen_Eighty-Four_-_George_Orwell.pdf' });
+  assert.equal(book.meta.title, 'Nineteen Eighty-Four - George Orwell');
+  const html = book.sections.map((s) => serialize(s.nodes)).join('\n');
+  assert.doesNotMatch(html, /OceanofPDF|O c e a n/i);
+  // A stamp between a paragraph and its continuation on the next page does not split it.
+  assert.match(html, /<p>The hallway smelt of boiled cabbage and it continued on the next page because the sentence <span class="pg" id="pg2"><\/span>runs across the page break like this\.<\/p>/);
+  // A page holding only the stamp gets the page-view hint rather than coming out blank.
+  assert.match(html, /<span class="pg" id="pg3"><\/span>\n<p><span class="pdf-empty">\[Page 3 has no extractable text/);
+  assert.equal(book.extra.textPages, 2);
+});
