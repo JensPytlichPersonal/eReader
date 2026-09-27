@@ -4,6 +4,7 @@ import { parseXml, findAllLocal, findFirstLocal, attr, text, children, localName
 import { normalizeDocument } from './html.js';
 import { filterStylesheet } from './css.js';
 import { assembleSections, imageExt, titleFromFilename } from './bundle.js';
+import { opfTitleAndSeries } from './series.js';
 
 const HTML_TYPES = new Set(['application/xhtml+xml', 'text/html', 'application/x-dtbook+xml']);
 
@@ -21,9 +22,8 @@ function fragmentOf(href) {
   return i >= 0 ? href.slice(i + 1) : '';
 }
 
-export async function convertEpub(buffer, { filename }) {
-  const zip = new ZipReader(buffer);
-  // 1. container -> OPF
+/** Locates and parses the OPF package document. */
+function openPackage(zip) {
   let opfPath = null;
   if (zip.has('META-INF/container.xml')) {
     const container = parseXml(zip.readText('META-INF/container.xml'));
@@ -34,16 +34,32 @@ export async function convertEpub(buffer, { filename }) {
     opfPath = zip.names().find((n) => n.toLowerCase().endsWith('.opf'));
   }
   if (!opfPath) throw new Error('EPUB has no OPF package document');
-  const opf = parseXml(zip.readText(opfPath));
-  const opfDir = path.dirname(opfPath);
+  return { opf: parseXml(zip.readText(opfPath)), opfPath };
+}
+
+/** Title, author, language and series from the package's <metadata>. */
+function packageMetadata(opf, filename) {
+  const metadata = findFirstLocal(opf, 'metadata') || opf;
+  const { title, series } = opfTitleAndSeries(metadata);
+  const creators = findAllLocal(metadata, 'creator').map(text).filter(Boolean);
+  const language = text(findFirstLocal(metadata, 'language'));
+  return { title: title || titleFromFilename(filename), author: creators.join(', '), language, format: 'epub', series };
+}
+
+/** Reads only the book's details, without converting it. */
+export async function readEpubMetadata(buffer, { filename }) {
+  return packageMetadata(openPackage(new ZipReader(buffer)).opf, filename);
+}
+
+export async function convertEpub(buffer, { filename }) {
+  const zip = new ZipReader(buffer);
+  // 1. container -> OPF
+  const { opf, opfPath } = openPackage(zip);
   const abs = (href) => resolvePath(opfPath, href);
 
   // 2. metadata
-  const metadata = findFirstLocal(opf, 'metadata');
-  const title = text(findFirstLocal(metadata || opf, 'title')) || titleFromFilename(filename);
-  const creators = findAllLocal(metadata || opf, 'creator').map(text).filter(Boolean);
-  const language = text(findFirstLocal(metadata || opf, 'language'));
-  const metaCoverId = findAllLocal(metadata || opf, 'meta').find((m) => (attr(m, 'name') || '').toLowerCase() === 'cover');
+  const meta = packageMetadata(opf, filename);
+  const metaCoverId = findAllLocal(findFirstLocal(opf, 'metadata') || opf, 'meta').find((m) => (attr(m, 'name') || '').toLowerCase() === 'cover');
 
   // 3. manifest
   const manifest = new Map();
@@ -149,7 +165,7 @@ export async function convertEpub(buffer, { filename }) {
   const { sections, toc: finalToc } = assembleSections(chapters, { toc });
   const css = filterStylesheet(cssParts.join('\n'), '.book-content');
   return {
-    meta: { title, author: creators.join(', '), language, format: 'epub' },
+    meta,
     sections,
     toc: finalToc,
     images,

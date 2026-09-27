@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { now } from '../db.js';
+import { now, transaction } from '../db.js';
 import { detectFormat, SUPPORTED_EXTENSIONS } from '../converters/index.js';
 import { titleFromFilename } from '../converters/bundle.js';
+import { cleanSeriesName, parsePosition } from '../converters/series.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -14,7 +15,24 @@ const MIME = {
   '.pdf': 'application/pdf', '.epub': 'application/epub+zip', '.mobi': 'application/x-mobipocket-ebook', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8',
 };
 
-export function bookRoutes(db, auth, config, processor) {
+/** Checks the `series` of a book edit: [{ name, position }], position a number, a numeric string or empty. */
+export function parseSeriesInput(input) {
+  const invalid = { error: 'series must be a list of { name, position }' };
+  if (!Array.isArray(input) || input.length > 50) return invalid;
+  const series = [];
+  for (const e of input) {
+    if (!e || typeof e !== 'object' || typeof e.name !== 'string') return invalid;
+    const name = cleanSeriesName(e.name);
+    if (!name) continue;
+    const empty = e.position == null || String(e.position).trim() === '';
+    const position = empty ? null : parsePosition(e.position);
+    if (!empty && position == null) return { error: `The number in "${name}" must be a number, such as 3 or 2.5` };
+    series.push({ name, position });
+  }
+  return { series };
+}
+
+export function bookRoutes(db, auth, config, processor, series) {
   const r = Router();
   const stmts = {
     list: db.prepare(`SELECT b.*, u.username AS added_by_name,
@@ -25,7 +43,7 @@ export function bookRoutes(db, auth, config, processor) {
     get: db.prepare('SELECT b.*, u.username AS added_by_name FROM books b LEFT JOIN users u ON u.id = b.added_by WHERE b.id = ?'),
     insert: db.prepare('INSERT INTO books (id, title, author, format, original_name, size, added_by, added_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     delete: db.prepare('DELETE FROM books WHERE id = ?'),
-    updateMeta: db.prepare('UPDATE books SET title = ?, author = ? WHERE id = ?'),
+    updateMeta: db.prepare('UPDATE books SET title = ?, author = ?, edited_at = ? WHERE id = ?'),
     progress: db.prepare('SELECT * FROM progress WHERE user_id = ? AND book_id = ?'),
     upsertProgress: db.prepare(`INSERT INTO progress (user_id, book_id, section, offset, percent, finished, device, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -38,8 +56,10 @@ export function bookRoutes(db, auth, config, processor) {
     deleteBookmark: db.prepare('DELETE FROM bookmarks WHERE id = ? AND user_id = ?'),
   };
 
-  const shapeBook = (b) => ({
+  // `inSeries`: the series and collections the book is in, [{ id, name, position }].
+  const shapeBook = (b, inSeries = series.forBook(b.id)) => ({
     id: b.id, title: b.title, author: b.author, language: b.language, format: b.format, originalName: b.original_name, size: b.size,
+    series: inSeries,
     addedBy: b.added_by_name || null, addedById: b.added_by, addedAt: b.added_at, status: b.status, error: b.error,
     totalChars: b.total_chars, sectionCount: b.section_count, pageCount: b.page_count, hasCover: !!b.has_cover, convertedAt: b.converted_at || 0,
     progress: b.p_updated_at != null ? { section: b.p_section, offset: b.p_offset, percent: b.p_percent, updatedAt: b.p_updated_at, device: b.p_device } : null,
@@ -57,7 +77,9 @@ export function bookRoutes(db, auth, config, processor) {
   r.use(auth.requireUser);
 
   r.get('/', (req, res) => {
-    res.json({ books: stmts.list.all(req.user.id).map(shapeBook), processing: processor.isBusy(), supported: SUPPORTED_EXTENSIONS });
+    const bookSeries = series.byBook();
+    const books = stmts.list.all(req.user.id).map((b) => shapeBook(b, bookSeries.get(b.id) || []));
+    res.json({ books, processing: processor.isBusy(), supported: SUPPORTED_EXTENSIONS });
   });
 
   // Upload: raw body, filename in X-File-Name (URL encoded)
@@ -77,7 +99,7 @@ export function bookRoutes(db, auth, config, processor) {
     await fsp.writeFile(path.join(dir, `original.${ext}`), body);
     stmts.insert.run(id, titleFromFilename(filename), '', format, filename, body.length, req.user.id, now(), 'processing');
     processor.enqueue(id);
-    res.status(202).json({ book: shapeBook({ ...stmts.get.get(id) }) });
+    res.status(202).json({ book: shapeBook({ ...stmts.get.get(id) }, []) });
   });
 
   r.get('/:id', async (req, res) => {
@@ -87,12 +109,24 @@ export function bookRoutes(db, auth, config, processor) {
     res.json({ book: shapeBook(b), manifest, progress: shapeProgress(stmts.progress.get(req.user.id, b.id)), bookmarks: stmts.bookmarks.all(req.user.id, b.id) });
   });
 
+  // Edit the details: title, author and the series and collections the book is in. Edited
+  // details are kept when the book is converted again.
   r.patch('/:id', (req, res) => {
     const b = stmts.get.get(req.params.id);
     if (!b) return res.status(404).json({ error: 'No such book' });
     if (!req.user.isAdmin && b.added_by !== req.user.id) return res.status(403).json({ error: 'Only the uploader or an admin can edit this book' });
-    const { title, author } = req.body || {};
-    stmts.updateMeta.run((title ?? b.title).toString().trim().slice(0, 500) || b.title, (author ?? b.author).toString().trim().slice(0, 500), b.id);
+    const { title, author, series: seriesInput } = req.body || {};
+    let parsed = null;
+    if (seriesInput !== undefined) {
+      parsed = parseSeriesInput(seriesInput);
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+    }
+    if (title !== undefined || author !== undefined || parsed) {
+      transaction(db, () => {
+        stmts.updateMeta.run((title ?? b.title).toString().trim().slice(0, 500) || b.title, (author ?? b.author).toString().trim().slice(0, 500), now(), b.id);
+        if (parsed) series.setForBook(b.id, parsed.series);
+      });
+    }
     res.json({ book: shapeBook(stmts.get.get(b.id)) });
   });
 
@@ -101,6 +135,7 @@ export function bookRoutes(db, auth, config, processor) {
     if (!b) return res.status(404).json({ error: 'No such book' });
     if (!req.user.isAdmin && b.added_by !== req.user.id) return res.status(403).json({ error: 'Only the uploader or an admin can delete this book' });
     stmts.delete.run(b.id);
+    series.prune();
     await fsp.rm(bookDir(b.id), { recursive: true, force: true });
     res.json({ ok: true });
   });

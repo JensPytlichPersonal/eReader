@@ -1,6 +1,7 @@
 import { buildZip, TINY_PNG } from './zipwriter.mjs';
 
-export function makeEpub({ title = 'Fixture Book', author = 'Test Author', chapters, withNav = true, withNcx = true, css = '' } = {}) {
+// `metadata` is extra OPF metadata (e.g. series); `titleXml` replaces the <dc:title> element.
+export function makeEpub({ title = 'Fixture Book', author = 'Test Author', chapters, withNav = true, withNcx = true, css = '', metadata = '', titleXml } = {}) {
   chapters ??= [
     { id: 'ch1', file: 'ch1.xhtml', title: 'Chapter One', body: '<h1 id="c1">Chapter One</h1><p class="first">Hello <em>world</em>. See <a href="ch2.xhtml#note1">note</a>.</p><p><img src="images/pic.png" alt="pic"/></p>' },
     { id: 'ch2', file: 'ch2.xhtml', title: 'Chapter Two', body: '<h1>Chapter Two</h1><p>Second chapter.</p><aside id="note1" epub:type="footnote"><p>A footnote. <a href="ch1.xhtml">back</a></p></aside><script>alert(1)</script><style>p{color:red}</style>' },
@@ -12,8 +13,8 @@ export function makeEpub({ title = 'Fixture Book', author = 'Test Author', chapt
   const opf = `<?xml version="1.0"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-<dc:identifier id="uid">urn:uuid:1234</dc:identifier><dc:title>${title}</dc:title><dc:creator>${author}</dc:creator><dc:language>en</dc:language>
-<meta name="cover" content="cover-img"/>
+<dc:identifier id="uid">urn:uuid:1234</dc:identifier>${titleXml ?? `<dc:title>${title}</dc:title>`}<dc:creator>${author}</dc:creator><dc:language>en</dc:language>
+<meta name="cover" content="cover-img"/>${metadata}
 </metadata>
 <manifest>
 <item id="cover-img" href="images/cover.png" media-type="image/png" properties="cover-image"/>

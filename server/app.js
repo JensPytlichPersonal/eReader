@@ -6,9 +6,11 @@ import { PUBLIC_DIR, loadConfig } from './config.js';
 import { openDatabase } from './db.js';
 import { createAuth } from './auth.js';
 import { createProcessor } from './processing/queue.js';
+import { createSeriesStore } from './series.js';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { bookRoutes, bookFiles } from './routes/books.js';
+import { seriesRoutes } from './routes/series.js';
 
 const require = createRequire(import.meta.url);
 
@@ -18,7 +20,8 @@ export function createApp(overrides = {}) {
   const db = openDatabase(config.dbPath);
   const auth = createAuth(db, config);
   const log = overrides.quiet ? { info() {}, error() {} } : console;
-  const processor = createProcessor(db, config, log);
+  const series = createSeriesStore(db);
+  const processor = createProcessor(db, config, series, log);
 
   const app = express();
   app.disable('x-powered-by');
@@ -33,7 +36,8 @@ export function createApp(overrides = {}) {
 
   app.use('/api/auth', authRoutes(db, auth, config));
   app.use('/api/users', userRoutes(db, auth));
-  app.use('/api/books', bookRoutes(db, auth, config, processor));
+  app.use('/api/books', bookRoutes(db, auth, config, processor, series));
+  app.use('/api/series', seriesRoutes(auth, series));
   app.use('/books', bookFiles(auth, config));
   app.get('/api/health', (req, res) => res.json({ ok: true, processing: processor.isBusy() }));
 
@@ -62,5 +66,5 @@ export function createApp(overrides = {}) {
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  return { app, db, auth, config, processor };
+  return { app, db, auth, config, processor, series };
 }

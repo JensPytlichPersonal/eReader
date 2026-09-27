@@ -1,5 +1,5 @@
-// Builds a small text-only PDF for tests.
-export function makePdf(pages) {
+// Builds a small text-only PDF for tests, optionally with a document title/author and an XMP metadata packet.
+export function makePdf(pages, { title, author, xmp } = {}) {
   const objs = [];
   const add = (s) => { objs.push(s); return objs.length; };
   const fontId = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
@@ -18,13 +18,16 @@ export function makePdf(pages) {
     objs[pid - 1] = `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 612 792] /Contents ${contentIds[i]} 0 R /Resources << /Font << /F1 ${fontId} 0 R >> >> >>`;
   });
   add(`<< /Type /Pages /Kids [${pageIds.map((p) => p + ' 0 R').join(' ')}] /Count ${pageIds.length} >>`);
-  const catalogId = add(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
+  const str = (v) => `(${v.replace(/[()\\]/g, '\\$&')})`;
+  const infoId = title || author ? add(`<< ${title ? `/Title ${str(title)}` : ''} ${author ? `/Author ${str(author)}` : ''} >>`) : null;
+  const xmpId = xmp ? add(`<< /Type /Metadata /Subtype /XML /Length ${Buffer.byteLength(xmp, 'latin1')} >>\nstream\n${xmp}\nendstream`) : null;
+  const catalogId = add(`<< /Type /Catalog /Pages ${pagesId} 0 R${xmpId ? ` /Metadata ${xmpId} 0 R` : ''} >>`);
   let out = '%PDF-1.4\n';
   const offsets = [];
   objs.forEach((o, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
   const xref = out.length;
   out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
   for (const o of offsets) out += String(o).padStart(10, '0') + ' 00000 n \n';
-  out += `trailer\n<< /Size ${objs.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  out += `trailer\n<< /Size ${objs.length + 1} /Root ${catalogId} 0 R${infoId ? ` /Info ${infoId} 0 R` : ''} >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(out, 'latin1');
 }

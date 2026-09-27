@@ -103,10 +103,20 @@ h1, h2, h3 { line-height: 1.2; }
 h1 { font-size: 24px; margin: 8px 0 16px; }
 h2 { font-size: 20px; margin: 20px 0 10px; }
 
+/* Library views: every book, or books grouped into series and collections */
+.tabs { display: flex; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 2px solid var(--line); }
+.tabs button { min-height: 44px; padding: 0 14px; margin-bottom: -2px; border: 0; border-bottom: 4px solid transparent; background: none; color: var(--muted); font-weight: 700; }
+.tabs button[aria-pressed="true"] { color: var(--fg); border-bottom-color: var(--fg); }
+.tabs .n { margin-left: 6px; font-weight: 500; }
+.tabs .n:empty { display: none; }
+.tabs button:focus-visible { outline: 3px solid var(--fg); outline-offset: -3px; }
+
 /* Library toolbar */
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
 .toolbar input[type="search"] { flex: 1 1 200px; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
 .toolbar select { min-height: 44px; padding: 6px 10px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+/* A series page shows just the series */
+.series-open .toolbar, .series-open .dropzone:not(.active) { display: none; }
 .dropzone { border: 2px dashed var(--line); border-radius: var(--radius); padding: 14px; text-align: center; margin-bottom: 16px; color: var(--muted); }
 .dropzone.active { border-color: var(--fg); color: var(--fg); background: var(--panel); }
 .uploads { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
@@ -132,6 +142,14 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .card .status { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-weight: 700; background: var(--bg); padding: 8px; border-top: 2px solid var(--fg); border-bottom: 2px solid var(--fg); }
 .card .status.err { color: var(--danger); }
 .card .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+.card .series-line { font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.card .series-line a { position: relative; z-index: 1; font-weight: 600; }
+/* Number in the series on a book's cover, number of books on a series' cover */
+.card .cover-tag { position: absolute; top: 6px; left: 6px; padding: 2px 8px; border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 14px; }
+.series-head { margin-bottom: 18px; }
+.series-head h1 { margin: 14px 0 4px; }
+.series-head .row { margin-top: 12px; }
+.series-head .btn.primary { white-space: normal; text-align: left; padding-top: 6px; padding-bottom: 6px; }
 .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
 .section-title { display: flex; align-items: baseline; gap: 10px; margin: 20px 0 10px; }
 
@@ -141,6 +159,17 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .sheet h2 { margin-top: 0; }
 .menu { display: flex; flex-direction: column; gap: 8px; }
 .menu .btn { justify-content: flex-start; }
+.sheet hr { border: 0; border-top: 2px solid var(--line); margin: 18px 0; }
+.sheet .hint { font-size: 13px; margin: 6px 0 0; }
+.field > .hint { margin: 0; }
+.sheet .series-links a { font-weight: 600; }
+.sheet fieldset.field { border: 0; padding: 0; margin: 0 0 14px; min-width: 0; }
+.sheet fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
+.series-row { display: flex; gap: 6px; margin-bottom: 6px; }
+.field .series-row input { width: auto; min-width: 0; }
+.field .series-row input[name="series-name"] { flex: 1 1 auto; }
+.field .series-row input[name="series-no"] { flex: 0 0 64px; text-align: center; }
+.series-row .btn.icon { flex: none; }
 
 /* Tables */
 table.list { width: 100%; border-collapse: collapse; }

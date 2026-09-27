@@ -25,8 +25,12 @@
   </nav>
 </header>
 <main class="page">
+  <div class="tabs" id="tabs">
+    <button type="button" data-view="books" aria-pressed="true">Books<span class="n"></span></button>
+    <button type="button" data-view="series" aria-pressed="false">Series &amp; collections<span class="n"></span></button>
+  </div>
   <div class="toolbar">
-    <input type="search" id="search" placeholder="Search title or author" autocomplete="off">
+    <input type="search" id="search" placeholder="Search title, author or series" autocomplete="off">
     <select id="filter" aria-label="Filter">
       <option value="all">All books</option>
       <option value="reading">Reading</option>

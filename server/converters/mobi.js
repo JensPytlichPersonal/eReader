@@ -367,6 +367,14 @@ function convertKf8(records, h, filename) {
   return { meta: metaFrom(h, filename), sections, toc: finalToc, images, cover: cover(), css: filterStylesheet(cssParts.join('\n'), '.book-content') };
 }
 
+/** Reads only the book's details, without converting it. MOBI has no series field; the title may name one. */
+export async function readMobiMetadata(buffer, { filename }) {
+  const pdb = readPdb(buffer);
+  const h0 = parseHeader(pdb.records, 0);
+  if (!h0.isMobi) return { title: pdb.name || titleFromFilename(filename), author: '', language: '', format: 'mobi' };
+  return metaFrom(h0, filename);
+}
+
 export async function convertMobi(buffer, { filename }) {
   const pdb = readPdb(buffer);
   const records = pdb.records;

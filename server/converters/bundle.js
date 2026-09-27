@@ -128,7 +128,7 @@ function tocFromHeadings(sections) {
  * Write the bundle to disk.
  * @param {string} dir target directory
  * @param {object} book
- * @param {object} book.meta {title, author, language, format}
+ * @param {object} book.meta {title, author, language, format, series}
  * @param {Array} book.sections from assembleSections
  * @param {Array} book.toc
  * @param {Map<string, Buffer>} [book.images] bundle path -> data
@@ -173,6 +173,7 @@ export async function writeBundle(dir, book) {
     author: book.meta.author || '',
     language: book.meta.language || '',
     format: book.meta.format,
+    series: (book.meta.series || []).map((s) => ({ name: s.name, position: s.position ?? null })),
     totalChars: cum,
     sections: manifestSections,
     toc: book.toc,

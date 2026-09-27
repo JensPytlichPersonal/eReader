@@ -6,6 +6,7 @@ import { normalizeDocument } from './html.js';
 import { assembleSections, titleFromFilename } from './bundle.js';
 import { encodePng } from './png.js';
 import { isWatermark } from './watermarks.js';
+import { seriesFromXmp } from './series.js';
 
 const require = createRequire(import.meta.url);
 const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
@@ -395,9 +396,8 @@ async function pageImages(page, viewport, ops, OPS, pageNo, images) {
   return out;
 }
 
-export async function convertPdf(buffer, { filename }) {
+async function openPdf(buffer) {
   const pdfjs = await loadPdfjs();
-  const { OPS } = pdfjs;
   const task = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     useSystemFonts: false,
@@ -408,15 +408,43 @@ export async function convertPdf(buffer, { filename }) {
     cMapPacked: true,
     verbosity: 0,
   });
-  const doc = await task.promise;
+  try {
+    return { task, doc: await task.promise };
+  } catch (err) {
+    task.destroy();
+    throw err;
+  }
+}
+
+/** Title and author from the document information, series from calibre's XMP metadata. */
+async function documentMetadata(doc, filename) {
   let title = '';
   let author = '';
+  let series = [];
   try {
     const meta = await doc.getMetadata();
     title = (meta.info?.Title || '').trim();
     author = (meta.info?.Author || '').trim();
+    series = seriesFromXmp(meta.metadata?.getRaw());
   } catch { /* ignore */ }
   if (!title || /^(untitled|microsoft word|document)\b/i.test(title)) title = titleFromFilename(filename);
+  return { title, author, series };
+}
+
+/** Reads only the book's details, without converting it. */
+export async function readPdfMetadata(buffer, { filename }) {
+  const { task, doc } = await openPdf(buffer);
+  try {
+    return { ...(await documentMetadata(doc, filename)), language: '', format: 'pdf' };
+  } finally {
+    await task.destroy();
+  }
+}
+
+export async function convertPdf(buffer, { filename }) {
+  const { OPS } = await loadPdfjs();
+  const { task, doc } = await openPdf(buffer);
+  const { title, author, series } = await documentMetadata(doc, filename);
 
   // Outline (bookmarks) -> toc, and the set of pages where chapters start.
   const outlineToc = [];
@@ -492,7 +520,7 @@ export async function convertPdf(buffer, { filename }) {
   const { sections, toc } = assembleSections(chapters, { toc: outlineToc, budget: Infinity });
   await task.destroy();
   return {
-    meta: { title, author, language: '', format: 'pdf' },
+    meta: { title, author, language: '', format: 'pdf', series },
     sections,
     toc: toc.length ? toc : [],
     images,
