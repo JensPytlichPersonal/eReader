@@ -14,8 +14,8 @@ import { textToHtml, convertText } from '../server/converters/text.js';
 import { convertMarkdown } from '../server/converters/markdown.js';
 import { convertEpub } from '../server/converters/epub.js';
 import { convertMobi } from '../server/converters/mobi.js';
-import { convertPdf, pageItemsToBlocks, pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml } from '../server/converters/pdf.js';
-const pdfInternals = { pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml };
+import { convertPdf, pageItemsToBlocks, pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml, joinHyphenated, mergePages } from '../server/converters/pdf.js';
+const pdfInternals = { pageLines, linesToBlocks, lineKey, edgeBand, blocksToHtml, joinHyphenated, mergePages };
 import { convert, detectFormat } from '../server/converters/index.js';
 import { writeBundle } from '../server/converters/bundle.js';
 import { makePdf } from './helpers/make-pdf.mjs';
@@ -155,21 +155,49 @@ test('mobi uncompressed and without trailing entries', async () => {
   assert.ok(book.sections[0].chars > 5000);
 });
 
-test('pdf conversion: one section per page, paragraphs merged, outline toc', async () => {
+test('pdf conversion: pages merged into one section with page markers, paragraphs merged', async () => {
   const buf = makePdf([
-    ['Chapter One', '', 'It was a bright cold day in April, and the clocks were', 'striking thirteen. Winston Smith, his chin nuzzled into his', 'breast in an effort to escape the vile wind.', '', 'The hallway smelt of boiled cabbage.'],
-    ['Second page text.'],
+    ['Chapter One', '', 'It was a bright cold day in April, and the clocks were', 'striking thirteen. Winston Smith, his chin nuzzled into his', 'breast in an effort to escape the vile wind.', '', 'The hallway smelt of boiled cabbage and it', 'continued on the next page because the sentence'],
+    ['runs across the page break like this.', '', 'Second page text.'],
   ]);
   const book = await convertPdf(buf, { filename: 'sample.pdf' });
   const dir = path.join(tmp, 'pdf');
   const m = await writeBundle(dir, book);
   assert.equal(m.format, 'pdf');
   assert.equal(m.pageCount, 2);
-  assert.equal(m.sections.length, 2);
-  assert.equal(m.sections[1].page, 2);
+  assert.equal(m.sections.length, 1);
+  assert.equal(m.sections[0].pageStart, 1);
+  assert.equal(m.sections[0].pageEnd, 2);
   const s0 = sectionHtml(dir, 0);
+  assert.match(s0, /<span class="pg" id="pg1"><\/span>/);
   assert.match(s0, /<p>It was a bright cold day in April, and the clocks were striking thirteen\. Winston Smith, his chin nuzzled into his breast in an effort to escape the vile wind\.<\/p>/);
-  assert.match(s0, /<p>The hallway smelt of boiled cabbage\.<\/p>/);
+  // The paragraph that runs over the page break is joined, with the page-2 marker inside it.
+  assert.match(s0, /<p>The hallway smelt of boiled cabbage and it continued on the next page because the sentence <span class="pg" id="pg2"><\/span>runs across the page break like this\.<\/p>/);
+  assert.match(s0, /<p>Second page text\.<\/p>/);
+});
+
+test('pdf hyphenation joins', () => {
+  const { joinHyphenated } = pdfInternals;
+  assert.deepEqual(joinHyphenated('one or more ex-', 'isting systems'), { text: 'one or more existing systems', dropHyphen: true });
+  assert.deepEqual(joinHyphenated('a basic four-', 'profession model'), { text: 'a basic four-profession model', dropHyphen: false });
+  assert.deepEqual(joinHyphenated('Would a 500-', 'player game'), { text: 'Would a 500-player game', dropHyphen: false });
+  assert.deepEqual(joinHyphenated('the term Multi-', 'User Dungeon'), { text: 'the term Multi-User Dungeon', dropHyphen: false });
+  assert.equal(joinHyphenated('no hyphen here', 'next'), null);
+});
+
+test('pdf page merging: sections split at budget and chapter starts, images kept in flow', () => {
+  const { mergePages } = pdfInternals;
+  const p = (text) => ({ type: 'p', text, html: text, bullet: false, cont: false });
+  const pages = [
+    { p: 1, blocks: [p('x'.repeat(3000))] },
+    { p: 2, blocks: [{ type: 'img', src: 'images/p2_1.png', text: '' }, p('y'.repeat(3000))] },
+    { p: 3, blocks: [p('chapter two starts here.')] },
+    { p: 4, blocks: [p('z'.repeat(3000))] },
+  ];
+  const out = mergePages(pages, { budget: 100000, startsChapter: (n) => n === 3 });
+  assert.deepEqual(out.map((s) => [s.first, s.last]), [[1, 2], [3, 4]]);
+  assert.match(out[0].html, /<figure><img src="images\/p2_1.png" alt=""\/><\/figure>/);
+  assert.match(out[1].html, /^<span class="pg" id="pg3"><\/span>/);
 });
 
 test('pdf block heuristics: headings by size, indentation starts paragraphs', () => {
