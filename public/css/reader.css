@@ -147,3 +147,6 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
 .book-content span.pg { display: inline; }
 .book-content figure img { max-height: calc(var(--page-h) - 3em); }
 .book-content p.leader { text-align: left; text-indent: 0; margin: 0 0 .15em 0; }
+.book-content .endnotes { border-top: 1px solid var(--line); margin-top: 1.5em; padding-top: .6em; break-before: auto; }
+.book-content .endnotes p.footnote { margin-top: .3em; text-align: left; overflow-wrap: anywhere; }
+.book-content sup a { text-decoration: none; padding: 0 .1em; }
