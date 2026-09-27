@@ -73,6 +73,7 @@ export function pageBodySize(items) {
  * @returns {{lines: Array, bodySize: number}}
  */
 export function pageLines(items, viewport, styles = {}, opts = {}) {
+  if (opts.ocr) return ocrPageLines(items, viewport, styles);
   const runs = textRuns(items, styles);
   if (!runs.length) return { lines: [], bodySize: NaN };
   const bodySize = opts.bodySize || runsBodySize(runs);
@@ -98,28 +99,7 @@ export function pageLines(items, viewport, styles = {}, opts = {}) {
   lines.sort((a, b) => b.y - a.y);
   for (const line of lines) {
     line.items.sort((a, b) => a.x - b.x);
-    let text = '';
-    let html = '';
-    let prev = null;
-    for (const it of line.items) {
-      if (prev) {
-        const gap = it.x - (prev.x + prev.w);
-        if (gap > Math.min(prev.size, it.size) * 0.15 && !text.endsWith(' ') && !it.str.startsWith(' ')) { text += ' '; html += ' '; }
-      }
-      const clean = it.str.replace(/\s+/g, ' ');
-      text += clean;
-      let frag = escape(clean);
-      if (it.sup && clean.trim()) {
-        frag = `<sup>${frag.trim()}</sup>`; // markers carry no bold/italic, whatever font the run inherited
-      } else {
-        if (it.bold && clean.trim()) frag = `<b>${frag}</b>`;
-        if (it.italic && clean.trim()) frag = `<i>${frag}</i>`;
-      }
-      html += frag;
-      prev = it;
-    }
-    line.text = text.replace(/\s+/g, ' ').trim();
-    line.html = html.replace(/\s+/g, ' ').replace(/<\/(b|i)> <\1>/g, ' ').trim();
+    Object.assign(line, joinRuns(line.items));
     line.startsWithSup = !!line.items[0]?.sup;
     const bodyItems = line.items.filter((i) => !i.sup);
     line.x = (bodyItems[0] || line.items[0]).x;
@@ -131,9 +111,203 @@ export function pageLines(items, viewport, styles = {}, opts = {}) {
   return { lines: lines.filter((l) => l.text), bodySize };
 }
 
+/** A line's text and markup from its runs, left to right, with a space where the runs stand apart or one ends in a space. */
+function joinRuns(items) {
+  let text = '';
+  let html = '';
+  let prev = null;
+  for (const it of items) {
+    if (prev && !prev.glueNext && !it.gluePrev) {
+      const gap = it.x - (prev.x + prev.w);
+      if ((prev.spaceAfter || gap > Math.min(prev.size, it.size) * 0.15) && !text.endsWith(' ') && !it.str.startsWith(' ')) { text += ' '; html += ' '; }
+    }
+    const clean = it.str.replace(/\s+/g, ' ');
+    text += clean;
+    let frag = escape(clean);
+    if (it.sup && clean.trim()) {
+      frag = `<sup>${frag.trim()}</sup>`; // markers carry no bold/italic, whatever font the run inherited
+    } else {
+      if (it.bold && clean.trim()) frag = `<b>${frag}</b>`;
+      if (it.italic && clean.trim()) frag = `<i>${frag}</i>`;
+    }
+    html += frag;
+    prev = it;
+  }
+  return { text: text.replace(/\s+/g, ' ').trim(), html: html.replace(/\s+/g, ' ').replace(/<\/(b|i)> <\1>/g, ' ').trim() };
+}
+
+const WORDLIKE_RE = /[\p{L}\p{N}]/u;
+const QUOTES_RE = /^["'`“”‘’„«»]+$/;
+
+/**
+ * Lines of an OCR text layer: the invisible text over a scanned page. Such a layer places each word by the box the OCR
+ * engine drew around it and sizes it to that box, so the words of one line differ in size and height (those without
+ * ascenders come out small, a quote mark sits above the line) and the spaces between them have no meaningful width.
+ * Words are grouped into lines by how much their boxes overlap vertically; a line takes the median size and position
+ * of its words, and no run is taken for a superscript.
+ * @returns {{lines: Array, bodySize: number}}
+ */
+function ocrPageLines(items, viewport, styles = {}) {
+  const words = [];
+  for (const r of textRuns(items, styles)) {
+    if (r.str.trim()) words.push({ ...r, spaceAfter: /\s$/.test(r.str), top: r.y + r.size });
+    else if (words.length) words[words.length - 1].spaceAfter = true; // a space, or the end of a line, in reading order
+  }
+  if (!words.length) return { lines: [], bodySize: NaN };
+  const wordSize = median(words.filter((w) => WORDLIKE_RE.test(w.str)).map((w) => w.size)) || median(words.map((w) => w.size));
+  // A drop cap spans several lines; it is placed at the start of the first one afterwards.
+  const tall = (w) => w.size > wordSize * 2.2 && w.str.trim().length <= 2;
+  const lines = [];
+  const setBand = (l) => {
+    const core = l.items.filter((i) => WORDLIKE_RE.test(i.str));
+    const ref = core.length ? core : l.items;
+    l.bottom = median(ref.map((i) => i.y));
+    l.top = median(ref.map((i) => i.top));
+  };
+  const overlap = (l, w) => (Math.min(l.top, w.top) - Math.max(l.bottom, w.y)) / Math.max(0.01, Math.min(l.top - l.bottom, w.size));
+  const sorted = words.filter((w) => !tall(w)).sort((a, b) => (b.y + b.top) - (a.y + a.top) || a.x - b.x);
+  for (const w of sorted) {
+    let best = null;
+    let bestScore = 0.5; // the boxes share at least half the height of the lower one
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 3); i--) {
+      const score = overlap(lines[i], w);
+      if (score > bestScore) { best = lines[i]; bestScore = score; }
+    }
+    if (best) { best.items.push(w); setBand(best); } else { const l = { items: [w] }; setBand(l); lines.push(l); }
+  }
+  for (const w of words.filter(tall)) {
+    const first = lines.find((l) => overlap(l, w) > 0.5);
+    if (first) first.items.push({ ...w, dropCap: true }); else { const l = { items: [w] }; setBand(l); lines.push(l); }
+  }
+  // Punctuation the OCR placed apart from its line (a quote mark above it) joins the nearest line with words.
+  const hasWords = (l) => l.items.some((i) => WORDLIKE_RE.test(i.str));
+  for (const l of lines.filter((x) => !hasWords(x))) {
+    const mid = (l.bottom + l.top) / 2;
+    let near = null;
+    for (const o of lines) if (o !== l && hasWords(o) && (!near || Math.abs((o.bottom + o.top) / 2 - mid) < Math.abs((near.bottom + near.top) / 2 - mid))) near = o;
+    if (near && Math.abs((near.bottom + near.top) / 2 - mid) < wordSize) { near.items.push(...l.items); l.items = []; }
+  }
+  // A box set lower or higher than the rest can split a line in two. Pieces closer together than lines are, whose words
+  // stand side by side rather than one above the other, are one line.
+  const pieces = lines.filter((l) => l.items.length).sort((a, b) => (b.bottom + b.top) - (a.bottom + a.top));
+  const centre = (l) => (l.bottom + l.top) / 2;
+  const pitch = median(pieces.slice(1).map((l, i) => centre(pieces[i]) - centre(l)));
+  const sideBySide = (a, b) => b.items.every((w) => a.items.every((v) => w.x >= v.x + v.w || v.x >= w.x + w.w));
+  for (let i = 0; pieces.length >= 3 && i < pieces.length - 1; i++) {
+    const [a, b] = [pieces[i], pieces[i + 1]];
+    if (centre(a) - centre(b) < pitch * 0.6 && sideBySide(a, b)) { a.items.push(...b.items); b.items = []; setBand(a); pieces.splice(i + 1, 1); i--; }
+  }
+  const out = [];
+  for (const line of lines) {
+    if (!line.items.length) continue;
+    line.items.sort((a, b) => a.x - b.x);
+    // Specks, or the ornament of a drop cap, read as "*" before a line that carries on a sentence.
+    let junk = 0;
+    while (junk < line.items.length && /^[*^~|°•]+$/.test(line.items[junk].str.trim())) junk++;
+    if (junk && /^\p{Ll}/u.test(line.items[junk]?.str.trim() || '')) line.items.splice(0, junk);
+    // A drop cap and the rest of its word: "T" + "HE SUMMER" is "THE SUMMER".
+    const cap = line.items[0].dropCap && line.items[1];
+    if (cap && line.items[1].x - (line.items[0].x + line.items[0].w) < wordSize) line.items[0].glueNext = true;
+    // A quote mark read as a word of its own belongs to the word it is closer to: "Why?" rather than " Why? ".
+    line.items.forEach((it, k) => {
+      if (!QUOTES_RE.test(it.str.trim())) return;
+      const prev = line.items[k - 1];
+      const next = line.items[k + 1];
+      const before = prev ? it.x - (prev.x + prev.w) : Infinity;
+      const after = next ? next.x - (it.x + it.w) : Infinity;
+      if (after < before) it.glueNext = true; else if (prev) it.gluePrev = true;
+    });
+    Object.assign(line, joinRuns(line.items));
+    if (!line.text) continue;
+    const core = line.items.filter((i) => WORDLIKE_RE.test(i.str) && !i.dropCap);
+    const ref = core.length ? core : line.items;
+    line.y = median(ref.map((i) => i.y));
+    line.size = median(ref.map((i) => i.size));
+    line.x = line.items[0].x;
+    line.right = Math.max(...line.items.map((i) => i.x + i.w));
+    line.startsWithSup = false;
+    line.ocr = true;
+    line.width = viewport.width;
+    line.height = viewport.height;
+    out.push(line);
+  }
+  out.sort((a, b) => b.y - a.y);
+  return { lines: out, bodySize: median(out.map((l) => l.size)) };
+}
+
+/**
+ * Page numbers, and running heads and feet that carry one, such as "12 THE SECRET GARDEN" or "THERE IS NO ONE LEFT 13".
+ * Their titles change with the chapter, so they are not repeated often enough to be caught like other running lines.
+ * Such a line is the first or last on its page and starts or ends with a number that keeps step with the page count:
+ * two other pages close by carry a number just as far from their own page number. A page number on its own may stand
+ * a little above the foot of the page, as on the first page of a chapter.
+ * @param {Array<{p: number, lines: Array}>} pages
+ * @returns {Set} the lines
+ */
+export function numberedRunningLines(pages) {
+  const found = [];
+  const pagesByOffset = new Map();
+  for (const { p, lines } of pages) {
+    const text = lines.filter((l) => !l.image);
+    for (const l of new Set([text[0], text[text.length - 1]])) {
+      if (!l || l.text.length > 100) continue;
+      for (const n of pageNumberCandidates(l)) {
+        const offset = p - n;
+        found.push({ l, p, offset });
+        if (!pagesByOffset.has(offset)) pagesByOffset.set(offset, new Set());
+        pagesByOffset.get(offset).add(p);
+      }
+    }
+  }
+  const out = new Set();
+  for (const { l, p, offset } of found) {
+    if ([...pagesByOffset.get(offset)].filter((q) => q !== p && Math.abs(q - p) <= 8).length >= 2) out.add(l);
+  }
+  return out;
+}
+
+/** The numbers a line may carry as its page number: all of it ("85", or "1 1 5" as OCR splits it), or, at the edge of the page, its first or last word. */
+function pageNumberCandidates(l) {
+  if (/^\d(\s?\d){0,3}$/.test(l.text)) return [Number(l.text.replace(/\s/g, ''))];
+  if (!edgeBand(l)) return [];
+  const out = [];
+  const head = /^(\d(?:\s?\d){0,3})\s+\S/.exec(l.text);
+  const tail = /\S\s((?:\d\s?){0,3}\d)[.,]?$/.exec(l.text);
+  for (const m of [head, tail]) {
+    if (!m) continue;
+    out.push(Number(m[1].replace(/\s/g, '')));
+    const word = m === head ? /^\d+/.exec(m[1])[0] : /\d+$/.exec(m[1])[0];
+    if (word !== m[1]) out.push(Number(word)); // "IT HAS COME! 3 247": the stray 3 is not part of it
+  }
+  return out;
+}
+
+/**
+ * What an OCR engine reads into a picture or a speck of dirt: a line without a word of two letters or digits. A
+ * chapter number ("7", "IV") and a break between scenes ("* * *") stay.
+ */
+export function isOcrNoise(text) {
+  const t = text.trim();
+  return !/[\p{L}\p{N}]{2}/u.test(t) && !/^(\d{1,3}|[IVXLC]{1,6})\.?$/.test(t) && !/^([*•·.–—-]\s*){3,}$/.test(t);
+}
+
+/**
+ * A line key as it would be with its page number read right: one or two short words at its start or end taken for a
+ * misread number ("ib the garden" -> "# the garden"), or a number added where the OCR engine missed it.
+ */
+export function numberVariants(key) {
+  const words = key.split(' ');
+  const out = [`# ${key}`, `${key} #`];
+  for (let n = 1; n <= 2 && n < words.length; n++) {
+    if (words.slice(0, n).every((w) => w.length <= 3)) out.push(['#', ...words.slice(n)].join(' '));
+    if (words.slice(-n).every((w) => w.length <= 3)) out.push([...words.slice(0, -n), '#'].join(' '));
+  }
+  return out;
+}
+
 /** Normalised key used to spot running headers and footers repeated across pages. */
 export function lineKey(line) {
-  return line.text.replace(/\d+/g, '#').replace(/[\s|·•—–-]+/g, ' ').trim().toLowerCase();
+  return line.text.replace(/\d+(\s\d+)*/g, '#').replace(/["'`“”‘’„«»]/g, '').replace(/[\s|·•—–-]+/g, ' ').trim().toLowerCase();
 }
 export function edgeBand(line) {
   if (line.y > line.height * 0.86) return 'top';
@@ -143,7 +317,8 @@ export function edgeBand(line) {
 
 /**
  * Turn a page's lines (and image placeholders) into blocks (headings, paragraphs, footnotes, images).
- * @param {object} ctx {bodySize, isRunning(line) -> boolean}
+ * @param {object} ctx {bodySize, isRunning(line) -> boolean, ocr: the lines are the OCR text of a scan,
+ *   pitch: the usual distance between the lines of such text}
  */
 const MARKER_ONLY_RE = /^(\d{1,3}|[*†‡§])$/; // a note number on a line of its own (the note text wrapped below it)
 
@@ -152,21 +327,31 @@ export function linesToBlocks(lines, ctx = {}) {
   const textLines = lines.filter((l) => !l.image);
   const bodySize = ctx.bodySize || median(textLines.filter((l) => l.text.length > 20).map((l) => l.size)) || median(textLines.map((l) => l.size)) || 10;
   const isRunning = ctx.isRunning || (() => false);
-  const leftEdge = median(textLines.filter((l) => l.text.length > 40).map((l) => l.x));
+  // Where the lines of the text start: low among them, as on a page of dialogue most long lines are first lines, indented.
+  const starts = textLines.filter((l) => l.text.length > 40).map((l) => l.x).sort((a, b) => a - b);
+  const leftEdge = starts.length ? starts[Math.floor(starts.length * 0.2)] : NaN;
   const rightEdge = median(textLines.filter((l) => l.text.length > 40).map((l) => l.right));
+  // The sizes of OCR text are those of the boxes around its words, which vary with the letters in them: a short line of
+  // tall words is as big as a small heading, and a line of short words as small as a footnote. So on a scan a heading
+  // must also stand apart from the text, centred or with extra space around it; a footnote must be clearly smaller,
+  // and a gap is measured against the usual distance between lines.
+  const ocr = !!ctx.ocr;
+  const pitch = ctx.pitch || bodySize * 1.5;
+  const smallSize = bodySize * (ocr ? 0.8 : 0.92);
 
   // A note number printed on a line of its own (its text wrapped below it) looks like a page number
   // when it falls in the bottom band; tell them apart by size and by the small line right under it.
   const isMarkerLine = (l, i) => {
     if (!MARKER_ONLY_RE.test(l.text) || l.size >= bodySize * 0.78) return false;
     const next = lines.slice(i + 1).find((n) => !n.image);
-    return !!next && next.size < bodySize * 0.92 && l.y - next.y < next.size * 2.2 && Math.abs(next.x - l.x) < bodySize;
+    return !!next && next.size < smallSize && l.y - next.y < next.size * 2.2 && Math.abs(next.x - l.x) < bodySize;
   };
   const kept = lines.filter((l, i) => {
     if (l.image) return true;
     if (isWatermark(l.text)) return false;
+    if (ocr && isOcrNoise(l.text)) return false;
     const band = edgeBand(l);
-    if (!band) return true;
+    if (!band) return !isRunning(l);
     if (isMarkerLine(l, i)) return true;
     if (/^[\divxlc]+$/i.test(l.text.replace(/[\s|·•—–-]/g, ''))) return false;
     if (isRunning(l)) return false;
@@ -178,10 +363,21 @@ export function linesToBlocks(lines, ctx = {}) {
   for (let i = kept.length - 1; i >= 0; i--) {
     const l = kept[i];
     if (l.image) break;
-    const small = l.size < bodySize * 0.92;
+    const small = l.size < smallSize;
     if (!small) break;
-    if (startsNote(l)) footStart = i;
+    if (startsNote(l) && (!ocr || /\p{L}{2}/u.test(l.text))) footStart = i; // OCR text has no superscripts: a note is a number and words
   }
+  // Space around a line is also where text meets a picture, so a heading set apart only by space must look like one.
+  const standsApart = (l, i) => {
+    const before = l.x - leftEdge;
+    const after = rightEdge - l.right;
+    const centred = before > bodySize * 2 && after > bodySize * 2 && Math.abs(before - after) < bodySize * 2;
+    const above = i > 0 && !kept[i - 1].image ? kept[i - 1].y - l.y : 0;
+    const below = i < kept.length - 1 && !kept[i + 1].image ? l.y - kept[i + 1].y : 0;
+    const letters = l.text.replace(/\P{L}/gu, '');
+    const looksLikeHeading = !/-$/.test(l.text) && (l.size > bodySize * 1.45 || letters.replace(/\P{Lu}/gu, '').length >= letters.length * 0.8);
+    return centred || ((above > pitch * 1.4 || below > pitch * 1.4) && looksLikeHeading);
+  };
 
   const blocks = [];
   let para = null;
@@ -201,9 +397,9 @@ export function linesToBlocks(lines, ctx = {}) {
     if (l.image) { flush(); blocks.push({ type: 'img', src: l.image, text: '' }); continue; }
     const prev = kept[i - 1] && !kept[i - 1].image ? kept[i - 1] : null;
     const inFoot = i >= footStart;
-    const isHeading = !inFoot && l.size > bodySize * 1.15 && l.text.length < 120;
+    const isHeading = !inFoot && l.size > bodySize * (ocr ? 1.1 : 1.15) && l.text.length < 120 && (!ocr || standsApart(l, i));
     const gap = prev ? prev.y - l.y : 0;
-    const bigGap = !prev || gap > Math.max(prev.size, l.size) * 1.7;
+    const bigGap = !prev || gap > (ocr ? pitch * 1.4 : Math.max(prev.size, l.size) * 1.7);
     const em = bodySize * 0.6;
 
     if (isHeading) {
@@ -242,13 +438,20 @@ export function linesToBlocks(lines, ctx = {}) {
       if (!para || para.type !== 'fn' || (marker && !(para.lines === 1 && MARKER_ONLY_RE.test(para.text))) || bigGap) { flush(); startPara(l, 'fn'); } else append(l);
       continue;
     }
-    if (!para || para.type !== 'p' || bigGap || (prev && prev.size > bodySize * 1.15)) { flush(); startPara(l); continue; }
+    const prevEndsSentence = !!prev && /[.!?"'”’)\]:;]$/.test(prev.text);
+    // OCR positions are rough, so on a scan a sentence that carries on in lower case carries on the paragraph, past
+    // a picture or a word the OCR engine lost at the start of the line.
+    const carriesOn = ocr && !!prev && !prevEndsSentence && /^\p{Ll}/u.test(l.text);
+    if (!para || para.type !== 'p' || (bigGap && !carriesOn) || (prev && !ocr && prev.size > bodySize * 1.15)) { flush(); startPara(l); continue; }
 
     const bullet = BULLET_RE.test(l.text) || BULLET_ONLY_RE.test(l.text);
     const prevShort = Number.isFinite(rightEdge) && prev.right < rightEdge - bodySize * 3;
-    const prevEndsSentence = /[.!?"'”’)\]:;]$/.test(prev.text);
     let startsNew;
     if (bullet) startsNew = true;
+    else if (carriesOn) startsNew = false;
+    // On a scan a line is measured against the margin of the page rather than the lines before it, whose positions
+    // are just as rough: indented after the end of a sentence, or after a short line that ended one, it starts a paragraph.
+    else if (ocr && Number.isFinite(leftEdge)) startsNew = prevEndsSentence && (l.x > leftEdge + em || prevShort);
     else if (para.lines >= 2) startsNew = Math.abs(l.x - para.bodyX) > em || (prevShort && prevEndsSentence && l.x > para.bodyX + em);
     else if (l.x > para.firstX + em) startsNew = !para.bullet;
     else if (l.x < para.firstX - em) startsNew = false;
@@ -417,44 +620,72 @@ async function fontStyles(page, textContent) {
   return styles;
 }
 
-/** Raster images on the page, as pseudo-lines positioned in PDF space, with PNG data. */
-async function pageImages(page, viewport, ops, OPS, pageNo, images) {
-  const out = [];
-  const seen = new Set();
+const SCAN_COVER = 0.85; // images covering this much of a page are the page itself: a scan
+
+/**
+ * What a page's operators tell that its text cannot: the raster images and their boxes (page space, top down), whether
+ * they cover the page (`scan`), and whether the text is an OCR layer over them (`ocr`): drawn invisibly, or drawn first
+ * and covered by the scan. Images are placed whether or not they can be decoded here.
+ */
+export function readOperators(ops, OPS, viewport) {
+  const images = [];
   const stack = [];
-  let ctm = viewport.transform.slice();
+  let state = { ctm: viewport.transform.slice(), mode: 0 };
   const mul = (m1, m2) => [
     m1[0] * m2[0] + m1[2] * m2[1], m1[1] * m2[0] + m1[3] * m2[1],
     m1[0] * m2[2] + m1[2] * m2[3], m1[1] * m2[2] + m1[3] * m2[3],
     m1[0] * m2[4] + m1[2] * m2[5] + m1[4], m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
   ];
-  const pageArea = viewport.width * viewport.height;
+  const shows = new Set([OPS.showText, OPS.showSpacedText, OPS.nextLineShowText, OPS.nextLineSetSpacingShowText]);
+  const coverArea = viewport.width * viewport.height * SCAN_COVER;
+  let covered = 0;
+  let text = 0;
+  let invisible = 0;
+  let beforeScan = 0;
   for (let i = 0; i < ops.fnArray.length; i++) {
     const fn = ops.fnArray[i];
     const args = ops.argsArray[i];
-    if (fn === OPS.save) stack.push(ctm);
-    else if (fn === OPS.restore) ctm = stack.pop() || ctm;
-    else if (fn === OPS.transform) ctm = mul(ctm, args);
-    else if (fn === OPS.paintFormXObjectBegin) { stack.push(ctm); if (args[0]) ctm = mul(ctm, args[0]); }
-    else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() || ctm;
-    else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject) {
-      const id = args[0];
-      if (typeof id === 'string' && seen.has(id)) continue;
-      if (typeof id === 'string') seen.add(id);
-      let img = null;
-      try { img = typeof id === 'string' ? (page.objs.has(id) ? page.objs.get(id) : null) : id; } catch { img = null; }
-      if (!img || !img.data || !img.width || !img.height) continue;
+    if (fn === OPS.save) stack.push(state);
+    else if (fn === OPS.restore) state = stack.pop() || state;
+    else if (fn === OPS.transform) state = { ...state, ctm: mul(state.ctm, args) };
+    else if (fn === OPS.setTextRenderingMode) state = { ...state, mode: args[0] };
+    else if (fn === OPS.paintFormXObjectBegin) { stack.push(state); if (args[0]) state = { ...state, ctm: mul(state.ctm, args[0]) }; }
+    else if (fn === OPS.paintFormXObjectEnd) state = stack.pop() || state;
+    else if (shows.has(fn)) {
+      text++;
+      if (state.mode === 3 || state.mode === 7) invisible++;
+      if (covered < coverArea) beforeScan++;
+    } else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject) {
+      const { ctm } = state;
       const xs = [0, ctm[0], ctm[2], ctm[0] + ctm[2]].map((v) => v + ctm[4]);
       const ys = [0, ctm[1], ctm[3], ctm[1] + ctm[3]].map((v) => v + ctm[5]);
       const x = Math.min(...xs), w = Math.max(...xs) - x, top = Math.min(...ys), h = Math.max(...ys) - top;
-      if (w < 24 || h < 24 || w * h > pageArea * 0.85) continue; // decorations and full-page scans
-      let png;
-      try { png = encodePng(img); } catch { continue; }
-      const name = `images/p${pageNo}_${out.length + 1}.png`;
-      images.set(name, png);
-      // Pseudo-line: y is the image top in PDF space so it sorts into reading order with text lines.
-      out.push({ image: name, y: viewport.height - top, x, right: x + w, size: 0, text: '', html: '', width: viewport.width, height: viewport.height });
+      covered += Math.max(0, Math.min(x + w, viewport.width) - Math.max(x, 0)) * Math.max(0, Math.min(top + h, viewport.height) - Math.max(top, 0));
+      if (fn !== OPS.paintImageMaskXObject) images.push({ id: args[0], x, top, w, h });
     }
+  }
+  const scan = covered >= coverArea;
+  return { images, scan, ocr: text > 0 && (invisible * 2 > text || (scan && beforeScan * 2 > text)) };
+}
+
+/** Raster images worth keeping in the text (not decorations, not the page itself), as pseudo-lines positioned in PDF space, with PNG data. */
+function pageImages(page, viewport, found, pageNo, images) {
+  const out = [];
+  const seen = new Set();
+  const pageArea = viewport.width * viewport.height;
+  for (const { id, x, top, w, h } of found) {
+    if (typeof id === 'string' && seen.has(id)) continue;
+    if (typeof id === 'string') seen.add(id);
+    if (w < 24 || h < 24 || w * h > pageArea * SCAN_COVER) continue; // decorations and full-page scans
+    let img = null;
+    try { img = typeof id === 'string' ? (page.objs.has(id) ? page.objs.get(id) : null) : id; } catch { img = null; }
+    if (!img || !img.data || !img.width || !img.height) continue;
+    let png;
+    try { png = encodePng(img); } catch { continue; }
+    const name = `images/p${pageNo}_${out.length + 1}.png`;
+    images.set(name, png);
+    // Pseudo-line: y is the image top in PDF space so it sorts into reading order with text lines.
+    out.push({ image: name, y: viewport.height - top, x, right: x + w, size: 0, text: '', html: '', width: viewport.width, height: viewport.height });
   }
   return out;
 }
@@ -536,10 +767,14 @@ export async function convertPdf(buffer, { filename }) {
   } catch { /* ignore */ }
 
   // Pass 1: text runs, font styles and images for every page. The body size is the median over the
-  // whole document, so a page that is mostly footnotes still tells its markers from its text.
+  // whole document, so a page that is mostly footnotes still tells its markers from its text. Scanned
+  // pages carry the OCR engine's text, measured apart: its sizes are those of the boxes around words.
   const raw = [];
   const bodySizes = [];
+  const ocrSizes = [];
+  const ocrGaps = [];
   const images = new Map();
+  let scannedPages = 0;
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
     const viewport = page.getViewport({ scale: 1 });
@@ -547,37 +782,56 @@ export async function convertPdf(buffer, { filename }) {
     try { ops = await page.getOperatorList(); } catch { ops = null; }
     const tc = await page.getTextContent();
     const styles = await fontStyles(page, tc);
-    const pageBody = pageBodySize(tc.items);
-    if (Number.isFinite(pageBody)) bodySizes.push(pageBody);
-    let imgs = [];
     const hasText = tc.items.some((it) => it.str?.trim());
-    if (ops && hasText) { try { imgs = await pageImages(page, viewport, ops, OPS, p, images); } catch { imgs = []; } }
-    raw.push({ p, items: tc.items, viewport, styles, imgs });
+    const found = ops ? readOperators(ops, OPS, viewport) : { images: [], scan: false, ocr: false };
+    const ocr = hasText && found.ocr;
+    const scanned = found.scan && (!hasText || ocr); // a picture of the page, with or without OCR text over it
+    if (scanned) scannedPages++;
+    let ocrLines = null;
+    if (ocr) {
+      ({ lines: ocrLines } = pageLines(tc.items, viewport, styles, { ocr }));
+      ocrLines.forEach((l, i) => { ocrSizes.push(l.size); if (i) ocrGaps.push(ocrLines[i - 1].y - l.y); });
+    } else {
+      const pageBody = pageBodySize(tc.items);
+      if (Number.isFinite(pageBody)) bodySizes.push(pageBody);
+    }
+    let imgs = [];
+    if (hasText && !scanned) { try { imgs = pageImages(page, viewport, found.images, p, images); } catch { imgs = []; } }
+    raw.push({ p, items: tc.items, viewport, styles, imgs, ocrLines });
     page.cleanup();
   }
   const bodySize = median(bodySizes);
+  const ocrBodySize = median(ocrSizes);
+  const ocrPitch = median(ocrGaps);
 
   // Lines per page, and the running header/footer keys counted across pages.
   const pages = [];
   const keyCounts = new Map();
-  for (const { p, items, viewport, styles, imgs } of raw) {
-    const { lines } = pageLines(items, viewport, styles, { bodySize });
+  for (const { p, items, viewport, styles, imgs, ocrLines } of raw) {
+    const { lines } = ocrLines ? { lines: ocrLines } : pageLines(items, viewport, styles, { bodySize });
     for (const l of lines) {
       const band = edgeBand(l);
       if (!band) continue;
       const k = `${band}:${lineKey(l)}`;
       keyCounts.set(k, (keyCounts.get(k) || 0) + 1);
     }
-    pages.push({ p, lines: [...lines, ...imgs].sort((a, b) => b.y - a.y) });
+    pages.push({ p, ocr: !!ocrLines, lines: [...lines, ...imgs].sort((a, b) => b.y - a.y) });
   }
   raw.length = 0;
   const threshold = Math.max(3, Math.ceil(doc.numPages * 0.02));
-  const isRunning = (l) => (keyCounts.get(`${edgeBand(l)}:${lineKey(l)}`) || 0) >= threshold && l.text.length < 120;
+  const numbered = numberedRunningLines(pages);
+  const runningKeys = new Set([...keyCounts].filter(([, n]) => n >= threshold).map(([k]) => k));
+  for (const l of numbered) runningKeys.add(`${edgeBand(l)}:${lineKey(l)}`);
+  // OCR misreads a page number now and then ("IB THE SECRET GARDEN" on page 18, "MISTRESS MARY n"): the first or last
+  // line of a page that is a running line but for a short word where its number should be is one too.
+  const outermost = new Set(pages.flatMap(({ lines }) => { const text = lines.filter((l) => !l.image); return [text[0], text[text.length - 1]]; }));
+  const misreadNumber = (l) => outermost.has(l) && numberVariants(lineKey(l)).some((k) => runningKeys.has(`${edgeBand(l)}:${k}`));
+  const isRunning = (l) => numbered.has(l) || (l.text.length < 120 && (runningKeys.has(`${edgeBand(l)}:${lineKey(l)}`) || misreadNumber(l)));
 
   // Pass 2: blocks per page, merged into sections.
   let emptyPages = 0;
-  const pageBlocks = pages.map(({ p, lines }) => {
-    const blocks = linesToBlocks(lines, { bodySize, isRunning });
+  const pageBlocks = pages.map(({ p, ocr, lines }) => {
+    const blocks = linesToBlocks(lines, ocr ? { bodySize: ocrBodySize, isRunning, ocr, pitch: ocrPitch } : { bodySize, isRunning });
     if (!blocks.some((b) => b.type !== 'img')) emptyPages++;
     if (!blocks.length) blocks.push({ type: 'p', text: '', html: `<span class="pdf-empty">[Page ${p} has no extractable text - use the page view]</span>`, cont: false, bullet: false });
     return { p, blocks };
@@ -598,6 +852,7 @@ export async function convertPdf(buffer, { filename }) {
     sections,
     toc: toc.length ? toc : [],
     images,
-    extra: { pageCount: doc.numPages, textPages: doc.numPages - emptyPages, original: 'original.pdf' },
+    // A scanned book is shown as its pages at first: the text of a scan is only as good as the OCR engine made it.
+    extra: { pageCount: doc.numPages, textPages: doc.numPages - emptyPages, scanned: scannedPages * 2 >= doc.numPages, original: 'original.pdf' },
   };
 }

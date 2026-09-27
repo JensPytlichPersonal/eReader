@@ -314,6 +314,16 @@ test('the bundled fonts are served with the app', async () => {
   }
 });
 
+test('the PDF viewer gets the decoders for scanned pages (JBIG2, CCITT fax, JPEG 2000) and colour profiles', async () => {
+  for (const file of ['wasm/jbig2.wasm', 'wasm/openjpeg.wasm', 'wasm/qcms_bg.wasm', 'wasm/jbig2_nowasm_fallback.js', 'wasm/openjpeg_nowasm_fallback.js', 'iccs/CGATS001Compat-v2-micro.icc']) {
+    const res = await fetch(`${origin}/vendor/pdfjs/${file}`, { method: 'HEAD' });
+    assert.equal(res.status, 200, file);
+  }
+  // The fallbacks are imported as modules, which browsers only run when they are sent as scripts.
+  const fallback = await fetch(`${origin}/vendor/pdfjs/wasm/jbig2_nowasm_fallback.js`, { method: 'HEAD' });
+  assert.match(fallback.headers.get('content-type'), /javascript/);
+});
+
 test('scripts and styles are checked for changes on every load, so a reload gets a new version', async () => {
   for (const file of ['/js/reader.js', '/js/settings-page.js', '/css/app.css', '/css/reader.css']) {
     const res = await fetch(origin + file);

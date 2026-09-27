@@ -10,13 +10,20 @@ function loadPdfjs() {
   return pdfjsPromise;
 }
 
+// Where pdf.js finds its data. Scanned pages are mostly JBIG2, CCITT fax or JPEG 2000 images, which it decodes
+// with the WebAssembly modules in wasm/: without them those pages draw blank.
+const DOCUMENT_OPTIONS = {
+  cMapUrl: '/vendor/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/vendor/pdfjs/standard_fonts/',
+  wasmUrl: '/vendor/pdfjs/wasm/', iccUrl: '/vendor/pdfjs/iccs/',
+};
+
 /**
  * Draws one page of a PDF on a new canvas, `maxSide` pixels along its longer side, fetching only the parts
  * of the file that page needs. The page number is kept within the document; returns { canvas, page }.
  */
 export async function renderPdfPage(url, pageNumber, maxSide) {
   const pdfjs = await loadPdfjs();
-  const task = pdfjs.getDocument({ url, cMapUrl: '/vendor/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/vendor/pdfjs/standard_fonts/', disableAutoFetch: true, disableStream: true });
+  const task = pdfjs.getDocument({ url, ...DOCUMENT_OPTIONS, disableAutoFetch: true, disableStream: true });
   try {
     const doc = await task.promise;
     const number = Math.min(Math.max(1, Math.round(pageNumber) || 1), doc.numPages);
@@ -33,6 +40,23 @@ export async function renderPdfPage(url, pageNumber, maxSide) {
   }
 }
 
+/** Whether part of a drawn page is in colour: a picture, rather than print on paper, however yellowed the paper. */
+function colourful(canvas, r, dpr) {
+  const side = 48;
+  const probe = document.createElement('canvas');
+  probe.width = side;
+  probe.height = side;
+  const ctx = probe.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(canvas, r.x * dpr, r.y * dpr, r.w * dpr, r.h * dpr, 0, 0, side, side);
+  const d = ctx.getImageData(0, 0, side, side).data;
+  let vivid = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const max = Math.max(d[i], d[i + 1], d[i + 2]);
+    if (max > 40 && (max - Math.min(d[i], d[i + 1], d[i + 2])) / max > 0.35) vivid++;
+  }
+  return vivid > side * side * 0.15;
+}
+
 export class PdfPageView {
   constructor(container, canvas) {
     this.container = container;
@@ -46,7 +70,7 @@ export class PdfPageView {
 
   async open(url) {
     const pdfjs = await loadPdfjs();
-    this.task = pdfjs.getDocument({ url, cMapUrl: '/vendor/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/vendor/pdfjs/standard_fonts/' });
+    this.task = pdfjs.getDocument({ url, ...DOCUMENT_OPTIONS });
     this.doc = await this.task.promise;
     return this.doc.numPages;
   }
@@ -107,18 +131,12 @@ export class PdfPageView {
     const scale = this.fit === 'width' ? availW / base.width : Math.min(availW / base.width, availH / base.height);
     const viewport = page.getViewport({ scale });
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    const canvas = this.canvas;
-    canvas.width = Math.floor(viewport.width * dpr);
-    canvas.height = Math.floor(viewport.height * dpr);
-    canvas.style.width = `${Math.floor(viewport.width)}px`;
-    canvas.style.height = `${Math.floor(viewport.height)}px`;
-    canvas.classList.remove('inverted');
-    const ctx = canvas.getContext('2d', { alpha: false });
     if (this.rendering) { try { this.rendering.cancel(); } catch { /* ignore */ } }
-    // Render the page as printed onto an offscreen canvas first.
+    // Render the page as printed onto an offscreen canvas first. The page on screen stays until the next one is ready:
+    // a scan can take a moment to decode, and an e-ink screen should not flash a blank page meanwhile.
     const off = this.offscreen ||= document.createElement('canvas');
-    off.width = canvas.width;
-    off.height = canvas.height;
+    off.width = Math.floor(viewport.width * dpr);
+    off.height = Math.floor(viewport.height * dpr);
     const offCtx = off.getContext('2d', { alpha: false });
     offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const task = page.render({ canvasContext: offCtx, viewport });
@@ -126,12 +144,22 @@ export class PdfPageView {
     try { await task.promise; } catch (err) { if (err?.name !== 'RenderingCancelledException') throw err; return; }
     this.rendering = null;
     if (token !== this.renderToken) return;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    let rects = [];
     if (invert) {
-      // Dark theme: invert the page but paste the photographs back as they were.
-      let rects = [];
+      // Dark theme: invert the page but paste the photographs back as they were. Images that cover the page are a scan
+      // of it, which is inverted along with it, but for those in colour, such as a coloured plate.
       try { rects = await this.imageRects(page, viewport); } catch { rects = []; }
       if (token !== this.renderToken) return;
+      if (rects.reduce((sum, r) => sum + r.w * r.h, 0) >= viewport.width * viewport.height * 0.85) rects = rects.filter((r) => colourful(off, r, dpr));
+    }
+    const canvas = this.canvas;
+    canvas.width = off.width;
+    canvas.height = off.height;
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+    canvas.classList.remove('inverted');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (invert) {
       ctx.filter = 'invert(1) hue-rotate(180deg)';
       ctx.drawImage(off, 0, 0);
       ctx.filter = 'none';
