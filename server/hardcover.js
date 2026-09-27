@@ -8,22 +8,26 @@ import { LookupError, USER_AGENT, rankMatches } from './lookup.js';
 const API = 'https://api.hardcover.app/v1/graphql';
 const SITE = 'https://hardcover.app';
 
+// A book's cover can be in three places: the edition Hardcover shows it with (the cover on its
+// website), a cached copy of that, and the book's own image, which can be an older, smaller one.
+const COVERS = 'image { url width height } cached_image default_cover_edition { image { url width height } }';
 // What a match needs of a book. Contributions include translators and illustrators; authors have
 // no role or "Author".
-const BOOK = 'id title release_year image { url } contributions { contribution author { name } } book_series { position featured series { name } }';
+const BOOK = `id title release_year ${COVERS} contributions { contribution author { name } } book_series { position featured series { name } }`;
 // A request may hold one search and nothing else, so the books it finds are fetched in a second one.
-const SEARCH = 'query Search($q: String!) { search(query: $q, query_type: "Book", per_page: 8, page: 1) { ids } }';
+const SEARCH = 'query Search($q: String!) { search(query: $q, query_type: "Book", per_page: 8, page: 1) { ids error } }';
 const DETAILS = `query Details($ids: [Int!]!, $isbns: [String!]!) {
   books(where: {id: {_in: $ids}}) { ${BOOK} }
   editions(where: {isbn_13: {_in: $isbns}}, limit: 2) { title book { ${BOOK} } }
 }`;
-const COVER = 'query Cover($id: Int!) { books(where: {id: {_eq: $id}}, limit: 1) { image { url } } }';
+const COVER = `query Cover($id: Int!) { books(where: {id: {_eq: $id}}, limit: 1) { ${COVERS} } }`;
 
 const list = (v) => (Array.isArray(v) ? v : []);
 const isBook = (b) => Number.isInteger(b?.id) && b.id > 0 && typeof b.title === 'string' && b.title.trim() !== '';
 
 /** The ids of the books a search found, in order. An answer without them is reported, not taken as "nothing found". */
 function foundIds(search) {
+  if (typeof search?.error === 'string' && search.error.trim()) throw new LookupError(`Hardcover could not search: ${search.error.trim().slice(0, 200)}`);
   let ids = search?.ids;
   if (typeof ids === 'string') {
     try { ids = JSON.parse(ids); } catch { ids = null; }
@@ -44,6 +48,24 @@ function publicImageUrl(value) {
   }
 }
 
+/**
+ * The address of a book's largest cover. With the same size, or sizes not known, the one Hardcover
+ * shows on its website comes first.
+ */
+function bestCover(book) {
+  let cached = book.cached_image;
+  if (typeof cached === 'string') {
+    try { cached = JSON.parse(cached); } catch { cached = null; }
+  }
+  const size = (image) => (Number(image?.width) || 0) * (Number(image?.height) || 0);
+  let best = null;
+  for (const image of [book.default_cover_edition?.image, cached, book.image]) {
+    const url = publicImageUrl(image?.url);
+    if (url && (!best || size(image) > best.size)) best = { url, size: size(image) };
+  }
+  return best?.url ?? null;
+}
+
 /** A Hardcover book as a match to offer. With `editionTitle`, the book was found by an edition's ISBN. */
 function toMatch(book, { byIsbn = false, editionTitle } = {}) {
   const authors = list(book.contributions)
@@ -57,7 +79,7 @@ function toMatch(book, { byIsbn = false, editionTitle } = {}) {
     .map((s) => ({ name: s.series.name, position: s.position }));
   // Titles such as "Caliban's War (The Expanse, #2)" are tidied the way uploaded books are.
   const details = withTitleSeries({ title: String((byIsbn && editionTitle) || book.title).trim(), series });
-  const cover = publicImageUrl(book.image?.url);
+  const cover = bestCover(book);
   return {
     key: `hardcover:${book.id}`,
     source: 'hardcover',
@@ -136,7 +158,7 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
    */
   async function cover(id) {
     if (!Number.isInteger(id) || id <= 0) throw new TypeError(`Not a Hardcover book id: ${id}`);
-    const address = publicImageUrl(list((await query(COVER, { id })).books)[0]?.image?.url);
+    const address = bestCover(list((await query(COVER, { id })).books)[0] ?? {});
     if (!address) throw new LookupError('Hardcover has no cover for this book.');
     let res;
     let image;
