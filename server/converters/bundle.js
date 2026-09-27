@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chunkNodes, collectHeadings, serialize, textLength, isTag } from './html.js';
+import { stripWatermarks } from './watermarks.js';
 import { DomUtils } from 'htmlparser2';
 
 export const SECTION_BUDGET = 40000;
@@ -186,7 +187,8 @@ export async function writeBundle(dir, book) {
 
 /** Utility for converters: guess a title from a filename. */
 export function titleFromFilename(name) {
-  return path.basename(name).replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Untitled';
+  const title = path.basename(name).replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ');
+  return stripWatermarks(title).replace(/\s+/g, ' ').trim() || 'Untitled';
 }
 
 export function imageExt(nameOrMime, data) {

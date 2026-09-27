@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { normalizeDocument } from './html.js';
 import { assembleSections, titleFromFilename } from './bundle.js';
 import { encodePng } from './png.js';
+import { isWatermark } from './watermarks.js';
 
 const require = createRequire(import.meta.url);
 const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
@@ -136,6 +137,7 @@ export function linesToBlocks(lines, ctx = {}) {
 
   const kept = lines.filter((l) => {
     if (l.image) return true;
+    if (isWatermark(l.text)) return false;
     const band = edgeBand(l);
     if (!band) return true;
     if (/^[\divxlc]+$/i.test(l.text.replace(/[\s|·•—–-]/g, ''))) return false;
