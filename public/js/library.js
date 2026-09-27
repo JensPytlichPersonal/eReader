@@ -63,7 +63,7 @@ function visible() {
 function card(b) {
   const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
   const cover = b.hasCover && b.status === 'ready'
-    ? `<img class="cover" loading="lazy" alt="" src="/books/${b.id}/cover?v=${b.addedAt}">`
+    ? `<img class="cover" loading="lazy" alt="" src="/books/${b.id}/cover?v=${b.convertedAt || b.addedAt}">`
     : `<div class="cover placeholder"><div class="t">${escapeHtml(b.title)}</div><div class="a">${escapeHtml(b.author)}</div></div>`;
   const st = b.status === 'processing' ? '<div class="status">Preparing…</div>' : b.status === 'error' ? `<div class="status err" title="${escapeHtml(b.error || '')}">Could not convert</div>` : '';
   const link = b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : '';

@@ -178,9 +178,14 @@ test('upload, conversion, shared library and per-user progress with conflict det
   r = await jens(`/api/books/${id}`, { method: 'PATCH', body: { title: 'Renamed', author: 'Someone' } });
   assert.equal(r.status, 200);
   assert.equal(r.data.book.title, 'Renamed');
+  const before = (await jens(`/api/books/${id}`)).data.book.convertedAt;
+  assert.ok(before > 0);
+  await new Promise((res) => setTimeout(res, 5));
   r = await jens(`/api/books/${id}/reprocess`, { method: 'POST' });
   assert.equal(r.status, 202);
-  await waitReady(jens, id);
+  const after = await waitReady(jens, id);
+  assert.ok(after.book.convertedAt > before, 'reconversion bumps convertedAt');
+  assert.equal(after.manifest.convertedAt, after.book.convertedAt);
   r = await jens(`/api/books/${id}`, { method: 'DELETE' });
   assert.equal(r.status, 200);
   r = await anna(`/api/books/${id}`);

@@ -36,6 +36,9 @@ const state = {
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const sections = () => state.manifest.sections;
+// Book files are cached hard (browser and offline cache); the conversion time in the URL makes a reconverted book load fresh.
+const ver = () => state.manifest?.convertedAt || state.book?.convertedAt || 0;
+const bookUrl = (rel) => `${base}${rel}?v=${ver()}`;
 const localKey = `ereader.pos.${bookId}`;
 
 function percentOf(section, offset) {
@@ -222,7 +225,7 @@ function locatorForCurrentPage() {
 // ---------------------------------------------------------------- sections
 async function fetchSection(idx) {
   if (state.cache.has(idx)) return state.cache.get(idx);
-  const res = await fetch(`${base}sections/${idx}.html`, { credentials: 'same-origin' });
+  const res = await fetch(bookUrl(`sections/${idx}.html`), { credentials: 'same-origin' });
   if (res.status === 401) { location.href = `/login?next=${encodeURIComponent(location.pathname)}`; throw new Error('Signed out'); }
   if (!res.ok) throw new Error(`Could not load section ${idx}`);
   const html = await res.text();
@@ -239,7 +242,7 @@ function waitForImages(root, timeout = 2500) {
   const imgs = [...root.querySelectorAll('img[data-src]')];
   const pending = [];
   for (const img of imgs) {
-    img.src = base + img.dataset.src;
+    img.src = bookUrl(img.dataset.src);
     img.removeAttribute('data-src');
     img.removeAttribute('loading');
     if (!img.complete) pending.push(new Promise((resolve) => { img.onload = img.onerror = resolve; }));
@@ -690,6 +693,22 @@ function bindInput() {
   setInterval(checkRemote, 30000);
 }
 
+/** Remove offline-cache entries of this book that belong to an older conversion. */
+async function dropStaleCache() {
+  if (!('caches' in window)) return;
+  try {
+    const current = `v=${ver()}`;
+    for (const name of await caches.keys()) {
+      if (!name.endsWith('-books')) continue;
+      const cache = await caches.open(name);
+      for (const req of await cache.keys()) {
+        const u = new URL(req.url);
+        if (u.pathname.startsWith(base) && !u.pathname.endsWith('/book.json') && u.search !== `?${current}`) await cache.delete(req);
+      }
+    }
+  } catch { /* ignore */ }
+}
+
 // ---------------------------------------------------------------- start
 async function init() {
   applyTheme(settings);
@@ -720,7 +739,8 @@ async function init() {
   state.manifest = manifest;
   state.bookmarks = bookmarks || [];
   els.title.textContent = manifest.title;
-  if (manifest.hasStyles) { const l = $('book-styles'); l.href = `${base}styles.css`; l.disabled = false; }
+  if (manifest.hasStyles) { const l = $('book-styles'); l.href = bookUrl('styles.css'); l.disabled = false; }
+  dropStaleCache();
 
   // Where to start: the newest of the server position and this device's last local position.
   const local = (() => { try { return JSON.parse(localStorage.getItem(localKey) || 'null'); } catch { return null; } })();
