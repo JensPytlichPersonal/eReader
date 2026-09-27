@@ -195,9 +195,17 @@ Wide windows show two columns; switch to one column in the display settings if y
 | --- | --- |
 | EPUB 2 and 3 | Chapters, images, table of contents (nav or NCX), footnote links. Publisher CSS is reduced to a few typographic hints so every book follows your settings. |
 | MOBI, PRC, AZW, AZW3/KF8 | PalmDOC and HUFF/CDIC compression, images, table of contents from the NCX index, hybrid MOBI7+KF8 files. DRM-protected files are rejected. |
-| PDF | Text is extracted per page and merged into normal-sized sections, so wide screens fill both columns. Running headers and footers repeated across pages, page numbers and line-break hyphenation are removed; bulleted lists, italic/bold runs and embedded images are kept, and footnotes are collected at the end of each section with links from the markers and back. Each top-level heading starts a new section. Invisible page markers tie the reflowed text to the *Original pages* view, so both views share the same position. In the dark theme the page view inverts the page but leaves photographs as printed. Scanned PDFs without text can still be read in the page view. |
+| PDF | Text is extracted per page and merged into normal-sized sections, so wide screens fill both columns. Running headers and footers repeated across pages or carrying the page number, page numbers and line-break hyphenation are removed; bulleted lists, italic/bold runs and embedded images are kept, and footnotes are collected at the end of each section with links from the markers and back. Each top-level heading starts a new section. Invisible page markers tie the reflowed text to the *Original pages* view, so both views share the same position, and each PDF opens in the view last used for it on the device. In the dark theme the page view inverts the page, scans included, but leaves photographs and colour plates as printed. See below for scanned books. |
 | Markdown | CommonMark + GitHub tables, YAML front matter for title/author, headings become the table of contents. |
 | Text | Paragraph and heading detection, including hard-wrapped Gutenberg-style text; UTF-8, UTF-16 and Latin-1. |
+
+**Scanned books.** A PDF of page images, such as a book from the Internet Archive, opens in the *Original pages*
+view, which draws the JBIG2, CCITT fax and JPEG 2000 images scans are usually stored as. Most scans also carry the
+text an OCR engine read from the pages, invisible under the images, and that text is what the *Text* view reflows. OCR
+places each word by the box around it, so on a scan the converter groups words into lines by how their boxes overlap,
+tells headings by their size together with their centring or the space around them, starts paragraphs at indented
+lines, keeps quote marks with their words, and drops what the engine read into pictures and specks. Running heads go
+even when the engine misread their page number. Mistakes in the words themselves stay as the engine made them.
 
 Books from OceanofPDF have an "OceanofPDF.com" link stamped into every chapter (or onto the pages
 of a PDF) and the site's name at the start of the file name. Conversion removes the stamp in every
