@@ -1,0 +1,57 @@
+# Deploys main to the server after every merge: run the tests, then connect over SSH with a key whose
+# only permitted command is deploy/ereader-deploy.sh. Setup steps are under "Deploying on merge" in
+# the README. Secrets: DEPLOY_SSH_KEY (the private key), DEPLOY_KNOWN_HOSTS (the server's host key).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a second merge waits for the first rather than racing it.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  DEPLOY_HOST: books.pytlich.dk
+  DEPLOY_USER: deploy
+  DEPLOY_PORT: "22"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install the deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$DEPLOY_SSH_KEY" ]; then echo "::error::The DEPLOY_SSH_KEY secret is not set"; exit 1; fi
+          if [ -z "$DEPLOY_KNOWN_HOSTS" ]; then echo "::error::The DEPLOY_KNOWN_HOSTS secret is not set"; exit 1; fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+      - name: Run the deploy script on the server
+        run: >
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT"
+          -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20
+          "$DEPLOY_USER@$DEPLOY_HOST" ereader-deploy
