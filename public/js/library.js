@@ -529,6 +529,7 @@ function editDetails(b) {
   const fail = (message) => { error.textContent = message; error.classList.remove('hidden'); };
   const addRow = () => { rows.insertAdjacentHTML('beforeend', seriesRow()); return rows.lastElementChild; };
   let found = [];
+  let picked = null; // the match the form was filled in from
 
   // Searches Open Library for the title and author as typed (and the ISBN in the file).
   async function lookUp() {
@@ -550,8 +551,10 @@ function editDetails(b) {
   }
 
   // Fills in the form from a match. Its series join the rows already there; a series that is
-  // already listed takes the match's number.
+  // already listed takes the match's number. Its cover is offered too, and chosen by default
+  // when the book has none.
   function useMatch(m) {
+    picked = m;
     form.elements.title.value = m.title;
     if (m.author) form.elements.author.value = m.author;
     const nameKey = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -562,7 +565,9 @@ function editDetails(b) {
       if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
       if (s.position != null) row.querySelector('[name="series-no"]').value = s.position;
     }
-    matches.innerHTML = `<p class="hint">Filled in from <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">Open Library</a>. Check the details, then save.</p>`;
+    matches.innerHTML = `<p class="hint">Filled in from <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">Open Library</a>. Check the details, then save.</p>
+      ${m.coverId ? `<label class="use-cover"><input type="checkbox" name="useCover"${b.hasCover ? '' : ' checked'}>
+        <img class="cover" src="${escapeHtml(m.cover)}" alt=""><span>${b.hasCover ? 'Use this cover instead of the current one' : 'Use this cover'}</span></label>` : ''}`;
     lookupBtn.focus();
   }
 
@@ -586,11 +591,21 @@ function editDetails(b) {
     const bad = series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?$/.test(s.position));
     if (!title) return fail('The book needs a title.');
     if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5.`);
+    const saveBtn = form.querySelector('[type="submit"]');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
     try {
+      // The cover first: when Open Library cannot send it, nothing has changed yet.
+      if (form.elements.useCover?.checked) await api(`/api/books/${b.id}/cover`, { method: 'PUT', body: { source: 'openlibrary', coverId: picked.coverId } });
       await api(`/api/books/${b.id}`, { method: 'PATCH', body: { title, author: form.elements.author.value.trim(), series } });
       close();
       await load();
-    } catch (err) { fail(err.message); }
+    } catch (err) {
+      fail(err.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    }
   });
 }
 

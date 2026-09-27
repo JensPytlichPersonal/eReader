@@ -1,6 +1,7 @@
 // Looks books up in Open Library (openlibrary.org), a free catalogue that needs no key or account.
 // Only the server talks to it, when someone presses "Look up on Open Library": the ISBN in the
 // book's file and the title and author typed in the form go out, and matching books come back.
+// When a match's cover is chosen, the server fetches that picture on saving.
 import { withTitleSeries } from './converters/series.js';
 
 const SITE = 'https://openlibrary.org';
@@ -52,7 +53,9 @@ function toMatch(doc, { title, byIsbn = false, site }) {
     author: [...new Set(list(doc.author_name).filter((a) => typeof a === 'string'))].join(', ').slice(0, 500),
     year: Number.isInteger(doc.first_publish_year) ? doc.first_publish_year : null,
     series: details.series,
+    // `cover` is a small picture to show; `coverId` asks for the large one to use (see cover()).
     cover: cover ? `${COVERS}/b/id/${cover}-M.jpg` : null,
+    coverId: cover ?? null,
     url: `${site}${onEdition ? edition.key : doc.key}`,
     byIsbn,
   };
@@ -95,7 +98,7 @@ export function createOpenLibrary({ url = SITE, interval = 1000, timeout = 10000
    * own edition comes first, then the titles closest to the one typed; when some share words with
    * it, those that share none are left out. At most five.
    * @param {{title?: string, author?: string, isbns?: string[], language?: string}} book language as in the file ("da", "en-GB")
-   * @returns {Promise<Array<{key: string, title: string, author: string, year: number|null, series: Array<{name: string, position: number|null}>, cover: string|null, url: string, byIsbn: boolean}>>}
+   * @returns {Promise<Array<{key: string, title: string, author: string, year: number|null, series: Array<{name: string, position: number|null}>, cover: string|null, coverId: number|null, url: string, byIsbn: boolean}>>}
    */
   async function lookup({ title = '', author = '', isbns = [], language = '' }) {
     // Open Library shows the edition in this language where there is one.
@@ -128,5 +131,26 @@ export function createOpenLibrary({ url = SITE, interval = 1000, timeout = 10000
     return ranked.filter((r) => !close || r.score > 0).slice(0, SHOWN).map((r) => r.m);
   }
 
-  return { lookup };
+  /**
+   * The large picture of a cover, by the `coverId` of a match. Open Library keeps many of them on
+   * archive.org and redirects there.
+   * @returns {Promise<Buffer>} the image as sent; the caller checks that it is one
+   */
+  async function cover(id) {
+    if (!Number.isInteger(id) || id <= 0) throw new TypeError(`Not a cover id: ${id}`);
+    let res;
+    let image;
+    try {
+      // Without default=false a missing cover comes back as a blank picture.
+      res = await fetch(`${COVERS}/b/id/${id}-L.jpg?default=false`, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(timeout) });
+      image = Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      throw new LookupError('Open Library did not send the cover. Try again in a moment.', { cause: err });
+    }
+    if (res.status === 404) throw new LookupError('Open Library no longer has this cover.');
+    if (!res.ok) throw new LookupError(`Open Library did not send the cover (error ${res.status}). Try again in a moment.`);
+    return image;
+  }
+
+  return { lookup, cover };
 }
