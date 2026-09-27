@@ -11,6 +11,10 @@ const els = {
   filter: document.getElementById('filter'),
   sort: document.getElementById('sort'),
   layout: document.getElementById('layout'),
+  display: document.getElementById('display'),
+  menu: document.getElementById('btn-menu'),
+  sectionName: document.getElementById('section-name'),
+  activeFilters: document.getElementById('active-filters'),
   upload: document.getElementById('btn-upload'),
   file: document.getElementById('file-input'),
   drop: document.getElementById('dropzone'),
@@ -28,8 +32,23 @@ let view = prefs.view === 'series' ? 'series' : 'books';
 // How the Books tab shows a series: folded into a stack, as a shelf with every title, or as separate books.
 let layout = ['stacks', 'shelves', 'every'].includes(prefs.layout) ? prefs.layout : 'stacks';
 els.layout.value = layout;
+// The View menu: a list, or cards in three sizes (2, 3 or 4 across on a phone).
+let display = ['list', 'cards-2', 'cards-3', 'cards-4'].includes(prefs.display) ? prefs.display : 'cards-3';
+els.display.value = display;
 
-function savePrefs() { localStorage.setItem('ereader.library', JSON.stringify({ sort: els.sort.value, filter: els.filter.value, view, layout })); }
+function savePrefs() { localStorage.setItem('ereader.library', JSON.stringify({ sort: els.sort.value, filter: els.filter.value, view, layout, display })); }
+
+// On a phone the card sizes are columns across the screen; wider screens fit more cards of each size.
+const phone = matchMedia('(max-width: 599px)');
+function labelViews() {
+  const names = phone.matches ? ['Cards, 2 across', 'Cards, 3 across', 'Cards, 4 across'] : ['Large cards', 'Cards', 'Small cards'];
+  ['cards-2', 'cards-3', 'cards-4'].forEach((value, i) => { els.display.querySelector(`option[value="${value}"]`).textContent = names[i]; });
+}
+labelViews();
+phone.addEventListener?.('change', labelViews);
+
+// Books and series in the chosen view: a grid of cards, or a list.
+const tiles = (html) => `<div class="${display === 'list' ? 'list' : 'grid'}">${html}</div>`;
 
 async function load() {
   const data = await api('/api/books');
@@ -85,6 +104,7 @@ const coverHtml = (b) => (b.hasCover && b.status === 'ready'
 
 /** A book card. In a series view (`ctx.seriesId`) the cover shows the book's number in that series. */
 function card(b, ctx = {}) {
+  if (display === 'list') return bookRow(b, ctx);
   const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
   const cover = coverHtml(b);
   const number = ctx.position != null ? `<span class="cover-tag">#${ctx.position}</span>` : '';
@@ -102,6 +122,24 @@ function card(b, ctx = {}) {
       ${seriesHtml}
       ${progressHtml}
       <div class="meta"><span>${b.progress ? `${pct}%` : ''} ${when}</span><span class="badge">${b.format}</span></div>
+    </div>
+    <button class="menu-btn" aria-label="Options for ${escapeHtml(b.title)}" data-menu="${b.id}">&#8943;</button>
+  </div>`;
+}
+
+/** A book as a row of the list view. In a series (`ctx.position`) the title starts with its number. */
+function bookRow(b, ctx = {}) {
+  const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
+  const about = [escapeHtml(b.author || ''), ...b.series.filter((s) => s.id !== ctx.seriesId).map(seriesLink)].filter(Boolean).join(' · ');
+  const state = b.status === 'processing' ? 'Preparing…' : b.status === 'error' ? 'Could not convert'
+    : b.progress ? `${pct}% · Read ${formatDate(b.progress.updatedAt)}` : `Added ${formatDate(b.addedAt)}`;
+  return `<div class="list-row${ctx.current ? ' current' : ''}" data-id="${b.id}">
+    <div class="thumb">${coverHtml(b)}</div>
+    ${b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : ''}
+    <div class="body">
+      <div class="title">${ctx.position != null ? `<span class="no">#${ctx.position}</span> ` : ''}${escapeHtml(b.title)}</div>
+      ${about ? `<div class="about">${about}</div>` : ''}
+      <div class="meta">${b.progress ? `<div class="progress"><div style="width:${pct}%"></div></div>` : ''}<span>${state}</span><span class="badge">${b.format}</span></div>
     </div>
     <button class="menu-btn" aria-label="Options for ${escapeHtml(b.title)}" data-menu="${b.id}">&#8943;</button>
   </div>`;
@@ -155,13 +193,17 @@ function seriesPlace(g) {
   return { item: null, verb: '', text: g.state === 'finished' ? 'Finished' : '' };
 }
 
+/** How far through a group you are, finished books counting whole. */
+const groupPct = (g) => Math.round(g.items.reduce((sum, i) => sum + (status(i.book) === 'finished' ? 1 : i.book.progress?.percent || 0), 0) / g.items.length * 100);
+
 /** A series or collection as one tile: a stack of books with the one you're on as the top cover. */
 function stackCard(g) {
+  if (display === 'list') return groupRow(g);
   const n = g.items.length;
   const place = seriesPlace(g);
   const cover = coverHtml((place.item || g.items[0]).book);
-  const pct = Math.round(g.items.reduce((sum, i) => sum + (status(i.book) === 'finished' ? 1 : i.book.progress?.percent || 0), 0) / n * 100);
-  return `<div class="card${n > 1 ? ' pile' : ''}">
+  const pct = groupPct(g);
+  return `<div class="card group${n > 1 ? ' pile' : ''}">
     ${n > 1 ? `<div class="stack">${cover}</div>` : cover}<span class="cover-tag">${plural(n, 'book', 'books')}</span>
     <a class="link" href="/?series=${g.id}" data-series="${g.id}" aria-label="${escapeHtml(g.name)}, ${plural(n, 'book', 'books')}"></a>
     <div class="info">
@@ -170,6 +212,23 @@ function stackCard(g) {
       ${g.state !== 'unread' ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : ''}
       <div class="meta"><span class="place">${escapeHtml(place.text)}</span></div>
     </div>
+  </div>`;
+}
+
+/** A series or collection as a row of the list view. */
+function groupRow(g) {
+  const n = g.items.length;
+  const place = seriesPlace(g);
+  const about = [g.author, plural(n, 'book', 'books')].filter(Boolean).map(escapeHtml).join(' · ');
+  return `<div class="list-row group">
+    <div class="thumb${n > 1 ? ' stack' : ''}">${coverHtml((place.item || g.items[0]).book)}</div>
+    <a class="link" href="/?series=${g.id}" data-series="${g.id}" aria-label="${escapeHtml(g.name)}, ${plural(n, 'book', 'books')}"></a>
+    <div class="body">
+      <div class="title">${escapeHtml(g.name)}</div>
+      <div class="about">${about}</div>
+      <div class="meta">${g.state !== 'unread' ? `<div class="progress"><div style="width:${groupPct(g)}%"></div></div>` : ''}<span class="place">${escapeHtml(place.text)}</span></div>
+    </div>
+    <span class="chevron" aria-hidden="true">&#8250;</span>
   </div>`;
 }
 
@@ -189,9 +248,13 @@ function shelf(g) {
       <div class="state">${state}</div>
     </div>`;
   };
+  const current = (i) => i === place.item && g.state !== 'unread';
+  const books = display === 'list'
+    ? tiles(g.items.map((i) => bookRow(i.book, { seriesId: g.id, position: i.position, current: current(i) })).join(''))
+    : `<div class="shelf-row">${g.items.map((i) => shelfBook(i, current(i))).join('')}</div>`;
   return `<section class="shelf">
     <div class="shelf-head"><h2><a href="/?series=${g.id}" data-series="${g.id}">${escapeHtml(g.name)}</a></h2><span class="muted">${facts}</span></div>
-    <div class="shelf-row">${g.items.map((i) => shelfBook(i, i === place.item && g.state !== 'unread')).join('')}</div>
+    ${books}
   </section>`;
 }
 
@@ -216,7 +279,7 @@ function renderSeriesList() {
     return f === 'all' || g.state === f;
   });
   if (!list.length) { els.library.innerHTML = '<div class="empty">No series or collections match.</div>'; return; }
-  els.library.innerHTML = `<div class="grid">${list.sort(sorter()).map(stackCard).join('')}</div>`;
+  els.library.innerHTML = tiles(list.sort(sorter()).map(stackCard).join(''));
 }
 
 function renderSeries(id) {
@@ -237,7 +300,7 @@ function renderSeries(id) {
         ${me.isAdmin ? `<button class="btn" data-edit-series="${g.id}">Rename or remove</button>` : ''}
       </div>
     </div>
-    <div class="grid">${g.items.map((i) => card(i.book, { seriesId: g.id, position: i.position })).join('')}</div>`;
+    ${tiles(g.items.map((i) => card(i.book, { seriesId: g.id, position: i.position })).join(''))}`;
 }
 
 const heading = (text, count) => `<div class="section-title"><h2 style="margin:0">${text}</h2><span class="muted">${count}</span></div>`;
@@ -246,7 +309,7 @@ const heading = (text, count) => `<div class="section-title"><h2 style="margin:0
 function continueReading() {
   if (els.sort.value !== 'recent' || els.search.value.trim() || els.filter.value !== 'all') return '';
   const reading = books.filter((b) => status(b) === 'reading').sort(sorter()).slice(0, 6);
-  return reading.length ? `<div class="section-title"><h2 style="margin:0">Continue reading</h2></div><div class="grid">${reading.map((b) => card(b)).join('')}</div>` : '';
+  return reading.length ? `<div class="section-title"><h2 style="margin:0">Continue reading</h2></div>${tiles(reading.map((b) => card(b)).join(''))}` : '';
 }
 
 function renderBooks() {
@@ -255,7 +318,7 @@ function renderBooks() {
   // Searching always lists the matching books themselves.
   if (layout === 'every' || els.search.value.trim()) {
     const list = visible();
-    els.library.innerHTML = list.length ? `${allBooks}<div class="grid">${list.map((b) => card(b)).join('')}</div>` : '<div class="empty">No books match.</div>';
+    els.library.innerHTML = list.length ? `${allBooks}${tiles(list.map((b) => card(b)).join(''))}` : '<div class="empty">No books match.</div>';
     return;
   }
   // A series matches a filter as a whole: Reading means started but not finished.
@@ -265,12 +328,12 @@ function renderBooks() {
   const shownBooks = singles.filter((b) => keep(status(b))).sort(sorter());
   if (!shownSeries.length && !shownBooks.length) { els.library.innerHTML = '<div class="empty">No books match.</div>'; return; }
   if (layout === 'shelves') {
-    const others = shownBooks.length ? `${heading(shownSeries.length ? 'Other books' : 'Books', shownBooks.length)}<div class="grid">${shownBooks.map((b) => card(b)).join('')}</div>` : '';
+    const others = shownBooks.length ? `${heading(shownSeries.length ? 'Other books' : 'Books', shownBooks.length)}${tiles(shownBooks.map((b) => card(b)).join(''))}` : '';
     els.library.innerHTML = `${cont}${shownSeries.map(shelf).join('')}${others}`;
     return;
   }
   const items = [...shownSeries, ...shownBooks].sort(sorter());
-  els.library.innerHTML = `${allBooks}<div class="grid">${items.map((x) => (x.items ? stackCard(x) : card(x))).join('')}</div>`;
+  els.library.innerHTML = `${allBooks}${tiles(items.map((x) => (x.items ? stackCard(x) : card(x))).join(''))}`;
 }
 
 // The open series is part of the address (/?series=12), so reloading and the back button work.
@@ -300,6 +363,13 @@ function render() {
   els.tabs.querySelector('[data-view="series"] .n').textContent = new Set(books.flatMap((b) => b.series.map((s) => s.id))).size || '';
   document.body.classList.toggle('series-open', seriesId != null);
   els.layout.classList.toggle('hidden', shown !== 'books');
+  els.sectionName.textContent = shown === 'series' ? 'Series & collections' : 'Books';
+  els.library.className = display === 'list' ? 'view-list' : `cols-${display.slice(-1)}`;
+  // With the controls folded away on a phone, say when a search or filter hides books.
+  const q = els.search.value.trim();
+  const narrowing = seriesId == null ? [els.filter.value !== 'all' ? els.filter.selectedOptions[0].textContent : '', q ? `"${q}"` : ''].filter(Boolean) : [];
+  els.activeFilters.innerHTML = narrowing.length ? `<span>Showing ${escapeHtml(narrowing.join(' · '))}</span><button type="button" class="btn small" data-show-all>Show all</button>` : '';
+  els.activeFilters.classList.toggle('hidden', !narrowing.length);
   if (!books.length) {
     els.library.innerHTML = '<div class="empty"><p>The library is empty.</p><p>Upload EPUB, MOBI, PDF, Markdown or text files to get started.</p></div>';
     return;
@@ -329,7 +399,7 @@ async function uploadFiles(files) {
     load();
   }
 }
-els.upload.addEventListener('click', () => els.file.click());
+els.upload.addEventListener('click', () => { setMenu(false); els.file.click(); });
 els.file.addEventListener('change', () => { uploadFiles(els.file.files); els.file.value = ''; });
 for (const ev of ['dragenter', 'dragover']) document.addEventListener(ev, (e) => { e.preventDefault(); els.drop.classList.add('active'); });
 for (const ev of ['dragleave', 'drop']) document.addEventListener(ev, (e) => { e.preventDefault(); if (ev === 'drop' || e.target === document.documentElement) els.drop.classList.remove('active'); });
@@ -504,9 +574,27 @@ els.library.addEventListener('click', (e) => {
   if (b) bookMenu(b);
 });
 
+// On a phone the tabs, search, menus, upload and account links sit behind the menu button.
+function setMenu(open) {
+  document.body.classList.toggle('menu-open', open);
+  els.menu.setAttribute('aria-expanded', String(open));
+  els.menu.setAttribute('aria-label', open ? 'Close menu' : 'Menu');
+  els.menu.innerHTML = open ? '&#10005;' : '&#9776;';
+}
+els.menu.addEventListener('click', () => setMenu(!document.body.classList.contains('menu-open')));
+els.search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { setMenu(false); els.search.blur(); } });
+els.activeFilters.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-show-all]')) return;
+  els.search.value = '';
+  els.filter.value = 'all';
+  savePrefs();
+  render();
+});
+
 els.tabs.addEventListener('click', (e) => {
   const tab = e.target.closest('[data-view]');
   if (!tab) return;
+  setMenu(false);
   view = tab.dataset.view;
   savePrefs();
   if (openSeriesId() != null) { history.pushState(null, '', '/'); openedHere = false; }
@@ -517,6 +605,7 @@ els.search.addEventListener('input', render);
 els.filter.addEventListener('change', () => { savePrefs(); render(); });
 els.sort.addEventListener('change', () => { savePrefs(); render(); });
 els.layout.addEventListener('change', () => { layout = els.layout.value; savePrefs(); render(); });
+els.display.addEventListener('change', () => { display = els.display.value; savePrefs(); render(); });
 document.getElementById('btn-logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.href = '/login'; });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
 

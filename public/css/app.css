@@ -122,37 +122,57 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .uploads { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .uploads .item { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; border: 2px solid var(--line); border-radius: var(--radius); font-size: 14px; }
 
-/* Book grid */
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }
-@media (min-width: 600px) { .grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); } }
+/* Book grid. The View menu sets the card size: exactly 2, 3 or 4 across on a phone, and on wider
+   screens as many cards of that size as fit. Smaller cards show less text. */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-min, 170px), 1fr)); gap: var(--grid-gap, 16px); }
+#library.cols-2 { --card-min: 230px; --shelf-min: 150px; }
+#library.cols-4 {
+  --card-min: 125px; --shelf-min: 88px; --grid-gap: 12px; --edge: 5px;
+  --card-title: 12px; --card-text: 11px; --card-meta: 11px; --card-pad: 6px 6px 5px; --menu-size: 28px; --menu-inset: 4px; --tag-size: 11px; --ph-title: 12px;
+}
+#library.cols-4 .card .author, #library.cols-4 .card .series-line, #library.cols-4 .card:not(.group) .meta, #library.cols-4 .card .cover.placeholder .a { display: none; }
+/* Keep a cover's title clear of the buttons on it */
+#library.cols-4 .card .cover.placeholder { justify-content: flex-start; padding: calc(var(--menu-size) + 2 * var(--menu-inset)) 5px 6px; }
+@media (max-width: 599px) {
+  #library.cols-2 { --cols: 2; }
+  #library.cols-3 {
+    --cols: 3; --grid-gap: 10px;
+    --card-title: 12.5px; --card-text: 11.5px; --card-meta: 11px; --card-pad: 7px 7px 6px; --menu-size: 32px; --menu-inset: 5px; --tag-size: 12px; --ph-title: 13px;
+  }
+  #library.cols-3 .card .meta .badge { display: none; }
+  #library.cols-4 { --cols: 4; --grid-gap: 8px; }
+  #library .grid, #library .shelf-row { grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: var(--grid-gap, 12px); }
+}
 .card { position: relative; display: flex; flex-direction: column; border: 2px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); text-decoration: none; }
 .card:focus-within, .card:hover { border-color: var(--fg); }
 .card .cover { display: block; aspect-ratio: 2 / 3; width: 100%; object-fit: cover; background: var(--panel); border-bottom: 2px solid var(--line); }
 .card .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 12px; gap: 6px; font-weight: 700; }
-.card .cover.placeholder .t { font-size: 16px; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
-.card .cover.placeholder .a { font-size: 12px; font-weight: 500; color: var(--muted); }
-.card .info { padding: 10px 10px 8px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
-.card .title { font-weight: 700; font-size: 14px; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.card .author { font-size: 13px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.card .meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin-top: auto; }
+.card .cover.placeholder .t { font-size: var(--ph-title, 16px); line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
+.card .cover.placeholder .a { font-size: calc(var(--ph-title, 16px) * .75); font-weight: 500; color: var(--muted); }
+.card .info { padding: var(--card-pad, 10px 10px 8px); display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.card .title { font-weight: 700; font-size: var(--card-title, 14px); line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.card .author { font-size: var(--card-text, 13px); color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.card .meta { display: flex; justify-content: space-between; align-items: center; gap: 4px; font-size: var(--card-meta, 12px); color: var(--muted); margin-top: auto; }
 .badge { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
 .progress { height: 8px; border: 1px solid var(--fg); border-radius: 4px; overflow: hidden; background: var(--bg); }
 .progress > div { height: 100%; background: var(--fg); }
-.card .menu-btn { position: absolute; top: 6px; right: 6px; width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 18px; line-height: 1; }
-.card .status { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-weight: 700; background: var(--bg); padding: 8px; border-top: 2px solid var(--fg); border-bottom: 2px solid var(--fg); }
+.card .menu-btn { position: absolute; top: var(--menu-inset, 6px); right: var(--menu-inset, 6px); width: var(--menu-size, 40px); height: var(--menu-size, 40px); padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: calc(var(--menu-size, 40px) * .45); line-height: 1; }
+.card .status { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-weight: 700; font-size: var(--card-title, 16px); background: var(--bg); padding: 8px; border-top: 2px solid var(--fg); border-bottom: 2px solid var(--fg); }
 .card .status.err { color: var(--danger); }
 .card .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
-.card .series-line { font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.card .series-line { font-size: var(--card-text, 13px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .card .series-line a { position: relative; z-index: 1; font-weight: 600; }
 /* Number in the series on a book's cover, number of books on a series' cover */
-.card .cover-tag, .shelf-book .cover-tag { position: absolute; top: 6px; left: 6px; padding: 2px 8px; border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 14px; }
+.card .cover-tag, .shelf-book .cover-tag { position: absolute; top: var(--menu-inset, 6px); left: var(--menu-inset, 6px); padding: 2px calc(var(--tag-size, 14px) * .55); border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: var(--tag-size, 14px); }
 /* A series folded into one tile: the cover of the book you're on, with the edges of the others behind it */
-.card .stack { position: relative; isolation: isolate; padding: 8px 8px 0 0; border-bottom: 2px solid var(--line); }
-.card .stack::before, .card .stack::after { content: ""; position: absolute; border: 2px solid var(--muted); border-radius: 3px; background: var(--panel); }
-.card .stack::before { top: 0; right: 0; bottom: 8px; left: 8px; }
-.card .stack::after { top: 4px; right: 4px; bottom: 4px; left: 4px; }
-.card .stack .cover { position: relative; z-index: 1; border: 2px solid var(--muted); border-bottom: 0; border-radius: 3px 3px 0 0; }
-.card.pile .cover-tag { top: 14px; }
+.stack { position: relative; isolation: isolate; padding: var(--edge, 8px) var(--edge, 8px) 0 0; }
+.stack::before, .stack::after { content: ""; position: absolute; border: 2px solid var(--muted); border-radius: 3px; background: var(--panel); }
+.stack::before { top: 0; right: 0; bottom: var(--edge, 8px); left: var(--edge, 8px); }
+.stack::after { top: calc(var(--edge, 8px) / 2); right: calc(var(--edge, 8px) / 2); bottom: calc(var(--edge, 8px) / 2); left: calc(var(--edge, 8px) / 2); }
+.stack .cover { position: relative; z-index: 1; border: 2px solid var(--muted); border-radius: 3px 3px 0 0; }
+.card .stack { border-bottom: 2px solid var(--line); }
+.card .stack .cover { border-bottom: 0; }
+.card.pile .cover-tag { top: calc(var(--edge, 8px) + var(--menu-inset, 6px)); }
 .card .meta .place { font-weight: 700; color: var(--fg); }
 /* Shelves: each series on a row of its own, every book with its title */
 .shelf { margin: 22px 0 8px; }
@@ -160,8 +180,8 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .shelf-head h2 { margin: 0; font-size: 20px; }
 .shelf-head h2 a { text-decoration: none; }
 .shelf-head h2 a::after { content: " \203A"; }
-.shelf-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 16px 12px; padding-bottom: 18px; border-bottom: 2px solid var(--line); }
-@media (max-width: 599px) { .shelf-row { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 14px 10px; } }
+.shelf-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--shelf-min, 112px), 1fr)); gap: 16px 12px; padding-bottom: 18px; border-bottom: 2px solid var(--line); }
+.shelf .list { margin-bottom: 18px; }
 .shelf-book { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .shelf-book .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
 .shelf-book .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 8px; text-align: center; overflow: hidden; }
@@ -172,12 +192,54 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .shelf-book .title { font-weight: 700; font-size: 13px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .shelf-book .state { font-size: 12px; color: var(--muted); }
 .shelf-book .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+/* List view: one row per book or series */
+.list { display: flex; flex-direction: column; border-top: 2px solid var(--line); }
+.list-row { position: relative; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 4px; border-bottom: 2px solid var(--line); }
+.list-row:hover, .list-row:focus-within { background: var(--panel); }
+.list-row.current { box-shadow: inset 5px 0 0 var(--fg); padding-left: 14px; }
+.list-row .thumb { width: 48px; }
+.list-row .stack { --edge: 4px; }
+.list-row .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 2px solid var(--line); border-radius: 3px; }
+.list-row .stack .cover { border-color: var(--muted); }
+.list-row .cover.placeholder > * { display: none; }
+.list-row .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.list-row .title { font-weight: 700; font-size: 15px; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.list-row .title .no { color: var(--muted); }
+.list-row .about { font-size: 13px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.list-row .about a { position: relative; z-index: 1; font-weight: 600; color: var(--fg); }
+.list-row .meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.list-row .meta .progress { width: 64px; flex: none; }
+.list-row .meta .place { font-weight: 700; color: var(--fg); }
+.list-row .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+.list-row .menu-btn { position: relative; z-index: 1; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 18px; line-height: 1; }
+.list-row .chevron { padding: 0 12px; font-size: 26px; font-weight: 700; }
 .series-head { margin-bottom: 18px; }
 .series-head h1 { margin: 14px 0 4px; }
 .series-head .row { margin-top: 12px; }
 .series-head .btn.primary { white-space: normal; text-align: left; padding-top: 6px; padding-bottom: 6px; }
 .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
 .section-title { display: flex; align-items: baseline; gap: 10px; margin: 20px 0 10px; }
+
+/* Phones: the tabs, search, menus, upload and account links sit behind the menu button, so the books
+   get the screen. A line under the header says when a search or filter hides books. */
+.menu-toggle, .section-name, .active-filters { display: none; }
+@media (max-width: 599px) {
+  .library .app-header { flex-wrap: wrap; gap: 8px 12px; padding-top: calc(6px + var(--safe-top)); padding-bottom: 6px; }
+  .library .menu-toggle { display: inline-flex; font-size: 22px; }
+  .library .app-header .brand { display: none; }
+  .library .section-name { display: block; font-weight: 800; font-size: 18px; }
+  .library .app-header nav { display: none; flex-basis: 100%; }
+  .library.menu-open .app-header nav { display: flex; }
+  .library:not(.menu-open) #library-controls { display: none; }
+  .library .dropzone { display: none; }
+  .library:not(.series-open) .toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .library .toolbar input[type="search"], .library .toolbar .btn.primary { grid-column: 1 / -1; }
+  .library .toolbar select { width: 100%; min-width: 0; }
+  .library main.page { padding-top: 10px; }
+  .library .section-title { margin: 12px 0 8px; }
+  .library .section-title h2 { font-size: 17px; }
+  .library:not(.menu-open) .active-filters { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-weight: 600; }
+}
 
 /* Dialog / sheet */
 .sheet-backdrop { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,.35); z-index: 20; }

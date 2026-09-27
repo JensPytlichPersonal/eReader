@@ -25,6 +25,9 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're
   on; opening it lists the books in reading order with a button that continues where you are. Series
   are picked up from the books themselves, and any books can be grouped by hand.
+- **List or cards.** The View menu shows the library as a list or as cards in three sizes. On a phone
+  the cards are 2, 3 or 4 across, and the tabs, search, menus, upload and account links sit behind
+  the ☰ button so the books fill the screen.
 - **Table of contents, bookmarks, progress slider, chapter titles** and a "who else is reading" peek.
 - **Upload from the app** (button or drag and drop). Conversion runs in the background.
 - **Installable.** Add it to the home screen on iOS or Android for a full-screen app. Books you have
