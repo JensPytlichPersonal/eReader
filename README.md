@@ -22,9 +22,9 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   separately. Your Boox can be light, large and serif while your phone is dark and sans-serif.
 - **Any screen size.** Single column on phones and e-readers, two columns on wide screens (or force
   either). Turn pages by tapping the left/right edge, swiping, or with the keyboard.
-- **Series and collections.** Books that belong together are grouped under *Series & collections*, in
-  reading order, with a button that continues where you are in the series. Series are picked up from
-  the books themselves, and any books can be grouped by hand.
+- **Series and collections.** In the library a series is one stack of books, topped by the one you're
+  on; opening it lists the books in reading order with a button that continues where you are. Series
+  are picked up from the books themselves, and any books can be grouped by hand.
 - **Table of contents, bookmarks, progress slider, chapter titles** and a "who else is reading" peek.
 - **Upload from the app** (button or drag and drop). Conversion runs in the background.
 - **Installable.** Add it to the home screen on iOS or Android for a full-screen app. Books you have
@@ -134,9 +134,23 @@ converted again.
 
 ## Series and collections
 
-The *Series & collections* tab groups books that belong together. A series lists its books by number
-(1, 2, 2.5 …) and offers *Continue*, *Next up* or *Start with* for the book to read next; a collection
-is a group without an order. A book can be in several, for example its series and a book club.
+A series is a group of books with numbers (1, 2, 2.5 …); a collection is a group without an order,
+such as a book club. A book can be in several. Opening a series lists its books in order and offers
+*Continue*, *Next up* or *Start with* for the book to read next. The *Series & collections* tab lists
+every group.
+
+The Books view shows each series in one of three ways, chosen in the toolbar and remembered per device:
+
+| View | What you see |
+| --- | --- |
+| Series as stacks (default) | Each series is one tile: a stack of books with the one you're on as the top cover, and where you are ("Reading #2", "Next: #4"). |
+| Series as shelves | Each series gets a row with every book, its number and title in reading order, and the book you're on outlined. Other books follow below. |
+| Every book separately | One card per book. |
+
+Only series fold up: collections, and series with a single book in the library, stay as ordinary book
+cards. The books you are reading still show one by one under *Continue reading*, and searching always
+lists the matching books themselves. Filters apply to a whole series: *Reading* shows series you have
+started but not finished.
 
 Where the series comes from:
 

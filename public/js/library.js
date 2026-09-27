@@ -10,6 +10,7 @@ const els = {
   search: document.getElementById('search'),
   filter: document.getElementById('filter'),
   sort: document.getElementById('sort'),
+  layout: document.getElementById('layout'),
   upload: document.getElementById('btn-upload'),
   file: document.getElementById('file-input'),
   drop: document.getElementById('dropzone'),
@@ -24,8 +25,11 @@ els.sort.value = prefs.sort || 'recent';
 els.filter.value = prefs.filter || 'all';
 // The library shows every book, or books grouped into their series and collections.
 let view = prefs.view === 'series' ? 'series' : 'books';
+// How the Books tab shows a series: folded into a stack, as a shelf with every title, or as separate books.
+let layout = ['stacks', 'shelves', 'every'].includes(prefs.layout) ? prefs.layout : 'stacks';
+els.layout.value = layout;
 
-function savePrefs() { localStorage.setItem('ereader.library', JSON.stringify({ sort: els.sort.value, filter: els.filter.value, view })); }
+function savePrefs() { localStorage.setItem('ereader.library', JSON.stringify({ sort: els.sort.value, filter: els.filter.value, view, layout })); }
 
 async function load() {
   const data = await api('/api/books');
@@ -47,6 +51,21 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const seriesLabel = (s) => (s.position != null ? `${s.name} #${s.position}` : s.name);
 const seriesLink = (s) => `<a href="/?series=${s.id}" data-series="${s.id}">${escapeHtml(seriesLabel(s))}</a>`;
 
+// Books and series sort alike: a series by its most recently read and newest book, its name and main author.
+const sortKeys = (x) => (x.items
+  ? { read: x.lastRead, added: x.lastAdded, title: x.name, author: x.author }
+  : { read: x.progress?.updatedAt || 0, added: x.addedAt, title: x.title, author: x.author });
+
+function sorter() {
+  const by = {
+    recent: (a, b) => b.read - a.read || b.added - a.added,
+    added: (a, b) => b.added - a.added,
+    title: (a, b) => a.title.localeCompare(b.title),
+    author: (a, b) => (a.author || '~').localeCompare(b.author || '~') || a.title.localeCompare(b.title),
+  }[els.sort.value];
+  return (a, b) => by(sortKeys(a), sortKeys(b));
+}
+
 function visible() {
   const q = els.search.value.trim().toLowerCase();
   const f = els.filter.value;
@@ -57,22 +76,17 @@ function visible() {
     if (f === 'finished') return status(b) === 'finished';
     return true;
   });
-  const s = els.sort.value;
-  const cmp = {
-    recent: (a, b) => (b.progress?.updatedAt || 0) - (a.progress?.updatedAt || 0) || b.addedAt - a.addedAt,
-    added: (a, b) => b.addedAt - a.addedAt,
-    title: (a, b) => a.title.localeCompare(b.title),
-    author: (a, b) => (a.author || '~').localeCompare(b.author || '~') || a.title.localeCompare(b.title),
-  }[s];
-  return list.sort(cmp);
+  return list.sort(sorter());
 }
+
+const coverHtml = (b) => (b.hasCover && b.status === 'ready'
+  ? `<img class="cover" loading="lazy" alt="" src="/books/${b.id}/cover?v=${b.convertedAt || b.addedAt}">`
+  : `<div class="cover placeholder"><div class="t">${escapeHtml(b.title)}</div><div class="a">${escapeHtml(b.author)}</div></div>`);
 
 /** A book card. In a series view (`ctx.seriesId`) the cover shows the book's number in that series. */
 function card(b, ctx = {}) {
   const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
-  const cover = b.hasCover && b.status === 'ready'
-    ? `<img class="cover" loading="lazy" alt="" src="/books/${b.id}/cover?v=${b.convertedAt || b.addedAt}">`
-    : `<div class="cover placeholder"><div class="t">${escapeHtml(b.title)}</div><div class="a">${escapeHtml(b.author)}</div></div>`;
+  const cover = coverHtml(b);
   const number = ctx.position != null ? `<span class="cover-tag">#${ctx.position}</span>` : '';
   const st = b.status === 'processing' ? '<div class="status">Preparing…</div>' : b.status === 'error' ? `<div class="status err" title="${escapeHtml(b.error || '')}">Could not convert</div>` : '';
   const link = b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : '';
@@ -125,35 +139,67 @@ function groupSeries() {
   return [...groups.values()];
 }
 
-/** What to read next in a group: the book being read, else the first unread one after the last finished. */
-function nextInSeries(g) {
-  const reading = g.items.filter((i) => status(i.book) === 'reading').sort((a, b) => b.book.progress.updatedAt - a.book.progress.updatedAt)[0];
-  const done = g.items.map((i) => status(i.book)).lastIndexOf('finished');
-  const unread = g.items.slice(done + 1).find((i) => status(i.book) === 'unread') || g.items.find((i) => status(i.book) === 'unread');
-  const item = reading || unread;
-  if (!item) return null;
-  const verb = reading ? 'Continue' : done >= 0 ? 'Next up:' : 'Start with';
-  return { book: item.book, label: `${verb} ${item.position != null ? `#${item.position} ` : ''}${item.book.title}` };
+/**
+ * Where you are in a group: the book being read, else the first unread one after the last finished.
+ * `text` says it in a few words for stacks and shelves; `verb` starts the series page's button.
+ */
+function seriesPlace(g) {
+  const st = (i) => status(i.book);
+  const reading = g.items.filter((i) => st(i) === 'reading').sort((a, b) => b.book.progress.updatedAt - a.book.progress.updatedAt)[0];
+  const done = g.items.map(st).lastIndexOf('finished');
+  const unread = g.items.slice(done + 1).find((i) => st(i) === 'unread') || g.items.find((i) => st(i) === 'unread');
+  const no = (i) => (i.position != null ? `#${i.position}` : '');
+  if (reading) return { item: reading, verb: 'Continue', text: `Reading ${no(reading)}`.trim() };
+  if (unread && done >= 0) return { item: unread, verb: 'Next up:', text: no(unread) ? `Next: ${no(unread)}` : 'Next up' };
+  if (unread) return { item: unread, verb: 'Start with', text: 'Not started' };
+  return { item: null, verb: '', text: g.state === 'finished' ? 'Finished' : '' };
 }
 
-function seriesCard(g) {
-  const coverBook = g.items.map((i) => i.book).find((b) => b.hasCover && b.status === 'ready');
-  const cover = coverBook
-    ? `<img class="cover" loading="lazy" alt="" src="/books/${coverBook.id}/cover?v=${coverBook.convertedAt || coverBook.addedAt}">`
-    : `<div class="cover placeholder"><div class="t">${escapeHtml(g.name)}</div></div>`;
+/** A series or collection as one tile: a stack of books with the one you're on as the top cover. */
+function stackCard(g) {
   const n = g.items.length;
+  const place = seriesPlace(g);
+  const cover = coverHtml((place.item || g.items[0]).book);
   const pct = Math.round(g.items.reduce((sum, i) => sum + (status(i.book) === 'finished' ? 1 : i.book.progress?.percent || 0), 0) / n * 100);
-  const started = g.state !== 'unread';
-  return `<div class="card">
-    ${cover}<span class="cover-tag">${plural(n, 'book', 'books')}</span>
+  return `<div class="card${n > 1 ? ' pile' : ''}">
+    ${n > 1 ? `<div class="stack">${cover}</div>` : cover}<span class="cover-tag">${plural(n, 'book', 'books')}</span>
     <a class="link" href="/?series=${g.id}" data-series="${g.id}" aria-label="${escapeHtml(g.name)}, ${plural(n, 'book', 'books')}"></a>
     <div class="info">
       <div class="title">${escapeHtml(g.name)}</div>
       <div class="author">${escapeHtml(g.author)}</div>
-      ${started ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : ''}
-      <div class="meta"><span>${started ? `${g.finished} of ${n} finished` : g.numbered ? 'Series' : 'Collection'}</span></div>
+      ${g.state !== 'unread' ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : ''}
+      <div class="meta"><span class="place">${escapeHtml(place.text)}</span></div>
     </div>
   </div>`;
+}
+
+/** A series as a shelf: every book in order with its title, and the book you're on outlined. */
+function shelf(g) {
+  const place = seriesPlace(g);
+  const facts = [g.author, plural(g.items.length, 'book', 'books'), place.text].filter(Boolean).map(escapeHtml).join(' · ');
+  const shelfBook = ({ book: b, position }, current) => {
+    const st = status(b);
+    const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
+    const state = { finished: '&#10003; Finished', reading: `${pct}% read`, unread: 'Not started', processing: 'Preparing…', error: 'Could not convert' }[st];
+    return `<div class="shelf-book${current ? ' current' : ''}">
+      ${coverHtml(b)}${position != null ? `<span class="cover-tag">#${position}</span>` : ''}
+      ${b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : ''}
+      <div class="title">${escapeHtml(b.title)}</div>
+      ${st === 'reading' ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : ''}
+      <div class="state">${state}</div>
+    </div>`;
+  };
+  return `<section class="shelf">
+    <div class="shelf-head"><h2><a href="/?series=${g.id}" data-series="${g.id}">${escapeHtml(g.name)}</a></h2><span class="muted">${facts}</span></div>
+    <div class="shelf-row">${g.items.map((i) => shelfBook(i, i === place.item && g.state !== 'unread')).join('')}</div>
+  </section>`;
+}
+
+/** In the Books tab a series (a numbered group of two or more books) folds up; its books leave the single books. */
+function foldSeries() {
+  const series = groupSeries().filter((g) => g.numbered && g.items.length > 1);
+  const folded = new Set(series.flatMap((g) => g.items.map((i) => i.book.id)));
+  return { series, singles: books.filter((b) => !folded.has(b.id)) };
 }
 
 function renderSeriesList() {
@@ -170,13 +216,7 @@ function renderSeriesList() {
     return f === 'all' || g.state === f;
   });
   if (!list.length) { els.library.innerHTML = '<div class="empty">No series or collections match.</div>'; return; }
-  const cmp = {
-    recent: (a, b) => b.lastRead - a.lastRead || b.lastAdded - a.lastAdded,
-    added: (a, b) => b.lastAdded - a.lastAdded,
-    title: (a, b) => a.name.localeCompare(b.name),
-    author: (a, b) => (a.author || '~').localeCompare(b.author || '~') || a.name.localeCompare(b.name),
-  }[els.sort.value];
-  els.library.innerHTML = `<div class="grid">${list.sort(cmp).map(seriesCard).join('')}</div>`;
+  els.library.innerHTML = `<div class="grid">${list.sort(sorter()).map(stackCard).join('')}</div>`;
 }
 
 function renderSeries(id) {
@@ -185,31 +225,52 @@ function renderSeries(id) {
     els.library.innerHTML = '<div class="empty"><p>This series or collection is no longer in the library.</p><p><button class="btn" data-back>Show all series and collections</button></p></div>';
     return;
   }
-  const next = nextInSeries(g);
+  const place = seriesPlace(g);
+  const next = place.item && `${place.verb} ${place.item.position != null ? `#${place.item.position} ` : ''}${place.item.book.title}`;
   const facts = [g.numbered ? 'Series' : 'Collection', plural(g.items.length, 'book', 'books'), g.author, g.finished ? `${g.finished} finished` : ''];
   els.library.innerHTML = `<div class="series-head">
       <button class="btn small" data-back>&#8592; All series and collections</button>
       <h1>${escapeHtml(g.name)}</h1>
       <p class="muted">${facts.filter(Boolean).map(escapeHtml).join(' · ')}</p>
       <div class="row">
-        ${next ? `<a class="btn primary" href="/read/${next.book.id}">${escapeHtml(next.label)}</a>` : ''}
+        ${next ? `<a class="btn primary" href="/read/${place.item.book.id}">${escapeHtml(next)}</a>` : ''}
         ${me.isAdmin ? `<button class="btn" data-edit-series="${g.id}">Rename or remove</button>` : ''}
       </div>
     </div>
     <div class="grid">${g.items.map((i) => card(i.book, { seriesId: g.id, position: i.position })).join('')}</div>`;
 }
 
+const heading = (text, count) => `<div class="section-title"><h2 style="margin:0">${text}</h2><span class="muted">${count}</span></div>`;
+
+/** The books you're in the middle of, one card each, above the library when it is sorted by Recently read. */
+function continueReading() {
+  if (els.sort.value !== 'recent' || els.search.value.trim() || els.filter.value !== 'all') return '';
+  const reading = books.filter((b) => status(b) === 'reading').sort(sorter()).slice(0, 6);
+  return reading.length ? `<div class="section-title"><h2 style="margin:0">Continue reading</h2></div><div class="grid">${reading.map((b) => card(b)).join('')}</div>` : '';
+}
+
 function renderBooks() {
-  const list = visible();
-  if (!list.length) { els.library.innerHTML = '<div class="empty">No books match.</div>'; return; }
-  const reading = els.sort.value === 'recent' && !els.search.value && els.filter.value === 'all' ? list.filter((b) => status(b) === 'reading').slice(0, 6) : [];
-  let html = '';
-  if (reading.length) {
-    html += `<div class="section-title"><h2 style="margin:0">Continue reading</h2></div><div class="grid">${reading.map((b) => card(b)).join('')}</div>`;
-    html += `<div class="section-title"><h2 style="margin:0">All books</h2><span class="muted">${books.length}</span></div>`;
+  const cont = continueReading();
+  const allBooks = cont && `${cont}${heading('All books', books.length)}`;
+  // Searching always lists the matching books themselves.
+  if (layout === 'every' || els.search.value.trim()) {
+    const list = visible();
+    els.library.innerHTML = list.length ? `${allBooks}<div class="grid">${list.map((b) => card(b)).join('')}</div>` : '<div class="empty">No books match.</div>';
+    return;
   }
-  html += `<div class="grid">${list.map((b) => card(b)).join('')}</div>`;
-  els.library.innerHTML = html;
+  // A series matches a filter as a whole: Reading means started but not finished.
+  const keep = (state) => els.filter.value === 'all' || state === els.filter.value;
+  const { series, singles } = foldSeries();
+  const shownSeries = series.filter((g) => keep(g.state)).sort(sorter());
+  const shownBooks = singles.filter((b) => keep(status(b))).sort(sorter());
+  if (!shownSeries.length && !shownBooks.length) { els.library.innerHTML = '<div class="empty">No books match.</div>'; return; }
+  if (layout === 'shelves') {
+    const others = shownBooks.length ? `${heading(shownSeries.length ? 'Other books' : 'Books', shownBooks.length)}<div class="grid">${shownBooks.map((b) => card(b)).join('')}</div>` : '';
+    els.library.innerHTML = `${cont}${shownSeries.map(shelf).join('')}${others}`;
+    return;
+  }
+  const items = [...shownSeries, ...shownBooks].sort(sorter());
+  els.library.innerHTML = `${allBooks}<div class="grid">${items.map((x) => (x.items ? stackCard(x) : card(x))).join('')}</div>`;
 }
 
 // The open series is part of the address (/?series=12), so reloading and the back button work.
@@ -238,6 +299,7 @@ function render() {
   els.tabs.querySelector('[data-view="books"] .n').textContent = books.length || '';
   els.tabs.querySelector('[data-view="series"] .n').textContent = new Set(books.flatMap((b) => b.series.map((s) => s.id))).size || '';
   document.body.classList.toggle('series-open', seriesId != null);
+  els.layout.classList.toggle('hidden', shown !== 'books');
   if (!books.length) {
     els.library.innerHTML = '<div class="empty"><p>The library is empty.</p><p>Upload EPUB, MOBI, PDF, Markdown or text files to get started.</p></div>';
     return;
@@ -454,6 +516,7 @@ window.addEventListener('popstate', () => { openedHere = false; render(); });
 els.search.addEventListener('input', render);
 els.filter.addEventListener('change', () => { savePrefs(); render(); });
 els.sort.addEventListener('change', () => { savePrefs(); render(); });
+els.layout.addEventListener('change', () => { layout = els.layout.value; savePrefs(); render(); });
 document.getElementById('btn-logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.href = '/login'; });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
 
