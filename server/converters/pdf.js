@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { normalizeDocument } from './html.js';
 import { assembleSections, titleFromFilename } from './bundle.js';
+import { seriesFromXmp } from './series.js';
 
 const require = createRequire(import.meta.url);
 const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
@@ -221,7 +222,7 @@ export function blocksToHtml(blocks) {
   }).join('\n');
 }
 
-export async function convertPdf(buffer, { filename }) {
+async function openPdf(buffer) {
   const pdfjs = await loadPdfjs();
   const task = pdfjs.getDocument({
     data: new Uint8Array(buffer),
@@ -233,15 +234,42 @@ export async function convertPdf(buffer, { filename }) {
     cMapPacked: true,
     verbosity: 0,
   });
-  const doc = await task.promise;
+  try {
+    return { task, doc: await task.promise };
+  } catch (err) {
+    task.destroy();
+    throw err;
+  }
+}
+
+/** Title and author from the document information, series from calibre's XMP metadata. */
+async function documentMetadata(doc, filename) {
   let title = '';
   let author = '';
+  let series = [];
   try {
     const meta = await doc.getMetadata();
     title = (meta.info?.Title || '').trim();
     author = (meta.info?.Author || '').trim();
+    series = seriesFromXmp(meta.metadata?.getRaw());
   } catch { /* ignore */ }
   if (!title || /^(untitled|microsoft word|document)\b/i.test(title)) title = titleFromFilename(filename);
+  return { title, author, series };
+}
+
+/** Reads only the book's details, without converting it. */
+export async function readPdfMetadata(buffer, { filename }) {
+  const { task, doc } = await openPdf(buffer);
+  try {
+    return { ...(await documentMetadata(doc, filename)), language: '', format: 'pdf' };
+  } finally {
+    await task.destroy();
+  }
+}
+
+export async function convertPdf(buffer, { filename }) {
+  const { task, doc } = await openPdf(buffer);
+  const { title, author, series } = await documentMetadata(doc, filename);
 
   // Pass 1: lines for every page, so running headers/footers can be recognised across pages.
   const pages = [];
@@ -304,7 +332,7 @@ export async function convertPdf(buffer, { filename }) {
   const { sections, toc } = assembleSections(chapters, { toc: outlineToc, budget: Infinity });
   await task.destroy();
   return {
-    meta: { title, author, language: '', format: 'pdf' },
+    meta: { title, author, language: '', format: 'pdf', series },
     sections,
     toc: toc.length ? toc : [],
     extra: { pageCount: doc.numPages, textPages: doc.numPages - emptyPages, original: 'original.pdf' },

@@ -22,6 +22,9 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   separately. Your Boox can be light, large and serif while your phone is dark and sans-serif.
 - **Any screen size.** Single column on phones and e-readers, two columns on wide screens (or force
   either). Turn pages by tapping the left/right edge, swiping, or with the keyboard.
+- **Series and collections.** Books that belong together are grouped under *Series & collections*, in
+  reading order, with a button that continues where you are in the series. Series are picked up from
+  the books themselves, and any books can be grouped by hand.
 - **Table of contents, bookmarks, progress slider, chapter titles** and a "who else is reading" peek.
 - **Upload from the app** (button or drag and drop). Conversion runs in the background.
 - **Installable.** Add it to the home screen on iOS or Android for a full-screen app. Books you have
@@ -121,7 +124,32 @@ Wide windows show two columns; switch to one column in the display settings if y
 
 Converted books are stored as small HTML sections under `data/books/<id>/`. If a book converts
 badly, choose *Convert again* from its menu, or re-run every book with `npm run reprocess` after an
-update to the converters.
+update to the converters. Details edited by hand (title, author, series) are kept when a book is
+converted again.
+
+## Series and collections
+
+The *Series & collections* tab groups books that belong together. A series lists its books by number
+(1, 2, 2.5 …) and offers *Continue*, *Next up* or *Start with* for the book to read next; a collection
+is a group without an order. A book can be in several, for example its series and a book club.
+
+Where the series comes from:
+
+| Source | Example |
+| --- | --- |
+| EPUB metadata | calibre's series and series index, EPUB 3 collections (`belongs-to-collection` with `group-position`; sets become collections), EPUB 3 collection titles |
+| PDF metadata | calibre's series in the XMP metadata |
+| Markdown front matter | `series: The Expanse` with `series_index: 3` (or `volume: 3`); `collection:` works too |
+| The title | "Leviathan Wakes (The Expanse Book 1)", "Caliban's War (The Expanse, #2)", "A Game of Thrones: A Song of Ice and Fire: Book One", "Kvinden i buret (Afdeling Q, bind 1)", "The Expanse 03 - Abaddon's Gate". This is the only place MOBI and text files carry a series. Only explicit forms count (a `#`, or a word such as Book, Volume, Part, Bind or Band before the number), so a title like "Windows 10" is left alone. The series part is removed from the title. |
+
+Series names are matched regardless of case, spacing and quote style, so books from different
+sources end up together. To add books to a series or collection by hand, or to fix one, choose
+*Edit details and series* in a book's menu (the uploader or an admin can). Admins can rename a series
+or collection from its page; giving it the name of another one merges the two. Removing one leaves
+its books in the library.
+
+Books already in the library when series support arrived are checked once in the background when the
+server starts. Their series are read from the original files, without converting the books again.
 
 ## How position sync works
 
@@ -142,8 +170,8 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload and progress API
-- `server/converters/` one module per format plus the shared HTML normaliser, chunker and bundle writer
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API
+- `server/converters/` one module per format plus the shared HTML normaliser, chunker and bundle writer, and `series.js`, which finds series in metadata and titles
 - `public/` the web app: library, reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)
 

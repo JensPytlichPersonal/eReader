@@ -7,6 +7,12 @@ import { PdfPageView } from './pdf-view.js';
 
 registerServiceWorker();
 
+// Back goes to the library view the book was opened from, such as a series.
+try {
+  const from = new URL(document.referrer);
+  if (from.origin === location.origin && from.pathname === '/') document.getElementById('btn-back').href = `/${from.search}`;
+} catch { /* opened directly */ }
+
 const bookId = location.pathname.split('/')[2];
 const base = `/books/${bookId}/`;
 const $ = (id) => document.getElementById(id);
@@ -586,7 +592,8 @@ function bindSettings() {
     alert(readers.length ? readers.map((r) => `${r.displayName || r.username}: ${Math.round(r.percent * 100)}% (${formatDate(r.updatedAt)})`).join('\n') : 'Nobody else has started this book.');
   });
   const b = state.book;
-  $('book-info').textContent = `${b.format.toUpperCase()} · ${(b.size / 1048576).toFixed(1)} MB · ${sections().length} sections · added by ${b.addedBy || 'unknown'}`;
+  const inSeries = (b.series || []).map((s) => `<a href="/?series=${s.id}">${escapeHtml(s.position != null ? `${s.name} #${s.position}` : s.name)}</a>`);
+  $('book-info').innerHTML = [...inSeries, escapeHtml(`${b.format.toUpperCase()} · ${(b.size / 1048576).toFixed(1)} MB · ${sections().length} sections · added by ${b.addedBy || 'unknown'}`)].join(' · ');
 }
 
 // ---------------------------------------------------------------- input
@@ -738,7 +745,7 @@ async function init() {
   state.book = book;
   state.manifest = manifest;
   state.bookmarks = bookmarks || [];
-  els.title.textContent = manifest.title;
+  els.title.textContent = book.title || manifest.title;
   if (manifest.hasStyles) { const l = $('book-styles'); l.href = bookUrl('styles.css'); l.disabled = false; }
   dropStaleCache();
 
