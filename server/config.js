@@ -16,7 +16,7 @@ export function loadConfig(overrides = {}) {
     port: overrides.port ?? envInt('PORT', 8080),
     host: overrides.host ?? process.env.HOST ?? '0.0.0.0',
     dataDir,
-    dbPath: overrides.dbPath ?? path.join(dataDir, 'rreader.sqlite'),
+    dbPath: overrides.dbPath ?? path.join(dataDir, 'ereader.sqlite'),
     booksDir: path.join(dataDir, 'books'),
     uploadsDir: path.join(dataDir, 'uploads'),
     // How long a login lasts. Devices such as an e-reader should stay signed in for a long time.

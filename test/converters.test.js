@@ -19,7 +19,7 @@ import { convert, detectFormat } from '../server/converters/index.js';
 import { writeBundle } from '../server/converters/bundle.js';
 import { makePdf } from './helpers/make-pdf.mjs';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rreader-conv-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ereader-conv-'));
 const sectionHtml = (dir, i) => fs.readFileSync(path.join(dir, 'sections', `${i}.html`), 'utf8');
 
 test('zip reader reads stored and deflated entries', () => {

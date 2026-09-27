@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { now } from './db.js';
 
 const SCRYPT_N = 16384;
-const COOKIE = 'rreader_session';
+const COOKIE = 'ereader_session';
 
 export function hashPassword(password) {
   const salt = crypto.randomBytes(16);

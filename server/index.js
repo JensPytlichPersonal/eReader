@@ -6,5 +6,5 @@ auth.purgeExpired();
 setInterval(() => auth.purgeExpired(), 6 * 3600 * 1000).unref();
 
 app.listen(config.port, config.host, () => {
-  console.log(`rReader listening on http://${config.host}:${config.port}  (data: ${config.dataDir})`);
+  console.log(`eReader listening on http://${config.host}:${config.port}  (data: ${config.dataDir})`);
 });

@@ -1,4 +1,4 @@
-/* rReader shared styles. Designed for e-ink first: no animations, high contrast, big targets. */
+/* eReader shared styles. Designed for e-ink first: no animations, high contrast, big targets. */
 :root {
   --bg: #ffffff;
   --fg: #111111;

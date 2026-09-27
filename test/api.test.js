@@ -8,7 +8,7 @@ import { makeEpub } from './helpers/make-epub.mjs';
 
 let server, origin, processor, dataDir;
 before(async () => {
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rreader-api-'));
+  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ereader-api-'));
   const created = createApp({ dataDir, quiet: true, sessionDays: 1 });
   processor = created.processor;
   server = created.app.listen(0);
@@ -124,7 +124,7 @@ test('upload, conversion, shared library and per-user progress with conflict det
   assert.equal(r.status, 200);
   r = await anna(`/books/${id}/book.json`);
   assert.equal(r.status, 200);
-  r = await anna(`/books/${id}/../../rreader.sqlite`);
+  r = await anna(`/books/${id}/../../ereader.sqlite`);
   assert.equal(r.status, 404);
   r = await anna(`/books/${id}/original`);
   assert.equal(r.status, 200);

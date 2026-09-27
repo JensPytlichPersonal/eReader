@@ -1,5 +1,5 @@
-// rReader service worker: caches the app shell and book content for offline reading.
-const VERSION = 'rreader-v1';
+// eReader service worker: caches the app shell and book content for offline reading.
+const VERSION = 'ereader-v1';
 const SHELL = ['/', '/login', '/settings', '/css/app.css', '/css/reader.css', '/js/api.js', '/js/settings.js', '/js/library.js', '/js/login.js', '/js/reader.js', '/js/pdf-view.js', '/js/settings-page.js', '/manifest.webmanifest', '/icons/icon.svg'];
 
 self.addEventListener('install', (e) => {
