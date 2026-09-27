@@ -40,14 +40,39 @@ Open http://localhost:8080. The first account you create becomes the administrat
 other readers under **Users**. Registration is otherwise closed unless you start the server with
 `ALLOW_REGISTRATION=true`.
 
-### Docker
+### Keeping it running
 
-```bash
-docker compose up -d
+rReader is a single Node process, so any process manager works. On a Linux server, a systemd
+unit is enough. Create a user for it, clone the repository somewhere it can read, and save this as
+`/etc/systemd/system/rreader.service`:
+
+```ini
+[Unit]
+Description=rReader web e-reader
+After=network.target
+
+[Service]
+User=rreader
+WorkingDirectory=/opt/rreader
+Environment=PORT=8080
+Environment=DATA_DIR=/var/lib/rreader
+ExecStart=/usr/bin/node --no-warnings=ExperimentalWarning server/index.js
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-Data (database, uploaded originals and converted books) lives in `./data`. Back that directory up
-and you have everything.
+Then:
+
+```bash
+sudo mkdir -p /var/lib/rreader && sudo chown rreader /var/lib/rreader
+sudo systemctl daemon-reload
+sudo systemctl enable --now rreader
+```
+
+Everything the app stores (database, uploaded originals, converted books) lives in `DATA_DIR`.
+Back up that directory and you have everything.
 
 ### Configuration
 
