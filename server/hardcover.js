@@ -1,6 +1,7 @@
 // Looks books up on Hardcover (hardcover.app), a book catalogue that knows series and their order
 // well. It needs a token from the Hardcover account's API settings (the read:catalog permission is
-// enough), given to the server as HARDCOVER_TOKEN; without one the lookup asks Open Library alone.
+// enough), which an admin enters under Settings in the app or gives the server as HARDCOVER_TOKEN
+// (see catalogues.js); without one the lookup asks Open Library alone.
 // Only the server talks to Hardcover: when someone looks a book up or saves a cover from it, and
 // for the books a series lacks (see missing.js).
 import { parsePosition, withTitleSeries } from './converters/series.js';
@@ -226,7 +227,7 @@ const seriesId = (s) => [s?.canonical_id, s?.id].find((id) => Number.isInteger(i
 export function createHardcover({ token, url = API, timeout = 10000, fetch = globalThis.fetch }) {
   const bare = token.trim().replace(/^bearer(\s+|$)/i, '');
   // systemd splits Environment= settings at spaces, so HARDCOVER_TOKEN=Bearer eyJ... leaves only "Bearer".
-  const unusable = bare ? null : 'HARDCOVER_TOKEN holds "Bearer" but no token. In the systemd unit, put the whole setting in quotes or leave "Bearer " out, then run systemctl daemon-reload and restart the eReader.';
+  const unusable = bare ? null : 'The Hardcover token holds "Bearer" but nothing after it. Enter the token itself, under Settings or as HARDCOVER_TOKEN without "Bearer " (in a systemd unit, quote the whole setting).';
 
   async function query(text, variables) {
     if (unusable) throw new LookupError(unusable);
@@ -243,7 +244,7 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     } catch (err) {
       throw new LookupError('Hardcover did not answer. Try again in a moment.', { cause: err });
     }
-    if (res.status === 401) throw new LookupError('Hardcover did not accept the token; it may have expired. Make a new one and restart the eReader server.');
+    if (res.status === 401) throw new LookupError('Hardcover did not accept the token; it may have expired. Make a new one and enter it under Settings.');
     if (res.status === 403) throw new LookupError('The Hardcover token may not look up books. Make one with the read:catalog permission.');
     if (res.status === 429) throw new LookupError('Hardcover is busy, or the token has used up its requests for today. Try again later.');
     let data = null;
@@ -348,6 +349,11 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     return seriesById(inSeries.slice(0, 5));
   }
 
+  /** Whether Hardcover takes the token: one search, the cheapest request that needs it. Throws a LookupError when not. */
+  async function check() {
+    await search('Dune');
+  }
+
   /** Why the token cannot work, when that is plain from the start. */
-  return { lookup, cover, series, seriesOf, problem: unusable };
+  return { lookup, cover, series, seriesOf, check, problem: unusable };
 }

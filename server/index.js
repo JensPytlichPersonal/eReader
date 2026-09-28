@@ -9,5 +9,5 @@ setInterval(() => auth.purgeExpired(), 6 * 3600 * 1000).unref();
 
 app.listen(config.port, config.host, () => {
   console.log(`eReader listening on http://${config.host}:${config.port}  (data: ${config.dataDir})`);
-  console.log(`Books are looked up in ${lookups.sources.includes('hardcover') ? 'Hardcover and Open Library' : 'Open Library (set HARDCOVER_TOKEN to add Hardcover)'}`);
+  console.log(`Books are looked up in ${lookups.sources.includes('hardcover') ? 'Hardcover and Open Library' : 'Open Library (an admin can add a Hardcover token under Settings, or set HARDCOVER_TOKEN)'}`);
 });

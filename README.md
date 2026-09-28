@@ -169,7 +169,7 @@ them in the `command=` of the authorized key, for example
 | `MAX_UPLOAD_MB` | `500` | Maximum size of an uploaded file |
 | `SECURE_COOKIES` | `false` | Set to `true` when the server is only reachable over https |
 | `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy that sets `X-Forwarded-*` |
-| `HARDCOVER_TOKEN` | (none) | A Hardcover API token, so looking books up asks Hardcover as well as Open Library, and the books a series lacks get their titles (see below) |
+| `HARDCOVER_TOKEN` | (none) | A Hardcover API token. Admins can also enter one under Settings in the app, which is kept in the database and wins over this variable (see below) |
 
 Run it behind a reverse proxy with https (Caddy, nginx, Traefik) for use outside your home network.
 https also enables the offline cache and lets the app be installed as a proper web app.
@@ -412,8 +412,16 @@ Like editing, looking up is for the uploader of a book or an admin.
 Hardcover records each book's series and its number in them, and can have books Open Library lacks.
 To use it, sign in at hardcover.app and create an API token at
 <https://hardcover.app/account/api/keys/new?scope=read:catalog>, which asks only for permission to read
-the book catalogue. Choose how long it lasts; when it runs out, make a new one. Give it to the server as
-`HARDCOVER_TOKEN`, for example in the systemd unit, without the `Bearer ` Hardcover shows in front:
+the book catalogue. Choose how long it lasts; when it runs out, make a new one.
+
+An admin pastes the token under **Settings > Catalogues** in the app, with or without the `Bearer `
+Hardcover shows in front. It is used at once, and the page asks Hardcover whether it takes the token and
+says so; *Check* asks again later, for example once the token may have run out. The page shows where the
+token in use comes from and its last four characters, never the token itself. *Remove* takes it out
+again.
+
+The other way is to give the server the token as `HARDCOVER_TOKEN`, for example in the systemd unit,
+without the `Bearer ` in front:
 
 ```ini
 Environment=HARDCOVER_TOKEN=eyJ...
@@ -421,9 +429,10 @@ Environment=HARDCOVER_TOKEN=eyJ...
 
 systemd splits settings at spaces, so with `Bearer ` the whole setting goes in quotes:
 `Environment="HARDCOVER_TOKEN=Bearer eyJ..."`. After changing the unit, run `sudo systemctl daemon-reload`
-before restarting the service; without it systemd keeps the settings it had. The server's log says at
-startup which catalogues it looks books up in, and so does `curl http://127.0.0.1:8080/api/health`,
-under `lookup`.
+before restarting the service; without it systemd keeps the settings it had. A token entered in the app
+wins over this variable, which applies again once that one is removed. The server's log says at startup
+which catalogues it looks books up in, and so does `curl http://127.0.0.1:8080/api/health`, under
+`lookup`.
 
 Hardcover sometimes lists a book under another title and other authors, with its own only on an
 edition: *Beyond the Dark Portal* is also listed as "World of Warcraft, Vol. 4". So the lookup searches
@@ -441,11 +450,13 @@ The token also tells the library which books a series lacks (see
 shelf with a gap in it, the server asks Hardcover for the series by its name, and when no series of that
 name fits, for the series of its first book with a number and an author. Hardcover allows 60 requests a
 minute, so the server looks series up one at a time, a few seconds apart, and keeps what it found for a
-day. A book added to the library stops showing as missing at once; restarting the server forgets what
-it found.
+day. A book added to the library stops showing as missing at once; restarting the server, or changing
+the token under Settings, forgets what it found.
 
 Keep the token on the server: anyone holding it can act as your Hardcover account within its
-permissions. If Hardcover stops answering, for example because the token has expired, the lookup still
+permissions. One entered in the app is kept in the database in `DATA_DIR`, readable by whoever can read
+that directory, as an environment variable is by whoever can read the service's settings, so keep both
+to the server. If Hardcover stops answering, for example because the token has expired, the lookup still
 shows what Open Library found and says what went wrong with Hardcover.
 
 ## Covers

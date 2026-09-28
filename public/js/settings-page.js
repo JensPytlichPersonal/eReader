@@ -1,4 +1,4 @@
-import { api, requireUser, guessDeviceName } from './api.js';
+import { api, requireUser, guessDeviceName, formatDate } from './api.js';
 import { loadSettings, saveSettings, applyTheme, resolveSkin, fontOptions, adoptAccountFont, saveAccountFont } from './settings.js';
 
 const s = loadSettings();
@@ -39,6 +39,7 @@ font.addEventListener('change', () => { saveSettings({ ...loadSettings(), font: 
 requireUser().then((user) => {
   document.getElementById('who').textContent = `Signed in as ${user.displayName || user.username} (${user.username})${user.isAdmin ? ' - administrator' : ''}`;
   if (adoptAccountFont(user)) font.value = user.font;
+  if (user.isAdmin) showCatalogues();
 });
 
 document.getElementById('pw-form').addEventListener('submit', async (e) => {
@@ -53,6 +54,88 @@ document.getElementById('pw-form').addEventListener('submit', async (e) => {
   } catch (error) {
     err.textContent = error.message;
     err.classList.remove('hidden');
+  }
+});
+
+// The Hardcover token, for admins. The server says where the token in use comes from and how it ends,
+// never the token itself.
+const hc = {
+  section: document.getElementById('catalogues'),
+  status: document.getElementById('hc-status'),
+  form: document.getElementById('hc-form'),
+  token: document.getElementById('hc-token'),
+  error: document.getElementById('hc-error'),
+  ok: document.getElementById('hc-ok'),
+  check: document.getElementById('hc-check'),
+  remove: document.getElementById('hc-remove'),
+};
+
+function hcSay({ ok = '', error = '' } = {}) {
+  hc.ok.textContent = ok;
+  hc.ok.classList.toggle('hidden', !ok);
+  hc.error.textContent = error;
+  hc.error.classList.toggle('hidden', !error);
+}
+
+function showStatus({ source, hint, updatedAt, updatedBy }) {
+  const ends = `(ends in …${hint})`;
+  hc.status.textContent = source === 'settings' ? `Set ${formatDate(updatedAt)}${updatedBy ? ` by ${updatedBy}` : ''} ${ends}.`
+    : source === 'env' ? `Set on the server as HARDCOVER_TOKEN ${ends}.`
+    : 'Not set. Books are looked up on Open Library alone.';
+  hc.remove.classList.toggle('hidden', source !== 'settings');
+  hc.check.classList.toggle('hidden', source === 'none');
+}
+
+async function showCatalogues() {
+  hc.section.classList.remove('hidden');
+  try {
+    showStatus((await api('/api/settings')).hardcover);
+  } catch (error) {
+    hcSay({ error: error.message });
+  }
+}
+
+// Asks Hardcover whether it takes the token in use.
+async function checkHardcover() {
+  hc.check.disabled = true;
+  try {
+    const answer = await api('/api/settings/hardcover/check', { method: 'POST' });
+    hcSay(answer.ok ? { ok: 'Hardcover answers.' } : { error: answer.error });
+  } catch (error) {
+    hcSay({ error: error.message });
+  } finally {
+    hc.check.disabled = false;
+  }
+}
+
+hc.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  // An empty field would remove the token; that is what Remove is for.
+  if (!hc.token.value.trim()) return hcSay({ error: 'Paste a token first.' });
+  const save = hc.form.querySelector('[type=submit]');
+  save.disabled = true;
+  hcSay();
+  try {
+    const { hardcover } = await api('/api/settings', { method: 'PUT', body: { hardcoverToken: hc.token.value } });
+    hc.token.value = '';
+    showStatus(hardcover);
+    await checkHardcover();
+  } catch (error) {
+    hcSay({ error: error.message });
+  } finally {
+    save.disabled = false;
+  }
+});
+
+hc.check.addEventListener('click', () => { hcSay(); checkHardcover(); });
+
+hc.remove.addEventListener('click', async () => {
+  if (!confirm('Remove the Hardcover token from this server?')) return;
+  hcSay();
+  try {
+    showStatus((await api('/api/settings', { method: 'PUT', body: { hardcoverToken: '' } })).hardcover);
+  } catch (error) {
+    hcSay({ error: error.message });
   }
 });
 

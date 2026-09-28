@@ -93,7 +93,7 @@ test('Hardcover failures say what to do', async () => {
 
   // systemd splits Environment=HARDCOVER_TOKEN=Bearer eyJ... at the space, leaving only "Bearer".
   const site = standIn(() => ({ search: { ids: [] } }));
-  await assert.rejects(createHardcover({ token: 'Bearer', fetch: site.fetch }).lookup({ title: 'Dune' }), /holds "Bearer" but no token.*daemon-reload/);
+  await assert.rejects(createHardcover({ token: 'Bearer', fetch: site.fetch }).lookup({ title: 'Dune' }), /holds "Bearer" but nothing after it.*under Settings/);
   assert.equal(site.calls.length, 0, 'nothing is sent without a token');
   // A list sent as text is still read.
   const asText = standIn((operation) => (operation === 'Search' ? { search: { ids: '[427]' } } : { books: [leviathan], editions: [] }));

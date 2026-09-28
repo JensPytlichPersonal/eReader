@@ -10,13 +10,13 @@ import { createSeriesStore } from './series.js';
 import { createGenreStore } from './genres.js';
 import { createDuplicates } from './duplicates.js';
 import { createOpenLibrary } from './openlibrary.js';
-import { createHardcover } from './hardcover.js';
-import { createLookup } from './lookup.js';
-import { createMissingBooks } from './missing.js';
+import { createSettingsStore } from './settings.js';
+import { createCatalogues } from './catalogues.js';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { bookRoutes, bookFiles } from './routes/books.js';
 import { seriesRoutes } from './routes/series.js';
+import { settingsRoutes } from './routes/settings.js';
 import { fontsCss, fontsDir, heavierFontCss } from './fonts.js';
 
 const require = createRequire(import.meta.url);
@@ -31,12 +31,10 @@ export function createApp(overrides = {}) {
   const genres = createGenreStore(db);
   const processor = createProcessor(db, config, { series, genres }, log);
   const duplicates = createDuplicates(db, config, log);
-  // Tests hand in clients for stand-in catalogues (null for none).
-  const hardcover = overrides.hardcover !== undefined ? overrides.hardcover : config.hardcoverToken ? createHardcover({ token: config.hardcoverToken }) : null;
-  if (hardcover?.problem) log.error?.(`[lookup] ${hardcover.problem}`);
-  const lookups = createLookup({ openLibrary: overrides.openLibrary ?? createOpenLibrary(), hardcover });
-  // The books a series lacks come from Hardcover alone. Tests hand in one that does not wait between lookups.
-  const missingBooks = overrides.missingBooks !== undefined ? overrides.missingBooks : hardcover ? createMissingBooks({ catalogue: hardcover, log }) : null;
+  const settings = createSettingsStore(db);
+  // The catalogues books are looked up in, with the Hardcover token an admin saved or the server was
+  // given. Tests hand in clients for stand-in catalogues (null for none); see catalogues.js.
+  const catalogues = createCatalogues({ config, settings, log, openLibrary: overrides.openLibrary ?? createOpenLibrary(), overrides });
 
   const app = express();
   app.disable('x-powered-by');
@@ -51,11 +49,13 @@ export function createApp(overrides = {}) {
 
   app.use('/api/auth', authRoutes(db, auth, config));
   app.use('/api/users', userRoutes(db, auth));
-  app.use('/api/books', bookRoutes(db, auth, config, processor, { series, genres }, lookups, duplicates));
-  app.use('/api/series', seriesRoutes(auth, series, missingBooks));
+  app.use('/api/books', bookRoutes(db, auth, config, processor, { series, genres }, catalogues.lookups, duplicates));
+  app.use('/api/series', seriesRoutes(auth, series, catalogues));
+  app.use('/api/settings', settingsRoutes(auth, catalogues));
   app.use('/books', bookFiles(db, auth, config));
-  // `lookup`: the catalogues books are looked up in, so an admin can see whether HARDCOVER_TOKEN was picked up.
-  app.get('/api/health', (req, res) => res.json({ ok: true, processing: processor.isBusy(), lookup: lookups.sources }));
+  // `lookup`: the catalogues books are looked up in, so an admin can see whether Hardcover is used (a
+  // token under Settings, or HARDCOVER_TOKEN).
+  app.get('/api/health', (req, res) => res.json({ ok: true, processing: processor.isBusy(), lookup: catalogues.sources }));
 
   // Third-party client libraries served straight from node_modules.
   const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
@@ -105,5 +105,5 @@ export function createApp(overrides = {}) {
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  return { app, db, auth, config, processor, series, genres, lookups, duplicates };
+  return { app, db, auth, config, processor, series, genres, lookups: catalogues.lookups, duplicates, catalogues, settings };
 }

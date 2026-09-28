@@ -61,17 +61,21 @@ export function rankMatches(found, { title = '', author = '' }, limit = SHOWN) {
 }
 
 /**
- * @param {object} catalogues each with lookup(book) and cover(id); `hardcover` is null without a token
+ * @param {object} catalogues each with lookup(book) and cover(id); `hardcover` is null without a
+ * token, or a function giving the client in use at the time (see catalogues.js), so a token saved
+ * while the server runs is used at once
  */
 export function createLookup({ openLibrary, hardcover = null }) {
+  const hardcoverNow = typeof hardcover === 'function' ? hardcover : () => hardcover;
   // Asked in this order, so a book both have comes from Hardcover, which knows series better.
-  const catalogues = Object.entries({ hardcover, openlibrary: openLibrary }).filter(([, c]) => c);
+  const reachable = () => Object.entries({ hardcover: hardcoverNow(), openlibrary: openLibrary }).filter(([, c]) => c);
 
   /**
    * Matches from every catalogue, best first, and what went wrong with those that did not answer.
    * @returns {Promise<{results: object[], problems: string[]}>}
    */
   async function lookup(book) {
+    const catalogues = reachable();
     const answers = await Promise.allSettled(catalogues.map(([, c]) => c.lookup(book)));
     const found = [];
     const problems = [];
@@ -104,9 +108,9 @@ export function createLookup({ openLibrary, hardcover = null }) {
 
   return {
     lookup,
-    /** The catalogues this server asks: 'hardcover' and 'openlibrary'. */
-    sources: catalogues.map(([name]) => name),
+    /** The catalogues this server asks now: 'hardcover' and 'openlibrary'. */
+    get sources() { return reachable().map(([name]) => name); },
     /** The large picture of a match's cover (its coverSource and coverId). */
-    cover: (source, id) => catalogues.find(([name]) => name === source)[1].cover(id),
+    cover: (source, id) => reachable().find(([name]) => name === source)[1].cover(id),
   };
 }

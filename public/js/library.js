@@ -1218,10 +1218,13 @@ function editDetails(b) {
       found = answer.results;
       // A catalogue that could not be asked, such as Hardcover with an expired token.
       const notes = answer.notes.map((note) => `<p class="muted hint">${escapeHtml(note)}</p>`).join('');
+      // Without a Hardcover token, an admin is told where to add one.
+      const connect = me.isAdmin && !answer.sources.includes('hardcover')
+        ? '<p class="muted hint">Hardcover is not connected. An admin can add a token under Settings to search it too.</p>' : '';
       matches.innerHTML = (found.length
         ? `<p class="muted hint">Choose the matching book to fill in the details, or take only its cover. Nothing changes until you save.</p>
           ${current ? '<p class="muted hint" data-current></p>' : ''}<div class="matches">${found.map(matchRow).join('')}</div>`
-        : `<p class="muted hint">No match on ${escapeHtml(answer.sources.map((s) => CATALOGUES[s]).join(' or '))}. Try a shorter title, or leave out the author.</p>`) + notes;
+        : `<p class="muted hint">No match on ${escapeHtml(answer.sources.map((s) => CATALOGUES[s]).join(' or '))}. Try a shorter title, or leave out the author.</p>`) + notes + connect;
       if (found.length && current) showSize(current, matches.querySelector('[data-current]'), (size) => (size ? `The current cover is ${size}.` : ''));
       for (const row of matches.querySelectorAll('.match')) {
         const img = row.querySelector('img.cover');

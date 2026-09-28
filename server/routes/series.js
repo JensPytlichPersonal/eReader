@@ -4,8 +4,9 @@ import { LookupError } from '../lookup.js';
 
 // Series and collections span books added by different people, so changing one as a whole is for admins.
 // A single book's series are edited with PATCH /api/books/:id.
-// `missingBooks` finds the books a series lacks on Hardcover (see missing.js); null without a Hardcover token.
-export function seriesRoutes(auth, series, missingBooks = null) {
+// `catalogues.missingBooks` finds the books a series lacks on Hardcover (see missing.js); null without a
+// Hardcover token. It is asked for each time, so a token saved under Settings is used at once.
+export function seriesRoutes(auth, series, catalogues) {
   const r = Router();
   r.use(auth.requireUser);
 
@@ -22,6 +23,7 @@ export function seriesRoutes(auth, series, missingBooks = null) {
     const s = find(req, res);
     if (!s) return;
     const books = series.books(s.id);
+    const { missingBooks } = catalogues;
     if (!missingBooks || !books.some((b) => b.position != null)) return res.json({ series: null, missing: [] });
     try {
       res.json(await missingBooks.forSeries({ name: s.name, books }));
