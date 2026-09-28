@@ -337,6 +337,11 @@ book comes with the cover of a Danish edition, or of one without a language set,
 one on Hardcover's website, which is used only when every cover is marked as another language. The
 edition with the file's ISBN, or with the title typed, keeps its own cover.
 
+Audiobook editions are left out altogether: their covers are square, and their titles can say
+"Unabridged". A book found by an audiobook's ISBN is offered as itself, with the cover of another
+edition. The same picture shared by two editions is offered once, but the same artwork in two sizes is
+offered twice, since the larger one can be the better cover.
+
 - A series the catalogue names joins the library's series of that name, however it is spelled there
   ("The Expanse" joins "Expanse").
 - A translation keeps its own title: the Danish "Harry Potter og De Vises Sten" rather than the

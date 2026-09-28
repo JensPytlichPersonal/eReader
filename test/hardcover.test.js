@@ -37,7 +37,7 @@ function standIn(answer, pictures = {}) {
     }
     const { query, variables } = JSON.parse(init.body);
     const operation = /query (\w+)/.exec(query)[1];
-    calls.push({ operation, variables, headers: init.headers });
+    calls.push({ operation, query, variables, headers: init.headers });
     const reply = await answer(operation, variables);
     if (reply.status) return new Response(reply.body ?? '', { status: reply.status });
     return new Response(JSON.stringify(reply.errors ? reply : { data: reply }));
@@ -214,6 +214,34 @@ test('a match offers the covers of its editions that are not marked as being in 
   const site = standIn((operation) => (operation === 'Search' ? { search: { ids: [shining.id] } } : { books: [{ ...shining, mostRead: editions }], editions: [] }));
   const [m] = await createHardcover({ token: 'abc', fetch: site.fetch }).lookup({ title: 'The Shining Ones', language: 'en' });
   assert.deepEqual(m.covers[0], { cover: 'https://assets.hardcover.app/editions/3.jpg', coverSource: 'hardcover', coverId: 3 });
+});
+
+test('audiobook editions are left out: their covers, and as the edition a match is offered as', async () => {
+  const at = (id) => ({ id, url: `https://assets.hardcover.app/editions/${id}.jpg` });
+  // Hardcover's reading formats: 1 physical, 2 audio, 3 both, 4 e-book.
+  const edition = (id, format, fields = {}) => ({ id, image: at(id), language: { code2: 'en', code3: 'eng' }, reading_format_id: format, ...fields });
+  const audio = edition(2, 2, { title: 'The Way of Kings (Unabridged)' });
+  const kings = { id: 7, title: 'The Way of Kings', release_year: 2010, image: at(9), default_cover_edition: audio, contributions: credit('Brandon Sanderson'), book_series: [],
+    editions: [audio], mostRead: [audio, edition(1, 1), edition(3, 4), edition(4, 3)] };
+  const site = standIn((operation) => (operation === 'Search' ? { search: { ids: [kings.id] } } : { books: [kings], editions: [] }));
+  const hardcover = createHardcover({ token: 'abc', fetch: site.fetch });
+  // Not offered as the audiobook, though its title is the one typed, nor with its cover, though it is
+  // the one Hardcover shows the book with. The physical, e-book and both-in-one editions' covers are.
+  const [m] = await hardcover.lookup({ title: 'The Way of Kings (Unabridged)', language: 'en' });
+  assert.deepEqual([m.title, m.coverId, m.covers.map((c) => c.coverId)], ['The Way of Kings', 1, [3, 4]]);
+  // Hardcover is asked for editions without them, so the ones most readers have are not all audiobooks;
+  // all but the edition asked for by the file's ISBN.
+  const lists = site.calls.at(-1).query.match(/editions\(where: [^)]*\)/g);
+  assert.equal(lists.length, 6);
+  assert.deepEqual(lists.filter((l) => !l.includes('reading_format_id: {_neq: 2}')).map((l) => l.includes('isbn_13')), [true]);
+  // With no other picture, no audiobook's either: the book's own image.
+  const onlyAudio = standIn((operation) => (operation === 'Search' ? { search: { ids: [kings.id] } } : { books: [{ ...kings, mostRead: [audio] }], editions: [] }));
+  const [alone] = await createHardcover({ token: 'abc', fetch: onlyAudio.fetch }).lookup({ title: 'The Way of Kings' });
+  assert.equal(alone.coverId, 9);
+  // Found by an audiobook edition's ISBN, the book comes as itself.
+  const byIsbn = standIn((operation) => (operation === 'Search' ? { search: { ids: [] } } : { books: [], editions: [{ ...audio, book: kings }] }));
+  const [found] = await createHardcover({ token: 'abc', fetch: byIsbn.fetch }).lookup({ isbns: ['9780765326355'] });
+  assert.deepEqual([found.title, found.coverId, found.byIsbn], ['The Way of Kings', 1, true]);
 });
 
 test('the file\'s edition, found by its ISBN, comes with its own title, authors and cover', async () => {
