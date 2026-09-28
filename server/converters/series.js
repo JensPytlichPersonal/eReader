@@ -37,6 +37,33 @@ export function parsePosition(value) {
   return m ? parsePosition(parseFloat(m[1].replace(',', '.'))) : null;
 }
 
+/**
+ * A place in a series as { position }, or for a book holding several, such as an omnibus, a range
+ * as { position, positionEnd }: "1-3", "1–3" or "1 - 3". A number as parsePosition() takes it, or
+ * null when it is neither (a range must go up).
+ */
+export function parsePlace(value) {
+  if (typeof value === 'number') {
+    const position = parsePosition(value);
+    return position == null ? null : { position };
+  }
+  const m = /^\s*(\d{1,5}(?:[.,]\d+)?)(?:\s*[-–—]\s*(\d{1,5}(?:[.,]\d+)?))?\s*$/.exec(String(value ?? ''));
+  if (!m) return null;
+  const position = parsePosition(m[1]);
+  if (m[2] == null || position == null) return position == null ? null : { position };
+  const end = parsePosition(m[2]);
+  if (end == null || end < position) return null;
+  return end > position ? { position, positionEnd: end } : { position };
+}
+
+// Where an entry puts its book: { position } (null for none), with positionEnd when it covers a range,
+// given as "1-3" or as a positionEnd beside the position.
+function placeOf(e) {
+  const place = parsePlace(e?.position) ?? { position: null };
+  const end = parsePosition(e?.positionEnd);
+  return place.position != null && place.positionEnd == null && end > place.position ? { ...place, positionEnd: end } : place;
+}
+
 /** Merges entries naming the same series (first spelling wins) and drops nameless ones. */
 export function uniqueSeries(entries) {
   const out = new Map();
@@ -44,10 +71,10 @@ export function uniqueSeries(entries) {
     const name = cleanSeriesName(e?.name);
     const key = seriesKey(name);
     if (!key) continue;
-    const position = parsePosition(e.position);
+    const place = placeOf(e);
     const seen = out.get(key);
-    if (!seen) out.set(key, { name, position });
-    else if (seen.position == null) seen.position = position;
+    if (!seen) out.set(key, { name, ...place });
+    else if (seen.position == null) Object.assign(seen, place);
   }
   return [...out.values()];
 }
@@ -56,10 +83,15 @@ export function uniqueSeries(entries) {
 
 const NUMBER_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
   'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
-const NUM = `(\\d{1,5}(?:\\.\\d{1,2})?|[ivxlc]{1,7}|${NUMBER_WORDS.join('|')})`;
-// Words that introduce a number in a series, in the languages a household library is likely to hold.
-const VOLUME_WORDS = 'volume|vol|part|pt|no|nr|number|episode|del|teil|folge|deel';
-const BOOK_WORDS = 'book|bk|bind|bd|bog|bok|band|buch|tome|tomo|livre|libro|boek';
+const DIGITS = '\\d{1,5}(?:\\.\\d{1,2})?';
+// A number, or for a book holding several, such as an omnibus, a range of them ("#1-3", "Books 1 – 3").
+const NUM = `(${DIGITS}(?:\\s?[-–—]\\s?${DIGITS})?|[ivxlc]{1,7}|${NUMBER_WORDS.join('|')})`;
+// Before the title itself, as in "The Expanse #1-3 - Omnibus", only without spaces: "#5 - 1066 and All That" is book 5.
+const NUM_TIGHT = `(${DIGITS}(?:[-–—]${DIGITS})?|[ivxlc]{1,7}|${NUMBER_WORDS.join('|')})`;
+// Words that introduce a number in a series, in the languages a household library is likely to hold,
+// with their plurals, which introduce ranges ("Books 1-3", "Bind 1-3").
+const VOLUME_WORDS = 'volumes?|vols?|parts?|pts?|no|nos|nr|numbers?|episodes?|del|dele|teile?|folgen?|deel|delen';
+const BOOK_WORDS = 'books?|bks?|bind|bd|bog|bøger|bok|bøker|band|bände|buch|bücher|tomes?|tomos?|livres?|libros?|boek|boeken';
 const SEP = '[\\s,:;\\-–—]';
 const OF = '(?:of|in|from|i|af|fra|aus|von|de|du)';
 const rx = (s) => new RegExp(s, 'iu');
@@ -73,7 +105,7 @@ const IN_BRACKETS = [namedNumber(ANY_WORDS), numberOfName(ANY_WORDS)];
 // After a colon or dash, "Volume 2" and "Part 2" are too often part of the title itself.
 const AFTER_COLON = [namedNumber(BOOK_WORDS), numberOfName(BOOK_WORDS)];
 // "The Expanse 01 - Leviathan Wakes", "Discworld #5 - Sourcery", "Discworld, Book 5: Sourcery"
-const LEADING = rx(`^([^:()\\[\\]]+?)(?:${SEP}+(?:${ANY_WORDS})\\.?\\s*#?\\s*${NUM}|${SEP}*#\\s*${NUM}|\\s+(0\\d{1,3}))\\s*(?:[:.]|\\s[-–—])\\s*(.+)$`);
+const LEADING = rx(`^([^:()\\[\\]]+?)(?:${SEP}+(?:${ANY_WORDS})\\.?\\s*#?\\s*${NUM_TIGHT}|${SEP}*#\\s*${NUM_TIGHT}|\\s+(0\\d{1,3}))\\s*(?:[:.]|\\s[-–—])\\s*(.+)$`);
 const GENERIC = new Set(['book', 'volume', 'vol', 'part', 'issue', 'edition', 'chapter', 'episode', 'number', 'no', 'nr', 'bind', 'bog', 'del', 'band', 'teil', 'tome', 'series', 'serien']);
 
 function romanValue(s) {
@@ -85,11 +117,13 @@ function romanValue(s) {
   return n || null;
 }
 
+/** The place a number in a title gives: "3", "iv", "one", or a range such as "1-3". */
 function numberValue(s) {
   const word = NUMBER_WORDS.indexOf(s.toLowerCase());
-  if (word >= 0) return word + 1;
-  if (/^\d/.test(s)) return parsePosition(s);
-  return romanValue(s);
+  if (word >= 0) return { position: word + 1 };
+  if (/^\d/.test(s)) return parsePlace(s);
+  const roman = romanValue(s);
+  return roman == null ? null : { position: roman };
 }
 
 function seriesName(raw, descriptive = false) {
@@ -103,8 +137,8 @@ function matchSeries(part, patterns) {
     const m = p.re.exec(part);
     if (!m) continue;
     const name = seriesName(m[p.name], p.descriptive);
-    const position = numberValue(m[p.num]);
-    if (name && position != null) return { name, position };
+    const place = numberValue(m[p.num]);
+    if (name && place) return { name, ...place };
   }
   return null;
 }
@@ -114,8 +148,9 @@ const hasText = (s) => /[\p{L}\p{N}]/u.test(s);
 /**
  * Finds a series named in a title and returns the title without it, or null.
  * Only explicit forms count (a "#", or a word such as Book, Volume, Bind or Band before the
- * number), so titles like "Windows 10 (Python 3)" are left alone.
- * @returns {{title: string, name: string, position: number} | null}
+ * number), so titles like "Windows 10 (Python 3)" are left alone. An omnibus gives a range:
+ * "(The Expanse, #1-3)" is positions 1 to 3.
+ * @returns {{title: string, name: string, position: number, positionEnd?: number} | null}
  */
 export function seriesFromTitle(title) {
   const t = String(title ?? '').replace(/\s+/g, ' ').trim();
@@ -138,8 +173,8 @@ export function seriesFromTitle(title) {
   const lead = LEADING.exec(t);
   if (lead && hasText(lead[5])) {
     const name = seriesName(lead[1]);
-    const position = numberValue(lead[2] ?? lead[3] ?? lead[4]);
-    if (name && position != null) return { title: lead[5].trim(), name, position };
+    const place = numberValue(lead[2] ?? lead[3] ?? lead[4]);
+    if (name && place) return { title: lead[5].trim(), name, ...place };
   }
   return null;
 }
@@ -153,11 +188,12 @@ export function withTitleSeries(meta) {
   const series = uniqueSeries(meta.series);
   const found = seriesFromTitle(meta.title);
   if (!found) return { ...meta, series };
-  if (!series.length) return { ...meta, title: found.title, series: [{ name: found.name, position: found.position }] };
-  const same = series.find((s) => looseKey(s.name) === looseKey(found.name));
+  const { title, name, ...place } = found;
+  if (!series.length) return { ...meta, title, series: [{ name, ...place }] };
+  const same = series.find((s) => looseKey(s.name) === looseKey(name));
   if (!same) return { ...meta, series };
-  if (same.position == null) same.position = found.position;
-  return { ...meta, title: found.title, series };
+  if (same.position == null) Object.assign(same, place);
+  return { ...meta, title, series };
 }
 
 // ---- series in package metadata ----
@@ -181,7 +217,7 @@ const TITLE_TYPES_NOT_MAIN = new Set(['collection', 'edition', 'subtitle', 'shor
 /**
  * Reads the title and series from an OPF <metadata> element: calibre's series fields, EPUB 3
  * collections (series and sets) and EPUB 3 collection titles.
- * @returns {{title: string, series: Array<{name: string, position: number|null}>}}
+ * @returns {{title: string, series: Array<{name: string, position: number|null, positionEnd?: number}>}}
  */
 export function opfTitleAndSeries(metadata) {
   const metas = findAllLocal(metadata, 'meta');
@@ -195,11 +231,11 @@ export function opfTitleAndSeries(metadata) {
   for (const m of metas) {
     if ((attr(m, 'property') || '').toLowerCase() !== 'belongs-to-collection' || attr(m, 'refines')) continue;
     const props = refines.get(attr(m, 'id')) || {};
-    const entry = { name: text(m), position: parsePosition(props['group-position']) };
+    const entry = { name: text(m), position: props['group-position'] };
     if ((props['collection-type'] || '').toLowerCase() === 'set') sets.push(entry); else series.push(entry);
   }
   const named = (n) => attr(metas.find((m) => (attr(m, 'name') || '').toLowerCase() === n), 'content');
-  if (named('calibre:series')) series.push({ name: named('calibre:series'), position: parsePosition(named('calibre:series_index')) });
+  if (named('calibre:series')) series.push({ name: named('calibre:series'), position: named('calibre:series_index') });
   for (const t of titles) if (titleType(t) === 'collection') sets.push({ name: text(t), position: null });
   return { title: main ? text(main) : '', series: uniqueSeries([...series, ...sets]) };
 }
@@ -221,7 +257,7 @@ export function seriesFromXmp(xmp) {
     if (!/calibre-ebook\.com\/xmp-namespace\/?$/.test(namespaceOf(el))) continue;
     const value = findFirstLocal(el, 'value');
     const index = findFirstLocal(el, 'series_index');
-    out.push({ name: value ? text(value) : text(el), position: parsePosition(index ? text(index) : null) });
+    out.push({ name: value ? text(value) : text(el), position: index ? text(index) : null });
   }
   return uniqueSeries(out);
 }

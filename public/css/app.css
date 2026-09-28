@@ -270,7 +270,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .series-row { display: flex; gap: 6px; margin-bottom: 6px; }
 .field .series-row input { width: auto; min-width: 0; }
 .field .series-row input[name="series-name"] { flex: 1 1 auto; }
-.field .series-row input[name="series-no"] { flex: 0 0 64px; text-align: center; }
+.field .series-row input[name="series-no"] { flex: 0 0 80px; text-align: center; }
 .series-row .btn.icon { flex: none; }
 .lookup { margin: -4px 0 14px; }
 .lookup .hint a { font-weight: 600; }

@@ -1,7 +1,7 @@
 // Single-worker conversion queue. Books are converted one at a time in-process.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { convert, readMetadata } from '../converters/index.js';
+import { convert, readMetadata, readOpfDetails, withOpfDetails, OPF_FILE } from '../converters/index.js';
 import { writeBundle } from '../converters/bundle.js';
 import { withTitleSeries } from '../converters/series.js';
 import { now, transaction } from '../db.js';
@@ -29,6 +29,11 @@ export function createProcessor(db, config, series, log = console) {
     setIsbns: db.prepare('UPDATE books SET isbns = ? WHERE id = ?'),
   };
 
+  // The details of an OPF file that came with the book, which win over its file's own, or null.
+  const readOpf = async (id) => {
+    try { return readOpfDetails(await fs.readFile(path.join(config.booksDir, id, OPF_FILE))); } catch { return null; }
+  };
+
   const readOriginal = async (id) => {
     const dir = path.join(config.booksDir, id);
     const name = (await fs.readdir(dir)).find((f) => f.startsWith('original.'));
@@ -43,6 +48,8 @@ export function createProcessor(db, config, series, log = console) {
     try {
       const result = await convert(await readOriginal(id), { filename: book.original_name });
       if (!result.sections.length) throw new Error('No readable content found');
+      const opf = await readOpf(id);
+      if (opf) result.meta = withOpfDetails(result.meta, opf);
       const manifest = await writeBundle(dir, result);
       transaction(db, () => {
         const current = stmts.get.get(id);
@@ -108,6 +115,8 @@ export function createProcessor(db, config, series, log = console) {
           log.error?.(`[metadata] ${id}: ${err.message}`);
         }
       }
+      const opf = await readOpf(id);
+      if (opf) meta = withOpfDetails({ title: '', author: '', language: '', series: [], ...meta }, opf);
       transaction(db, () => {
         const current = stmts.get.get(id);
         if (!current || current.status !== 'ready' || current.metadata_version >= METADATA_VERSION) return;

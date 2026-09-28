@@ -173,7 +173,7 @@ export async function writeBundle(dir, book) {
     author: book.meta.author || '',
     language: book.meta.language || '',
     format: book.meta.format,
-    series: (book.meta.series || []).map((s) => ({ name: s.name, position: s.position ?? null })),
+    series: (book.meta.series || []).map((s) => ({ name: s.name, position: s.position ?? null, ...(s.positionEnd != null ? { positionEnd: s.positionEnd } : {}) })),
     totalChars: cum,
     sections: manifestSections,
     toc: book.toc,

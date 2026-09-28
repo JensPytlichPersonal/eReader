@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS distinct_books (
 CREATE INDEX IF NOT EXISTS distinct_books_other ON distinct_books(other_id);
 
 -- Series and collections: books that belong together. A book can be in several; position
--- orders a series (1, 2, 2.5 ...) and is NULL in collections without an order.
+-- orders a series (1, 2, 2.5 ...) and is NULL in collections without an order. A book holding
+-- several, such as an omnibus, has a range: position_end is its last number (1 to 3), else NULL.
 CREATE TABLE IF NOT EXISTS series (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -79,6 +80,7 @@ CREATE TABLE IF NOT EXISTS book_series (
   book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
   series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
   position REAL,
+  position_end REAL,
   PRIMARY KEY (book_id, series_id)
 );
 CREATE INDEX IF NOT EXISTS book_series_series ON book_series(series_id);
@@ -133,6 +135,8 @@ function migrate(db) {
   if (!columns.has('isbns')) db.exec("ALTER TABLE books ADD COLUMN isbns TEXT NOT NULL DEFAULT ''");
   // Here rather than in SCHEMA, which runs before an older database has the column.
   db.exec('CREATE INDEX IF NOT EXISTS books_sha256 ON books(sha256)');
+  const seriesColumns = new Set(db.prepare('PRAGMA table_info(book_series)').all().map((c) => c.name));
+  if (!seriesColumns.has('position_end')) db.exec('ALTER TABLE book_series ADD COLUMN position_end REAL');
 }
 
 /** Runs `fn` in a transaction (a savepoint, so calls can nest). `fn` must be synchronous. */
