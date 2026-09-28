@@ -274,8 +274,9 @@ A series is a group of books with numbers (1, 2, 2.5 …); a collection is a gro
 such as a book club. A book can be in several. Opening a series lists its books in order and offers
 *Continue*, *Next up* or *Start with* for the book to read next. The *Series & collections* tab lists
 every group. A book holding several, such as an omnibus, has a range of numbers (#1–3): type `1-3` as
-its number, or let its title or EPUB metadata give it. It is listed by its first number, after a book
-with that number of its own.
+its number, or let its title or EPUB metadata give it. It is listed after the books it holds, before the
+next one: #1, #2, #3, #1–3, #4. *Next up* passes over a book whose numbers you have all finished, such
+as an omnibus of books you have read, or a book you read in an omnibus.
 
 The Books view shows each series in one of three ways, chosen in the toolbar and remembered per device:
 

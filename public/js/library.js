@@ -219,9 +219,10 @@ function groupSeries() {
     }
   }
   for (const g of groups.values()) {
-    // An omnibus goes by its first number, after a single book with that number: #1, #1–3, #2.
-    const end = (i) => i.positionEnd ?? i.position ?? Infinity;
-    g.items.sort((x, y) => (x.position ?? Infinity) - (y.position ?? Infinity) || end(x) - end(y) || x.book.title.localeCompare(y.book.title));
+    // A book holding several, such as an omnibus, comes after the books it holds and before the next:
+    // #1, #2, #3, #1–3, #4.
+    const last = (i) => i.positionEnd ?? i.position ?? Infinity;
+    g.items.sort((x, y) => last(x) - last(y) || (y.position ?? 0) - (x.position ?? 0) || x.book.title.localeCompare(y.book.title));
     const states = g.items.map((i) => status(i.book));
     g.numbered = g.items.some((i) => i.position != null);
     g.finished = states.filter((st) => st === 'finished').length;
@@ -241,7 +242,16 @@ function seriesPlace(g) {
   const st = (i) => status(i.book);
   const reading = g.items.filter((i) => st(i) === 'reading').sort((a, b) => b.book.progress.updatedAt - a.book.progress.updatedAt)[0];
   const done = g.items.map(st).lastIndexOf('finished');
-  const unread = g.items.slice(done + 1).find((i) => st(i) === 'unread') || g.items.find((i) => st(i) === 'unread');
+  // A book whose numbers finished books already hold does not come next: an omnibus of books you have
+  // read, or a book you read in an omnibus (or in another format). Numbers such as 2.5 hold no whole one.
+  const numbers = (i) => {
+    const out = [];
+    if (i.position != null) for (let n = Math.ceil(i.position); n <= (i.positionEnd ?? i.position); n++) out.push(n);
+    return out;
+  };
+  const read = new Set(g.items.filter((i) => st(i) === 'finished').flatMap(numbers));
+  const next = (i) => st(i) === 'unread' && !(numbers(i).length && numbers(i).every((n) => read.has(n)));
+  const unread = g.items.slice(done + 1).find(next) || g.items.find(next);
   const no = (i) => (i.position != null ? `#${numberIn(i)}` : '');
   if (reading) return { item: reading, verb: 'Continue', text: `Reading ${no(reading)}`.trim() };
   if (unread && done >= 0) return { item: unread, verb: 'Next up:', text: no(unread) ? `Next: ${no(unread)}` : 'Next up' };
