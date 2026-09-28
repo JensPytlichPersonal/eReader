@@ -43,7 +43,9 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   the cards are 2, 3 or 4 across, and the tabs, search, menus, upload and account links sit behind
   the ☰ button so the books fill the screen.
 - **Table of contents, bookmarks, progress slider, chapter titles** and a "who else is reading" peek.
-- **Upload from the app** (button or drag and drop). Conversion runs in the background.
+- **Upload from the app**: books, or whole folders of them, with a button or by drag and drop.
+  Conversion runs in the background. The same file is never added twice, and the same book in another
+  file is flagged as a possible duplicate.
 - **Installable, and readable offline.** Add it to the home screen on iOS or Android for a full-screen
   app. When served over https, every book you open is kept on the device, all of it, so it can be read
   without a connection.
@@ -157,7 +159,7 @@ them in the `command=` of the authorized key, for example
 | `DATA_DIR` | `./data` | Where the database and books are stored |
 | `ALLOW_REGISTRATION` | `false` | Let anyone create an account (the very first account is always allowed) |
 | `SESSION_DAYS` | `365` | How long a sign-in lasts on a device |
-| `MAX_UPLOAD_MB` | `500` | Maximum upload size |
+| `MAX_UPLOAD_MB` | `500` | Maximum size of an uploaded file |
 | `SECURE_COOKIES` | `false` | Set to `true` when the server is only reachable over https |
 | `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy that sets `X-Forwarded-*` |
 | `HARDCOVER_TOKEN` | (none) | A Hardcover API token, so looking books up asks Hardcover as well as Open Library (see below) |
@@ -196,6 +198,39 @@ kept the next time they open online. Reading positions sync when the connection 
 **Laptop.** Arrow keys, space, Page Up/Down turn pages; `t` opens the contents, `b` bookmarks, `s`
 the display settings, `m` the menu, `+`/`-` change the text size, Home/End jump to the start or end.
 Wide windows show two columns; switch to one column in the display settings if you prefer.
+
+## Adding books
+
+*Upload books* picks one or more files. On a computer, *Upload a folder* (in the drop area) picks a
+whole folder, and files or folders can be dropped on the page. A folder brings every book in it and in
+its subfolders, in the order of their paths. Hidden files (such as `.DS_Store`) and files in other
+formats (covers, `.opf` files) are left out, and the upload says how many there were of each kind.
+
+Books go up one at a time while the server converts the ones already there. A line above the library
+shows how far the upload has come, with a *Stop* button; keep the page open until it is done (the
+browser asks before leaving it). Files that could not be added are listed under that line with the
+reason. Each file can be up to `MAX_UPLOAD_MB` (500 MB by default).
+
+### Duplicates
+
+A file that is already in the library is not added again, whatever its name and whoever added it: the
+upload lists it as *already in the library* and names the book it is. So an upload that was stopped or
+cut off can simply be started again with the same folder, and only the missing books go up.
+
+The same book in another file, such as an EPUB and a PDF of it, can't be told for certain, so it is
+added and flagged instead. Books that share an ISBN (EPUB and MOBI files usually carry one), or have
+the same title and author, are marked *Possible duplicate*; so are books with the same title when one
+of them names no author, as PDFs often don't. Titles and authors are compared loosely: case, accents
+and punctuation don't matter, nor the order of an author's names ("Herbert, Frank").
+
+The *Duplicates* filter lists the flagged books in groups. The mark on a book opens it side by side
+with the books it looks like, each with its format, size, who added it and who is reading it, to keep
+the right one: *Delete* removes a copy for everyone, with its reading positions and bookmarks, and *Not
+the same book* stops flagging the two. Deleting is for the uploader or an admin, *Not the same book* for
+the uploader of either book or an admin.
+
+Books already in the library when this arrived are fingerprinted, and their ISBNs read, once in the
+background when the server starts, without converting them again, so copies among them are flagged too.
 
 ## Formats
 
@@ -360,7 +395,7 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, and the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`)
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), and `duplicates.js`, which finds books that are in the library twice
 - `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
 - `public/` the web app: library, reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)

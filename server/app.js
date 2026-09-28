@@ -7,6 +7,7 @@ import { openDatabase } from './db.js';
 import { createAuth } from './auth.js';
 import { createProcessor } from './processing/queue.js';
 import { createSeriesStore } from './series.js';
+import { createDuplicates } from './duplicates.js';
 import { createOpenLibrary } from './openlibrary.js';
 import { createHardcover } from './hardcover.js';
 import { createLookup } from './lookup.js';
@@ -26,6 +27,7 @@ export function createApp(overrides = {}) {
   const log = overrides.quiet ? { info() {}, error() {} } : console;
   const series = createSeriesStore(db);
   const processor = createProcessor(db, config, series, log);
+  const duplicates = createDuplicates(db, config, log);
   // Tests hand in clients for stand-in catalogues (null for none).
   const hardcover = overrides.hardcover !== undefined ? overrides.hardcover : config.hardcoverToken ? createHardcover({ token: config.hardcoverToken }) : null;
   if (hardcover?.problem) log.error?.(`[lookup] ${hardcover.problem}`);
@@ -44,7 +46,7 @@ export function createApp(overrides = {}) {
 
   app.use('/api/auth', authRoutes(db, auth, config));
   app.use('/api/users', userRoutes(db, auth));
-  app.use('/api/books', bookRoutes(db, auth, config, processor, series, lookups));
+  app.use('/api/books', bookRoutes(db, auth, config, processor, series, lookups, duplicates));
   app.use('/api/series', seriesRoutes(auth, series));
   app.use('/books', bookFiles(db, auth, config));
   // `lookup`: the catalogues books are looked up in, so an admin can see whether HARDCOVER_TOKEN was picked up.
@@ -92,9 +94,11 @@ export function createApp(overrides = {}) {
   app.use((err, req, res, next) => {
     if (err?.type === 'entity.too.large') return res.status(413).json({ error: `File is too large (limit ${Math.round((err.limit ?? config.maxUploadBytes) / 1048576)} MB)` });
     if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'Malformed JSON' });
+    // An upload stopped from the library: the browser is no longer listening.
+    if (err?.type === 'request.aborted') return res.status(400).end();
     log.error?.(err);
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  return { app, db, auth, config, processor, series, lookups };
+  return { app, db, auth, config, processor, series, lookups, duplicates };
 }

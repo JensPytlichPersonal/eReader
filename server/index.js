@@ -1,8 +1,9 @@
 import { createApp } from './app.js';
 
-const { app, config, processor, auth, lookups } = createApp();
+const { app, config, processor, auth, lookups, duplicates } = createApp();
 processor.resumePending();
 processor.backfillMetadata().catch((err) => console.error(`[metadata] ${err.message}`));
+duplicates.backfillFingerprints().catch((err) => console.error(`[fingerprint] ${err.message}`));
 auth.purgeExpired();
 setInterval(() => auth.purgeExpired(), 6 * 3600 * 1000).unref();
 
