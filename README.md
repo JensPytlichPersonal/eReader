@@ -280,7 +280,7 @@ and leaves the details as they are. A match chosen for its details offers its co
 cover*, ticked when the book has no cover yet and left for you to tick when it has one; a cover taken
 with *Cover only* is ticked, and stays when the details then come from another match. On saving, the
 server fetches the picture and keeps it like a cover picked by hand, so *Change cover* can still go back
-to the book's own. On a wide screen the matches are beside the form.
+to the book's own. On a wide screen the dialog grows once there are matches, to show them beside the form.
 
 - A series the catalogue names joins the library's series of that name, however it is spelled there
   ("The Expanse" joins "Expanse").
