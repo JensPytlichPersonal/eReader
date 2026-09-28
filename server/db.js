@@ -110,6 +110,14 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS bookmarks_user_book ON bookmarks(user_id, book_id);
+
+-- Settings an admin changes from the app, such as the Hardcover token: one row per setting.
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
 `;
 
 export function openDatabase(dbPath) {

@@ -37,6 +37,17 @@
     <p class="notice hidden" id="ok">Password changed.</p>
     <button class="btn primary" type="submit">Change password</button>
   </form>
+  <div id="catalogues" class="hidden">
+    <h2>Catalogues</h2>
+    <p class="muted">Book details and covers come from Open Library, which needs no key, and from Hardcover when the server has a token for it. Hardcover knows series and their order well, and tells the library which books a series lacks. Make a token at <a href="https://hardcover.app/account/api/keys/new?scope=read:catalog" target="_blank" rel="noopener">hardcover.app</a> (read:catalog is enough), paste it here, and it is used at once. It is kept on this server, in the database.</p>
+    <p class="muted" id="hc-status"></p>
+    <form id="hc-form">
+      <div class="field"><label for="hc-token">Hardcover API token</label><input id="hc-token" type="password" autocomplete="off" placeholder="Paste the token, with or without Bearer"></div>
+      <p class="error hidden" id="hc-error"></p>
+      <p class="notice hidden" id="hc-ok"></p>
+      <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="hc-check">Check</button><button class="btn danger hidden" type="button" id="hc-remove">Remove</button></div>
+    </form>
+  </div>
   <h2>Offline</h2>
   <p class="muted">Every book you open is kept on this device, so you can read it without a connection. Offline, the library fades the books that aren't here. Reading positions sync when you are back online.</p>
   <button class="btn" id="clear-cache">Clear cached books on this device</button>

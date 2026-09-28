@@ -302,7 +302,7 @@ export function bookRoutes(db, auth, config, processor, { series, genres }, look
       if (!req.body.length) return res.status(400).json({ error: 'No image received' });
       if (!(await useCoverImage(b, req.body))) return res.status(415).json({ error: 'The cover must be a JPEG, PNG, GIF or WebP image' });
     } else if (source === 'openlibrary' || source === 'hardcover') {
-      if (!lookups.sources.includes(source)) return res.status(400).json({ error: 'Hardcover is not set up on this server' });
+      if (!lookups.sources.includes(source)) return res.status(400).json({ error: 'Hardcover is not set up on this server. An admin can add a token for it under Settings.' });
       const { coverId } = req.body;
       if (!Number.isInteger(coverId) || coverId <= 0) return res.status(400).json({ error: 'coverId must be the number the catalogue gave with the match' });
       let image;
