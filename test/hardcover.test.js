@@ -37,7 +37,7 @@ function standIn(answer, pictures = {}) {
     }
     const { query, variables } = JSON.parse(init.body);
     const operation = /query (\w+)/.exec(query)[1];
-    calls.push({ operation, variables, headers: init.headers });
+    calls.push({ operation, query, variables, headers: init.headers });
     const reply = await answer(operation, variables);
     if (reply.status) return new Response(reply.body ?? '', { status: reply.status });
     return new Response(JSON.stringify(reply.errors ? reply : { data: reply }));
@@ -55,7 +55,8 @@ test('Hardcover lookup: the searches, then the books they found and the file\'s 
   assert.deepEqual(site.calls.map((c) => [c.operation, c.variables]), [
     ['Search', { q: 'Leviathan Wakes James S. A. Corey' }],
     ['Search', { q: 'Leviathan Wakes' }],
-    ['Details', { ids: [999, 427], isbns: ['9780316129084'] }],
+    // The book's language is not known: no edition has "".
+    ['Details', { ids: [999, 427], isbns: ['9780316129084'], language: '' }],
   ]);
   assert.equal(site.calls[0].headers.authorization, 'Bearer abc123');
   assert.match(site.calls[0].headers['user-agent'], /^eReader/);
@@ -64,12 +65,12 @@ test('Hardcover lookup: the searches, then the books they found and the file\'s 
       key: 'hardcover:427', source: 'hardcover', title: 'Leviathan Wakes', author: 'James S. A. Corey', year: 2011,
       // The featured series first; the narrator is not an author.
       series: [{ name: 'The Expanse', position: 1 }, { name: 'The Expanse Universe', position: 1 }],
-      cover: 'https://assets.hardcover.app/editions/31/cover.jpg', coverSource: 'hardcover', coverId: 31,
+      cover: 'https://assets.hardcover.app/editions/31/cover.jpg', coverSource: 'hardcover', coverId: 31, covers: [],
       url: 'https://hardcover.app/id/book/427', byIsbn: true,
     },
     {
       key: 'hardcover:999', source: 'hardcover', title: 'Leviathan Wakes: The Graphic Novel', author: 'James S. A. Corey', year: 2021,
-      series: [], cover: null, coverSource: null, coverId: null, url: 'https://hardcover.app/id/book/999', byIsbn: false,
+      series: [], cover: null, coverSource: null, coverId: null, covers: [], url: 'https://hardcover.app/id/book/999', byIsbn: false,
     },
   ]);
 
@@ -164,6 +165,85 @@ test('a book Hardcover lists under another title and authors is found by the tit
   assert.deepEqual(found.map((m) => m.key), ['hardcover:4001']);
 });
 
+// Hardcover takes a search that starts with "by" for books by an author, so "By Schism Rent Asunder"
+// finds books by Gordon Chism.
+const schism = { id: 446538, title: 'By Schism Rent Asunder', release_year: 2008, image: null, contributions: credit('David Weber'), book_series: [{ position: 2, featured: true, series: { name: 'Safehold' } }], editions: [] };
+const byChism = { id: 1561276, title: 'The Thinking Person\'s UFO Book', release_year: 2009, image: null, contributions: credit('Richard M. Dolan', 'Gordon Chism'), book_series: [], editions: [] };
+
+test('a title starting with "By" is searched for as a title, not as books by an author', async () => {
+  const site = standIn((operation, { q, ids }) => (operation === 'Search'
+    ? { search: { ids: /^by\s/i.test(q) ? [byChism.id] : [schism.id] } }
+    : { books: [schism, byChism].filter((b) => ids.includes(b.id)), editions: [] }));
+  const results = await createHardcover({ token: 'abc', fetch: site.fetch }).lookup({ title: 'By Schism Rent Asunder', author: 'David Weber' });
+  assert.deepEqual(site.calls.filter((c) => c.operation === 'Search').map((c) => c.variables.q), ['"By" Schism Rent Asunder David Weber', '"By" Schism Rent Asunder']);
+  assert.deepEqual(results.map((m) => [m.title, m.author, m.series]), [['By Schism Rent Asunder', 'David Weber', [{ name: 'Safehold', position: 2 }]]]);
+
+  // Elsewhere, or as part of a word, "by" is left as it is.
+  for (const title of ['Stand by Me', 'Bygones']) {
+    const other = standIn(() => ({ search: { ids: [] } }));
+    await createHardcover({ token: 'abc', fetch: other.fetch }).lookup({ title });
+    assert.deepEqual(other.calls.map((c) => c.variables.q), [title]);
+  }
+});
+
+test('a match offers the covers of its editions that are not marked as being in another language', async () => {
+  const at = (id) => ({ id, url: `https://assets.hardcover.app/editions/${id}.jpg` });
+  const edition = (id, code2 = null) => ({ image: at(id), language: code2 && { code2, code3: null } });
+  // The Shining Ones: its website shows an English edition. Of the editions most readers have, one is
+  // Finnish, one has no language set and two share a picture; the Swedish ones are read less.
+  const editions = [edition(1, 'en'), edition(2, 'fi'), edition(3, 'en'), edition(4), edition(3, 'en'), edition(5, 'sv'), edition(6, 'sv')];
+  const shining = { id: 269694, title: 'The Shining Ones', release_year: 1993, image: at(9), default_cover_edition: editions[0], contributions: credit('David Eddings'), book_series: [], editions: [] };
+  const lookup = async (language, all = editions) => {
+    const site = standIn((operation, v) => (operation === 'Search'
+      ? { search: { ids: [shining.id] } }
+      : { books: [{ ...shining, mostRead: all.slice(0, 5), inLanguage: all.filter((e) => e.language?.code2 === v.language) }], editions: [] }));
+    const [m] = await createHardcover({ token: 'abc', fetch: site.fetch }).lookup({ title: 'The Shining Ones', language });
+    return [site.calls.at(-1).variables.language, m.coverId, m.covers.map((c) => c.coverId)];
+  };
+  // An English book: the website's cover, then the other English ones and the one with no language.
+  assert.deepEqual(await lookup('en-GB'), ['en', 1, [3, 4]]);
+  // A Swedish book: the Swedish covers, though fewer read them, and the one with no language.
+  assert.deepEqual(await lookup('swe'), ['sv', 5, [6, 4]]);
+  // Without a language in the file, the book's is the one of the edition Hardcover shows it with.
+  assert.deepEqual(await lookup(''), ['', 1, [3, 4]]);
+  // With none in the book's language, one with no language set; with none of those either, the website's.
+  assert.deepEqual(await lookup('da'), ['da', 4, []]);
+  assert.deepEqual(await lookup('da', editions.filter((e) => e.language)), ['da', 1, []]);
+
+  // A cover is offered as a match's own is, to take by its picture's id.
+  const site = standIn((operation) => (operation === 'Search' ? { search: { ids: [shining.id] } } : { books: [{ ...shining, mostRead: editions }], editions: [] }));
+  const [m] = await createHardcover({ token: 'abc', fetch: site.fetch }).lookup({ title: 'The Shining Ones', language: 'en' });
+  assert.deepEqual(m.covers[0], { cover: 'https://assets.hardcover.app/editions/3.jpg', coverSource: 'hardcover', coverId: 3 });
+});
+
+test('audiobook editions are left out: their covers, and as the edition a match is offered as', async () => {
+  const at = (id) => ({ id, url: `https://assets.hardcover.app/editions/${id}.jpg` });
+  // Hardcover's reading formats: 1 physical, 2 audio, 3 both, 4 e-book.
+  const edition = (id, format, fields = {}) => ({ id, image: at(id), language: { code2: 'en', code3: 'eng' }, reading_format_id: format, ...fields });
+  const audio = edition(2, 2, { title: 'The Way of Kings (Unabridged)' });
+  const kings = { id: 7, title: 'The Way of Kings', release_year: 2010, image: at(9), default_cover_edition: audio, contributions: credit('Brandon Sanderson'), book_series: [],
+    editions: [audio], mostRead: [audio, edition(1, 1), edition(3, 4), edition(4, 3)] };
+  const site = standIn((operation) => (operation === 'Search' ? { search: { ids: [kings.id] } } : { books: [kings], editions: [] }));
+  const hardcover = createHardcover({ token: 'abc', fetch: site.fetch });
+  // Not offered as the audiobook, though its title is the one typed, nor with its cover, though it is
+  // the one Hardcover shows the book with. The physical, e-book and both-in-one editions' covers are.
+  const [m] = await hardcover.lookup({ title: 'The Way of Kings (Unabridged)', language: 'en' });
+  assert.deepEqual([m.title, m.coverId, m.covers.map((c) => c.coverId)], ['The Way of Kings', 1, [3, 4]]);
+  // Hardcover is asked for editions without them, so the ones most readers have are not all audiobooks;
+  // all but the edition asked for by the file's ISBN.
+  const lists = site.calls.at(-1).query.match(/editions\(where: [^)]*\)/g);
+  assert.equal(lists.length, 6);
+  assert.deepEqual(lists.filter((l) => !l.includes('reading_format_id: {_neq: 2}')).map((l) => l.includes('isbn_13')), [true]);
+  // With no other picture, no audiobook's either: the book's own image.
+  const onlyAudio = standIn((operation) => (operation === 'Search' ? { search: { ids: [kings.id] } } : { books: [{ ...kings, mostRead: [audio] }], editions: [] }));
+  const [alone] = await createHardcover({ token: 'abc', fetch: onlyAudio.fetch }).lookup({ title: 'The Way of Kings' });
+  assert.equal(alone.coverId, 9);
+  // Found by an audiobook edition's ISBN, the book comes as itself.
+  const byIsbn = standIn((operation) => (operation === 'Search' ? { search: { ids: [] } } : { books: [], editions: [{ ...audio, book: kings }] }));
+  const [found] = await createHardcover({ token: 'abc', fetch: byIsbn.fetch }).lookup({ isbns: ['9780765326355'] });
+  assert.deepEqual([found.title, found.coverId, found.byIsbn], ['The Way of Kings', 1, true]);
+});
+
 test('the file\'s edition, found by its ISBN, comes with its own title, authors and cover', async () => {
   const stone = {
     id: 1, title: 'Harry Potter and the Philosopher\'s Stone', release_year: 1997, image: { id: 3, url: 'https://assets.hardcover.app/books/1/en.jpg' },
@@ -225,7 +305,7 @@ test('Hardcover series are found by name, each with its books in order', async (
 
 // ---- both catalogues ----
 
-const match = (fields) => ({ series: [], cover: null, coverSource: null, coverId: null, byIsbn: false, year: null, url: '', ...fields });
+const match = (fields) => ({ series: [], cover: null, coverSource: null, coverId: null, covers: [], byIsbn: false, year: null, url: '', ...fields });
 const catalogue = (lookup, cover = async () => PNG) => ({ lookup, cover });
 
 test('a book found in both catalogues is offered once, with what only one of them had', async () => {

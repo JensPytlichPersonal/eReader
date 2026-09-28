@@ -43,6 +43,8 @@ function toMatch(doc, { title, byIsbn = false, site }) {
     cover: cover ? `${COVERS}/b/id/${cover}-L.jpg?default=false` : null,
     coverSource: cover ? 'openlibrary' : null,
     coverId: cover ?? null,
+    // Its search gives one cover a book.
+    covers: [],
     url: `${site}${onEdition ? edition.key : doc.key}`,
     byIsbn,
   };
@@ -84,7 +86,7 @@ export function createOpenLibrary({ url = SITE, interval = 1000, timeout = 10000
    * Books matching a book's ISBNs, which name its exact edition, and a title and author, ranked by
    * rankMatches(). At most five.
    * @param {{title?: string, author?: string, isbns?: string[], language?: string}} book language as in the file ("da", "en-GB")
-   * @returns {Promise<Array<{key: string, source: string, title: string, author: string, year: number|null, series: Array<{name: string, position: number|null}>, cover: string|null, coverSource: string|null, coverId: number|null, url: string, byIsbn: boolean}>>}
+   * @returns {Promise<Array<{key: string, source: string, title: string, author: string, year: number|null, series: Array<{name: string, position: number|null}>, cover: string|null, coverSource: string|null, coverId: number|null, covers: Array<{cover: string, coverSource: string, coverId: number}>, url: string, byIsbn: boolean}>>}
    */
   async function lookup({ title = '', author = '', isbns = [], language = '' }) {
     // Open Library shows the edition in this language where there is one.

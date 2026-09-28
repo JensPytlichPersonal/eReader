@@ -11,19 +11,33 @@ const SITE = 'https://hardcover.app';
 
 // Pictures are fetched by their id when a cover is saved, so the one saved is the one offered.
 const IMAGE = 'image { id url }';
+// An edition's language, as Hardcover codes it ("en" and "eng"). Many editions have none set.
+const LANGUAGE = 'language { code2 code3 }';
 // Contributions include translators and illustrators; authors have no role or "Author".
 const AUTHORS = 'contributions { contribution author { name } }';
-// What a match needs of a book. Its cover is the one of the edition Hardcover shows it with (the
-// cover on its website), else its own image, which can be an older one.
-const BOOK = `id title release_year ${IMAGE} default_cover_edition { ${IMAGE} } ${AUTHORS} book_series { position featured series { name } }`;
-// An edition can have a title, authors and cover of its own.
-const EDITION = `id title release_year ${IMAGE} ${AUTHORS}`;
+// An edition's reading format: 1 physical, 2 audio, 3 both, 4 e-book. Audiobook editions are left out:
+// their covers are square, and their titles can say "Unabridged".
+const FORMAT = 'reading_format_id';
+const AUDIO = 2;
+const NOT_AUDIO = `reading_format_id: {_neq: ${AUDIO}}`;
+const isAudio = (edition) => edition?.reading_format_id === AUDIO;
+// A book's editions with a picture, those most readers have first.
+const pictured = (where = '') => `editions(where: {image_id: {_is_null: false}, ${NOT_AUDIO}${where}}, order_by: {users_count: desc}, limit: 30) { ${IMAGE} ${LANGUAGE} ${FORMAT} }`;
+// What a match needs of a book. Its covers are its editions', from the one Hardcover shows it with (the
+// cover on its website); else it has its own image, which can be an older one. Those in the book's
+// language are asked for too: of a book in many languages, the editions most readers have can all be
+// in another one.
+const BOOK = `id title release_year ${IMAGE} default_cover_edition { ${IMAGE} ${LANGUAGE} ${FORMAT} } ${AUTHORS} book_series { position featured series { name } }
+  inLanguage: ${pictured(', language: {code2: {_eq: $language}}')} mostRead: ${pictured()}`;
+// An edition can have a title, authors, cover and language of its own.
+const EDITION = `id title release_year ${IMAGE} ${AUTHORS} ${LANGUAGE} ${FORMAT}`;
 // A request may hold one search and nothing else, so the books found are fetched in another one.
 const SEARCH = 'query Search($q: String!) { search(query: $q, query_type: "Book", per_page: 8, page: 1) { ids error } }';
 // Each book comes with the editions most readers have: a book can be listed under another title and
-// other authors, such as a collection's, and have its own only on an edition.
-const DETAILS = `query Details($ids: [Int!]!, $isbns: [String!]!) {
-  books(where: {id: {_in: $ids}}) { ${BOOK} editions(order_by: {users_count: desc}, limit: 10) { ${EDITION} } }
+// other authors, such as a collection's, and have its own only on an edition. $language is the book's
+// ("en"), '' when it is not known.
+const DETAILS = `query Details($ids: [Int!]!, $isbns: [String!]!, $language: String!) {
+  books(where: {id: {_in: $ids}}) { ${BOOK} editions(where: {${NOT_AUDIO}}, order_by: {users_count: desc}, limit: 10) { ${EDITION} } }
   editions(where: {isbn_13: {_in: $isbns}}, limit: 2) { ${EDITION} book { ${BOOK} } }
 }`;
 const COVER = 'query Cover($id: bigint!) { images_by_pk(id: $id) { url } }';
@@ -44,6 +58,23 @@ const list = (v) => (Array.isArray(v) ? v : []);
 const isBook = (b) => Number.isInteger(b?.id) && b.id > 0 && typeof b.title === 'string' && b.title.trim() !== '';
 const isSeries = (s) => Number.isInteger(s?.id) && s.id > 0 && typeof s.name === 'string' && s.name.trim() !== '';
 const year = (v) => (Number.isInteger(v) ? v : null);
+
+/**
+ * A search as Hardcover should read it. Hardcover takes one that starts with "by" for books by an
+ * author ("by Brandon Sanderson"), so "By Schism Rent Asunder" found books by Gordon Chism and Michele
+ * Scism. In quotes, "By" is a word to find like the others.
+ */
+const searchFor = (q) => q.replace(/^by(?=\s)/i, '"$&"');
+
+/** A language as its code, from a tag such as "en-GB" or "eng", or as Hardcover gives it. '' when there is none. */
+function languageOf(value) {
+  try {
+    const code = new Intl.Locale(typeof value === 'string' ? value : value?.code2 || value?.code3).language;
+    return /^[a-z]{2,3}$/.test(code) ? code : '';
+  } catch {
+    return '';
+  }
+}
 
 /** The ids of the books a search found, in order. An answer without them is reported, not taken as "nothing found". */
 function foundIds(search) {
@@ -96,7 +127,7 @@ function fittingEdition(book, { title = '', author = '' }) {
   let best = null;
   let most = fit(book.title, own);
   for (const edition of list(book.editions)) {
-    if (typeof edition?.title !== 'string' || !edition.title.trim()) continue;
+    if (typeof edition?.title !== 'string' || !edition.title.trim() || isAudio(edition)) continue;
     const score = fit(edition.title, authorsOf(edition.contributions) || own);
     if (score > most) [best, most] = [edition, score];
   }
@@ -105,9 +136,10 @@ function fittingEdition(book, { title = '', author = '' }) {
 
 /**
  * A Hardcover book as a match to offer, as it is listed or as one of its editions: the one with the
- * file's ISBN (`byIsbn`), or one that fits the title typed better (see fittingEdition()).
+ * file's ISBN (`byIsbn`), or one that fits the title typed better (see fittingEdition()). `language`
+ * is the book's, as languageOf() gives it.
  */
-function toMatch(book, { edition = null, byIsbn = false } = {}) {
+function toMatch(book, { edition = null, byIsbn = false, language = '' } = {}) {
   // The featured series first: the one Hardcover shows with the book.
   const series = list(book.book_series)
     .filter((s) => typeof s?.series?.name === 'string')
@@ -116,8 +148,20 @@ function toMatch(book, { edition = null, byIsbn = false } = {}) {
   // Titles such as "Caliban's War (The Expanse, #2)" are tidied the way uploaded books are.
   const title = (typeof edition?.title === 'string' && edition.title.trim()) || book.title.trim();
   const details = withTitleSeries({ title, series });
-  // The edition's own cover, else the one Hardcover shows the book with.
-  const cover = picture(edition?.image) ?? picture(book.default_cover_edition?.image) ?? picture(book.image);
+  // Covers of editions that are not marked as being in another language than the book, as its file
+  // gives it, else as the edition it is offered as has it: the edition's own first, then the one
+  // Hardcover shows the book with, then those in the book's language, then those most readers have.
+  const lang = language || languageOf(edition?.language) || languageOf(book.default_cover_edition?.language);
+  const fits = (e) => !isAudio(e) && (!lang || [lang, ''].includes(languageOf(e.language)));
+  // A picture two editions share is offered once. The same artwork in another size is a picture of
+  // its own, and is offered as well: the larger one can be the better cover.
+  const seen = new Set();
+  const pictures = [edition, ...[book.default_cover_edition, ...list(book.inLanguage), ...list(book.mostRead)].filter((e) => e && fits(e))]
+    .map((e) => picture(e?.image))
+    .filter((p) => p && !seen.has(p.id) && seen.add(p.id));
+  // Without one, the cover Hardcover shows the book with all the same, unless it is an audiobook's,
+  // else the book's own image.
+  const cover = pictures[0] ?? (isAudio(book.default_cover_edition) ? null : picture(book.default_cover_edition?.image)) ?? picture(book.image);
   return {
     key: `hardcover:${book.id}`,
     source: 'hardcover',
@@ -129,6 +173,8 @@ function toMatch(book, { edition = null, byIsbn = false } = {}) {
     cover: cover?.url ?? null,
     coverSource: cover ? 'hardcover' : null,
     coverId: cover?.id ?? null,
+    // The other covers, to take instead of that one.
+    covers: pictures.slice(1).map((p) => ({ cover: p.url, coverSource: 'hardcover', coverId: p.id })),
     url: `${SITE}/id/book/${book.id}`,
     byIsbn,
   };
@@ -194,7 +240,7 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
   }
 
   /** The ids of the books a search finds. */
-  const search = async (q) => foundIds((await query(SEARCH, { q: q.slice(0, 300) })).search);
+  const search = async (q) => foundIds((await query(SEARCH, { q: searchFor(q).slice(0, 300) })).search);
   // A search that only adds to another: when it fails, the other's books are offered.
   const extraSearch = (q) => search(q).catch((err) => {
     if (err instanceof LookupError) return [];
@@ -203,9 +249,10 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
 
   /**
    * Books matching a book's ISBNs and a title and author, ranked by rankMatches(). At most five.
-   * @param {{title?: string, author?: string, isbns?: string[]}} book
+   * @param {{title?: string, author?: string, isbns?: string[], language?: string}} book language as in the file ("da", "en-GB")
    */
-  async function lookup({ title = '', author = '', isbns = [] }) {
+  async function lookup({ title = '', author = '', isbns = [], language = '' }) {
+    const lang = languageOf(language);
     const typed = String(title).trim();
     const who = String(author).trim();
     // With an author, the title alone as well: that finds a book listed with other authors than its
@@ -215,14 +262,15 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     const all = [...ids, ...extra];
     const isbn13 = isbns.filter((i) => /^\d{13}$/.test(i)).slice(0, 2);
     if (!all.length && !isbn13.length) return [];
-    const data = await query(DETAILS, { ids: all, isbns: isbn13 });
-    const found = list(data.editions).filter((e) => isBook(e?.book)).map((e) => toMatch(e.book, { edition: e, byIsbn: true }));
+    const data = await query(DETAILS, { ids: all, isbns: isbn13, language: lang });
+    // An ISBN of an audiobook edition still names the book, which is offered as itself.
+    const found = list(data.editions).filter((e) => isBook(e?.book)).map((e) => toMatch(e.book, { edition: isAudio(e) ? null : e, byIsbn: true, language: lang }));
     // In the order the searches found them.
     const books = new Map(list(data.books).filter(isBook).map((b) => [b.id, b]));
     for (const id of all) {
       const book = books.get(id);
       if (!book) continue;
-      const m = toMatch(book, { edition: fittingEdition(book, { title, author }) });
+      const m = toMatch(book, { edition: fittingEdition(book, { title, author }), language: lang });
       if (!extra.has(id) || sameAuthor(m.author, who)) found.push(m);
     }
     return rankMatches(found, { title, author });

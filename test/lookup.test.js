@@ -79,7 +79,7 @@ test('Open Library lookup: the file\'s ISBN first, and only books like the title
   // The ISBN names the Danish edition, so its title wins over the work's (the English original).
   assert.deepEqual(results, [{
     key: '/works/OL82563W', source: 'openlibrary', title: 'Harry Potter og De Vises Sten', author: 'J. K. Rowling', year: 1997, series: [{ name: 'Harry Potter', position: 1 }],
-    cover: 'https://covers.openlibrary.org/b/id/12917614-L.jpg?default=false', coverSource: 'openlibrary', coverId: 12917614, url: 'https://openlibrary.org/books/OL39797842M', byIsbn: true,
+    cover: 'https://covers.openlibrary.org/b/id/12917614-L.jpg?default=false', coverSource: 'openlibrary', coverId: 12917614, covers: [], url: 'https://openlibrary.org/books/OL39797842M', byIsbn: true,
   }]);
 });
 

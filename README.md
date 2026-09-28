@@ -341,6 +341,20 @@ with *Cover only* is ticked, and stays when the details then come from another m
 server fetches the picture and keeps it like a cover picked by hand, so *Change cover* can still go back
 to the book's own. On a wide screen the dialog grows once there are matches, to show them beside the form.
 
+*More covers* under a match from Hardcover shows the covers of the book's other editions, each with its
+size; choosing one takes just that cover, like *Cover only*. Covers of editions marked as being in
+another language than the book are left out, so an English book is not offered the Finnish edition's
+cover; editions without a language set are offered. The book's language is the one its file gives, else
+that of the edition Hardcover shows the book with. A match's own cover follows the same rule: a Danish
+book comes with the cover of a Danish edition, or of one without a language set, rather than the English
+one on Hardcover's website, which is used only when every cover is marked as another language. The
+edition with the file's ISBN, or with the title typed, keeps its own cover.
+
+Audiobook editions are left out altogether: their covers are square, and their titles can say
+"Unabridged". A book found by an audiobook's ISBN is offered as itself, with the cover of another
+edition. The same picture shared by two editions is offered once, but the same artwork in two sizes is
+offered twice, since the larger one can be the better cover.
+
 - A series the catalogue names joins the library's series of that name, however it is spelled there
   ("The Expanse" joins "Expanse").
 - A translation keeps its own title: the Danish "Harry Potter og De Vises Sten" rather than the
@@ -378,6 +392,10 @@ for the title alone as well, and looks at each book's editions. Such a book is o
 edition's title, authors and cover, but only when those are the authors typed, so another book with the
 same title stays out. A cover is the one Hardcover's website shows for the book or edition, saved as
 Hardcover stores it.
+
+Hardcover's search takes one that starts with "by" for books by an author, as in "by Brandon
+Sanderson". So a title that starts with the word, such as *By Schism Rent Asunder*, is searched for
+with "By" in quotes, which Hardcover looks for like the rest of the title.
 
 The token also tells the library which books a series lacks (see
 [Series and collections](#series-and-collections)). The server asks Hardcover for the series by its name

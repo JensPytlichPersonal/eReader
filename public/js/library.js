@@ -971,10 +971,16 @@ const CATALOGUES = { hardcover: 'Hardcover', openlibrary: 'Open Library' };
 
 /**
  * A book found online, offered in the edit dialog: choosing it (anywhere on it) fills in the form, and
- * "Cover only" takes just its cover. The size of the cover is filled in once it has loaded (see showSize()).
+ * "Cover only" takes just its cover. "More covers" shows the other covers the catalogue has for it,
+ * such as its editions', under it; choosing one takes just that cover. The sizes of the covers are
+ * filled in once they have loaded (see showSize()).
  */
 const matchRow = (m, i) => {
   const about = [m.series.map(seriesLabel).join(', '), m.byIsbn ? 'Same ISBN as the file' : ''].filter(Boolean).join(' · ');
+  const buttons = [
+    m.cover && m.coverId ? `<button type="button" class="btn small" data-cover-only="${i}">Cover only</button>` : '',
+    m.covers.length ? `<button type="button" class="btn small" data-more-covers aria-expanded="false">More covers (${m.covers.length})</button>` : '',
+  ].join('');
   return `<div class="match" data-match="${i}">
     ${m.cover ? `<img class="cover" src="${escapeHtml(m.cover)}" alt="" loading="lazy">` : '<span class="cover"></span>'}
     <span class="body">
@@ -984,8 +990,10 @@ const matchRow = (m, i) => {
         ${about ? `<span class="about">${escapeHtml(about)}</span>` : ''}
       </button>
       ${m.cover ? '<span class="about" data-size>Cover loading…</span>' : ''}
-      ${m.cover && m.coverId ? `<button type="button" class="btn small" data-cover-only="${i}">Cover only</button>` : ''}
+      ${buttons ? `<span class="buttons">${buttons}</span>` : ''}
     </span>
+    ${m.covers.length ? `<span class="more-covers hidden">${m.covers.map((c, j) => `<button type="button" class="cover-choice" data-cover-choice="${j}">
+      <img src="${escapeHtml(c.cover)}" alt="" loading="lazy"><span class="sr-only">Cover ${j + 1}: </span><span class="about" data-size></span></button>`).join('')}</span>` : ''}
   </div>`;
 };
 
@@ -1065,6 +1073,10 @@ function editDetails(b) {
         const img = row.querySelector('img.cover');
         if (img) showSize(img, row.querySelector('[data-size]'), (size) => (size ? `Cover ${size}` : 'The cover could not be loaded'));
       }
+      // Under a match's other covers, their sizes without "pixels", for room.
+      for (const choice of matches.querySelectorAll('.cover-choice')) {
+        showSize(choice.querySelector('img'), choice.querySelector('[data-size]'), (size) => (size ? size.replace(' pixels', '') : 'Not loaded'));
+      }
     } catch (err) {
       matches.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     } finally {
@@ -1090,6 +1102,10 @@ function editDetails(b) {
     }
     for (const row of matches.querySelectorAll('[data-match]')) row.classList.toggle('chosen', found[Number(row.dataset.match)] === filled);
     for (const btn of matches.querySelectorAll('[data-cover-only]')) btn.classList.toggle('chosen', coverOnly && found[Number(btn.dataset.coverOnly)] === coverFrom);
+    for (const btn of matches.querySelectorAll('[data-cover-choice]')) {
+      const m = found[Number(btn.closest('[data-match]').dataset.match)];
+      btn.classList.toggle('chosen', coverOnly && m.covers[Number(btn.dataset.coverChoice)].cover === coverFrom.cover);
+    }
     widen();
     picked.scrollIntoView({ block: 'nearest' });
   }
@@ -1120,6 +1136,13 @@ function editDetails(b) {
     showPicked();
   }
 
+  // Shows or hides the other covers of the match in `row`.
+  function toggleCovers(row, button) {
+    const hidden = row.querySelector('.more-covers').classList.toggle('hidden');
+    button.setAttribute('aria-expanded', String(!hidden));
+    button.textContent = hidden ? `More covers (${found[Number(row.dataset.match)].covers.length})` : 'Hide covers';
+  }
+
   root.addEventListener('click', (ev) => {
     if (ev.target.closest('[data-add-row]')) addRow().querySelector('input').focus();
     const remove = ev.target.closest('[data-remove-row]');
@@ -1129,9 +1152,15 @@ function editDetails(b) {
     }
     if (ev.target.closest('[data-lookup]')) lookUp();
     const coverButton = ev.target.closest('[data-cover-only]');
+    const moreButton = ev.target.closest('[data-more-covers]');
+    const choice = ev.target.closest('[data-cover-choice]');
     const match = ev.target.closest('[data-match]');
+    const m = match && found[Number(match.dataset.match)];
     if (coverButton) useCover(found[Number(coverButton.dataset.coverOnly)]);
-    else if (match) useMatch(found[Number(match.dataset.match)]);
+    else if (moreButton) toggleCovers(match, moreButton);
+    // One of its other covers is taken like its own with "Cover only".
+    else if (choice) useCover({ ...m, ...m.covers[Number(choice.dataset.coverChoice)] });
+    else if (match && !ev.target.closest('.more-covers')) useMatch(m);
   });
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
