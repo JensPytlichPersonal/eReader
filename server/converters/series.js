@@ -30,6 +30,12 @@ export function knownSeriesName(name, known) {
   return known.find((k) => seriesKey(k) === seriesKey(clean)) ?? known.find((k) => looseKey(k) === looseKey(clean)) ?? clean;
 }
 
+/** Whether two names are the same series, as loosely as knownSeriesName() takes them: "Expanse" is "The Expanse". */
+export function sameSeriesName(a, b) {
+  const key = looseKey(a);
+  return key !== '' && key === looseKey(b);
+}
+
 /** A place in a series: 3, "3", "03", "2.5" or "2,5". Anything else is null (no place). */
 export function parsePosition(value) {
   if (typeof value === 'number') return Number.isFinite(value) && value >= 0 && value <= MAX_POSITION ? Math.round(value * 100) / 100 : null;

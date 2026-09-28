@@ -272,6 +272,37 @@ test('Hardcover covers are fetched by the picture\'s id, from the address Hardco
   await assert.rejects(hardcover.cover('11'), TypeError);
 });
 
+test('Hardcover series are found by name, each with its books in order', async () => {
+  const corey = (...more) => [...credit('James S. A. Corey'), ...more];
+  const expanse = {
+    id: 26, name: 'The Expanse', author: { name: 'James S. A. Corey' },
+    book_series: [
+      { position: 1, book: { id: 427, title: 'Leviathan Wakes', release_date: '2011-06-15', contributions: corey() } },
+      { position: 2, book: { id: 428, title: "Caliban's War (The Expanse, #2)", release_date: '2012-06-26', contributions: corey({ contribution: 'Narrator', author: { name: 'Jefferson Mays' } }) } },
+      { position: 2.5, book: { id: 429, title: 'Gods of Risk', release_date: null, contributions: corey() } },
+      // Without a book or a place there is nothing to show.
+      { position: 3, book: null },
+      { position: -1, book: { id: 430, title: 'Before the Beginning', release_date: null, contributions: corey() } },
+      { position: 10, book: { id: 431, title: 'Announced', release_date: '2999-01-01', contributions: corey() } },
+    ],
+  };
+  const site = standIn((operation) => (operation === 'FindSeries' ? { search: { ids: [26, 404] } } : { series: [{ id: 404, name: '' }, expanse] }));
+  const found = await createHardcover({ token: 'abc', fetch: site.fetch }).series('Expanse');
+  assert.deepEqual(site.calls.map((c) => [c.operation, c.variables]), [['FindSeries', { q: 'Expanse' }], ['Series', { ids: [26, 404] }]]);
+  const book = (id, position, title, upcoming = false) => ({ position, title, author: 'James S. A. Corey', upcoming, url: `https://hardcover.app/id/book/${id}` });
+  assert.deepEqual(found, [{
+    name: 'The Expanse', author: 'James S. A. Corey', url: 'https://hardcover.app/id/series/26',
+    // Titles are tidied like a lookup's; a book not out yet is marked.
+    books: [book(427, 1, 'Leviathan Wakes'), book(428, 2, "Caliban's War"), book(429, 2.5, 'Gods of Risk'), book(431, 10, 'Announced', true)],
+  }]);
+
+  // Nothing found by that name: nothing more is asked.
+  const none = standIn(() => ({ search: { ids: [] } }));
+  assert.deepEqual(await createHardcover({ token: 'abc', fetch: none.fetch }).series('Nothing'), []);
+  assert.equal(none.calls.length, 1);
+  await assert.rejects(createHardcover({ token: 'abc', fetch: standIn(() => ({ status: 401 })).fetch }).series('The Expanse'), /did not accept the token/);
+});
+
 // ---- both catalogues ----
 
 const match = (fields) => ({ series: [], cover: null, coverSource: null, coverId: null, covers: [], byIsbn: false, year: null, url: '', ...fields });

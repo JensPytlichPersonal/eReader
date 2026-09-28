@@ -17,6 +17,7 @@ export function createSeriesStore(db) {
     forBook: db.prepare(`SELECT s.id, s.name, bs.position, bs.position_end FROM book_series bs JOIN series s ON s.id = bs.series_id
       WHERE bs.book_id = ? ORDER BY bs.rowid`),
     all: db.prepare('SELECT bs.book_id, s.id, s.name, bs.position, bs.position_end FROM book_series bs JOIN series s ON s.id = bs.series_id ORDER BY bs.rowid'),
+    booksIn: db.prepare('SELECT b.title, b.author, bs.position, bs.position_end FROM book_series bs JOIN books b ON b.id = bs.book_id WHERE bs.series_id = ? ORDER BY bs.position'),
     clearBook: db.prepare('DELETE FROM book_series WHERE book_id = ?'),
     addBook: db.prepare('INSERT INTO book_series (book_id, series_id, position, position_end) VALUES (?, ?, ?, ?)'),
     // Merging: books take their place from the series being merged in when they have none in the other.
@@ -91,6 +92,8 @@ export function createSeriesStore(db) {
     /** The name of every series and collection, oldest first. */
     names: () => stmts.names.all().map((r) => r.name),
     forBook: (bookId) => stmts.forBook.all(bookId).map(shape),
+    /** The title, author and number of each book in a series or collection; positionEnd ends the range of a book holding several. */
+    books: (id) => stmts.booksIn.all(id).map((r) => ({ title: r.title, author: r.author, position: r.position ?? null, positionEnd: r.position_end ?? null })),
     byBook,
     setForBook,
     rename,

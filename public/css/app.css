@@ -227,6 +227,13 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .list-row .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
 .list-row .menu-btn { position: relative; z-index: 1; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 18px; line-height: 1; }
 .list-row .chevron { padding: 0 12px; font-size: 26px; font-weight: 700; }
+/* A book a series lacks: a dashed outline in its place, opening the book on Hardcover when Hardcover lists it */
+.card.missing { border-style: dashed; background: none; }
+.card.missing .cover { border-bottom-style: dashed; }
+.card.missing .meta { flex-wrap: wrap; }
+.shelf-book.missing .cover, .list-row.missing .cover { border-style: dashed; }
+.missing .cover { background: none; }
+.missing .cover.placeholder, .missing .title { color: var(--muted); }
 .series-head { margin-bottom: 18px; }
 .series-head h1 { margin: 14px 0 4px; }
 .series-head .row { margin-top: 12px; }

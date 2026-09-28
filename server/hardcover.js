@@ -1,8 +1,9 @@
 // Looks books up on Hardcover (hardcover.app), a book catalogue that knows series and their order
 // well. It needs a token from the Hardcover account's API settings (the read:catalog permission is
 // enough), given to the server as HARDCOVER_TOKEN; without one the lookup asks Open Library alone.
-// Only the server talks to Hardcover, when someone looks a book up or saves a cover from it.
-import { withTitleSeries } from './converters/series.js';
+// Only the server talks to Hardcover: when someone looks a book up or saves a cover from it, and
+// for the books a series lacks (see missing.js).
+import { parsePosition, withTitleSeries } from './converters/series.js';
 import { LookupError, USER_AGENT, likeness, rankMatches, sameAuthor } from './lookup.js';
 
 const API = 'https://api.hardcover.app/v1/graphql';
@@ -40,9 +41,22 @@ const DETAILS = `query Details($ids: [Int!]!, $isbns: [String!]!, $language: Str
   editions(where: {isbn_13: {_in: $isbns}}, limit: 2) { ${EDITION} book { ${BOOK} } }
 }`;
 const COVER = 'query Cover($id: bigint!) { images_by_pk(id: $id) { url } }';
+const FIND_SERIES = 'query FindSeries($q: String!) { search(query: $q, query_type: "Series", per_page: 5, page: 1) { ids error } }';
+// Each series with its books in order, one per place (the most read where several share one),
+// leaving out merged duplicates, parts of books and box sets, as Hardcover's series page does.
+const SERIES = `query Series($ids: [Int!]!) {
+  series(where: {id: {_in: $ids}, canonical_id: {_is_null: true}}) {
+    id name author { name }
+    book_series(distinct_on: position, order_by: [{position: asc}, {book: {users_count: desc}}], limit: 200,
+      where: {position: {_is_null: false}, compilation: {_eq: false}, book: {canonical_id: {_is_null: true}, is_partial_book: {_eq: false}}}) {
+      position book { id title release_date ${AUTHORS} }
+    }
+  }
+}`;
 
 const list = (v) => (Array.isArray(v) ? v : []);
 const isBook = (b) => Number.isInteger(b?.id) && b.id > 0 && typeof b.title === 'string' && b.title.trim() !== '';
+const isSeries = (s) => Number.isInteger(s?.id) && s.id > 0 && typeof s.name === 'string' && s.name.trim() !== '';
 const year = (v) => (Number.isInteger(v) ? v : null);
 
 /**
@@ -167,6 +181,26 @@ function toMatch(book, { edition = null, byIsbn = false, language = '' } = {}) {
 }
 
 /**
+ * A Hardcover series with its books in order. A book not published by `today` (YYYY-MM-DD) is
+ * `upcoming`; Hardcover lists books once they are announced.
+ */
+function toSeries(s, today) {
+  const books = list(s.book_series)
+    .map((entry) => ({ entry, position: parsePosition(entry?.position) }))
+    .filter(({ entry, position }) => position != null && isBook(entry.book))
+    .map(({ entry: { book }, position }) => ({
+      position,
+      // Titles such as "Caliban's War (The Expanse, #2)" are tidied the way uploaded books are.
+      title: withTitleSeries({ title: book.title.trim(), series: [{ name: s.name, position }] }).title.slice(0, 500),
+      author: authorsOf(book.contributions).slice(0, 500),
+      upcoming: typeof book.release_date === 'string' && book.release_date > today,
+      url: `${SITE}/id/book/${book.id}`,
+    }));
+  const author = typeof s.author?.name === 'string' ? s.author.name.trim() : '';
+  return { name: s.name.trim(), author, url: `${SITE}/id/series/${s.id}`, books };
+}
+
+/**
  * @param {object} options
  * @param {string} options.token from the account's API settings, with or without "Bearer " in front
  * @param {string} [options.url] where the API is (tests use a stand-in)
@@ -262,6 +296,18 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     return image;
   }
 
+  /**
+   * The series Hardcover has under a name, the closest first, each with its books in order. At most five.
+   * @returns {Promise<Array<{name: string, author: string, url: string, books: Array<{position: number, title: string, author: string, upcoming: boolean, url: string}>}>>}
+   */
+  async function series(name) {
+    const ids = foundIds((await query(FIND_SERIES, { q: String(name).slice(0, 300) })).search);
+    if (!ids.length) return [];
+    const found = new Map(list((await query(SERIES, { ids })).series).filter(isSeries).map((s) => [s.id, s]));
+    const today = new Date().toISOString().slice(0, 10);
+    return ids.filter((id) => found.has(id)).map((id) => toSeries(found.get(id), today));
+  }
+
   /** Why the token cannot work, when that is plain from the start. */
-  return { lookup, cover, problem: unusable };
+  return { lookup, cover, series, problem: unusable };
 }
