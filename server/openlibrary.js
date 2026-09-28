@@ -39,8 +39,8 @@ function toMatch(doc, { title, byIsbn = false, site }) {
     author: [...new Set(list(doc.author_name).filter((a) => typeof a === 'string'))].join(', ').slice(0, 500),
     year: Number.isInteger(doc.first_publish_year) ? doc.first_publish_year : null,
     series: details.series,
-    // `cover` is a small picture to show; `coverId` asks for the large one to use (see cover()).
-    cover: cover ? `${COVERS}/b/id/${cover}-M.jpg` : null,
+    // `cover` is the picture cover() fetches by `coverId`, so the size shown with a match is the one saved.
+    cover: cover ? `${COVERS}/b/id/${cover}-L.jpg?default=false` : null,
     coverSource: cover ? 'openlibrary' : null,
     coverId: cover ?? null,
     url: `${site}${onEdition ? edition.key : doc.key}`,

@@ -3,35 +3,33 @@
 // enough), given to the server as HARDCOVER_TOKEN; without one the lookup asks Open Library alone.
 // Only the server talks to Hardcover, when someone looks a book up or saves a cover from it.
 import { withTitleSeries } from './converters/series.js';
-import { sniffImage } from './converters/bundle.js';
-import { LookupError, USER_AGENT, rankMatches } from './lookup.js';
+import { LookupError, USER_AGENT, likeness, rankMatches, sameAuthor } from './lookup.js';
 
 const API = 'https://api.hardcover.app/v1/graphql';
 const SITE = 'https://hardcover.app';
-// Hardcover's website shows covers through this service, which enlarges small ones and makes them
-// sharper. It is not part of the API, so a cover falls back to the picture as stored.
-const ENLARGE = 'https://production-img.hardcover.app/enlarge';
-// A smaller cover is enlarged to this many pixels on its longer side, as the cover editor scales
-// pictures to, and at most four times.
-const COVER_SIDE = 1200;
-const MOST_ENLARGED = 4;
 
-// A book's cover can be in three places: the edition Hardcover shows it with (the cover on its
-// website), a cached copy of that, and the book's own image, which can be an older one.
-const COVERS = 'image { url width height } cached_image default_cover_edition { image { url width height } }';
-// What a match needs of a book. Contributions include translators and illustrators; authors have
-// no role or "Author".
-const BOOK = `id title release_year ${COVERS} contributions { contribution author { name } } book_series { position featured series { name } }`;
-// A request may hold one search and nothing else, so the books it finds are fetched in a second one.
+// Pictures are fetched by their id when a cover is saved, so the one saved is the one offered.
+const IMAGE = 'image { id url }';
+// Contributions include translators and illustrators; authors have no role or "Author".
+const AUTHORS = 'contributions { contribution author { name } }';
+// What a match needs of a book. Its cover is the one of the edition Hardcover shows it with (the
+// cover on its website), else its own image, which can be an older one.
+const BOOK = `id title release_year ${IMAGE} default_cover_edition { ${IMAGE} } ${AUTHORS} book_series { position featured series { name } }`;
+// An edition can have a title, authors and cover of its own.
+const EDITION = `id title release_year ${IMAGE} ${AUTHORS}`;
+// A request may hold one search and nothing else, so the books found are fetched in another one.
 const SEARCH = 'query Search($q: String!) { search(query: $q, query_type: "Book", per_page: 8, page: 1) { ids error } }';
+// Each book comes with the editions most readers have: a book can be listed under another title and
+// other authors, such as a collection's, and have its own only on an edition.
 const DETAILS = `query Details($ids: [Int!]!, $isbns: [String!]!) {
-  books(where: {id: {_in: $ids}}) { ${BOOK} }
-  editions(where: {isbn_13: {_in: $isbns}}, limit: 2) { title book { ${BOOK} } }
+  books(where: {id: {_in: $ids}}) { ${BOOK} editions(order_by: {users_count: desc}, limit: 10) { ${EDITION} } }
+  editions(where: {isbn_13: {_in: $isbns}}, limit: 2) { ${EDITION} book { ${BOOK} } }
 }`;
-const COVER = `query Cover($id: Int!) { books(where: {id: {_eq: $id}}, limit: 1) { ${COVERS} } }`;
+const COVER = 'query Cover($id: bigint!) { images_by_pk(id: $id) { url } }';
 
 const list = (v) => (Array.isArray(v) ? v : []);
 const isBook = (b) => Number.isInteger(b?.id) && b.id > 0 && typeof b.title === 'string' && b.title.trim() !== '';
+const year = (v) => (Number.isInteger(v) ? v : null);
 
 /** The ids of the books a search found, in order. An answer without them is reported, not taken as "nothing found". */
 function foundIds(search) {
@@ -56,56 +54,67 @@ function publicImageUrl(value) {
   }
 }
 
-/**
- * The cover Hardcover shows a book with on its website: its display edition's, else a cached copy of
- * that, else the book's own image. Its size is 0 × 0 when Hardcover does not know it.
- * @returns {{url: string, width: number, height: number}|null}
- */
-function shownCover(book) {
-  let cached = book.cached_image;
-  if (typeof cached === 'string') {
-    try { cached = JSON.parse(cached); } catch { cached = null; }
-  }
-  for (const image of [book.default_cover_edition?.image, cached, book.image]) {
-    const url = publicImageUrl(image?.url);
-    if (url) return { url, width: Number(image.width) || 0, height: Number(image.height) || 0 };
-  }
-  return null;
+/** A picture to offer as a cover: its id, and its address if that is a public one. */
+function picture(image) {
+  const url = publicImageUrl(image?.url);
+  const id = Number(image?.id);
+  return url && Number.isSafeInteger(id) && id > 0 ? { id, url } : null;
 }
 
-/** Where to fetch a small cover enlarged, as Hardcover's website does; null when it is large enough or its size is not known. */
-function enlargedAddress({ url, width, height }) {
-  if (!width || !height) return null;
-  const scale = Math.min(MOST_ENLARGED, COVER_SIDE / Math.max(width, height));
-  if (scale <= 1) return null;
-  return `${ENLARGE}?${new URLSearchParams({ url, width: String(Math.round(width * scale)), height: String(Math.round(height * scale)), type: 'jpeg' })}`;
-}
-
-/** A Hardcover book as a match to offer. With `editionTitle`, the book was found by an edition's ISBN. */
-function toMatch(book, { byIsbn = false, editionTitle } = {}) {
-  const authors = list(book.contributions)
+/** The authors among the contributors to a book or edition, in one line. */
+function authorsOf(contributions) {
+  const names = list(contributions)
     .filter((c) => !c?.contribution || /^author$/i.test(c.contribution))
     .map((c) => c?.author?.name)
-    .filter((name) => typeof name === 'string' && name.trim());
+    .filter((name) => typeof name === 'string' && name.trim())
+    .map((name) => name.trim());
+  return [...new Set(names)].join(', ');
+}
+
+/**
+ * The edition whose title and authors fit the ones typed better than the book's own, or null. On
+ * Hardcover, Beyond the Dark Portal is listed as "World of Warcraft, Vol. 4" by other authors, and
+ * only its edition has its title and authors.
+ */
+function fittingEdition(book, { title = '', author = '' }) {
+  const fit = (t, a) => likeness(t, title) + (author && sameAuthor(a, author) ? 1 : 0);
+  const own = authorsOf(book.contributions);
+  let best = null;
+  let most = fit(book.title, own);
+  for (const edition of list(book.editions)) {
+    if (typeof edition?.title !== 'string' || !edition.title.trim()) continue;
+    const score = fit(edition.title, authorsOf(edition.contributions) || own);
+    if (score > most) [best, most] = [edition, score];
+  }
+  return best;
+}
+
+/**
+ * A Hardcover book as a match to offer, as it is listed or as one of its editions: the one with the
+ * file's ISBN (`byIsbn`), or one that fits the title typed better (see fittingEdition()).
+ */
+function toMatch(book, { edition = null, byIsbn = false } = {}) {
   // The featured series first: the one Hardcover shows with the book.
   const series = list(book.book_series)
     .filter((s) => typeof s?.series?.name === 'string')
     .sort((a, b) => (b.featured === true) - (a.featured === true))
     .map((s) => ({ name: s.series.name, position: s.position }));
   // Titles such as "Caliban's War (The Expanse, #2)" are tidied the way uploaded books are.
-  const details = withTitleSeries({ title: String((byIsbn && editionTitle) || book.title).trim(), series });
-  const cover = shownCover(book)?.url ?? null;
+  const title = (typeof edition?.title === 'string' && edition.title.trim()) || book.title.trim();
+  const details = withTitleSeries({ title, series });
+  // The edition's own cover, else the one Hardcover shows the book with.
+  const cover = picture(edition?.image) ?? picture(book.default_cover_edition?.image) ?? picture(book.image);
   return {
     key: `hardcover:${book.id}`,
     source: 'hardcover',
     title: details.title.slice(0, 500),
-    author: [...new Set(authors.map((a) => a.trim()))].join(', ').slice(0, 500),
-    year: Number.isInteger(book.release_year) ? book.release_year : null,
+    author: ((edition && authorsOf(edition.contributions)) || authorsOf(book.contributions)).slice(0, 500),
+    year: year(edition?.release_year) ?? year(book.release_year),
     series: details.series,
-    // Covers are fetched by the book's id when used (see cover()).
-    cover,
+    // Covers are fetched by the picture's id when used (see cover()).
+    cover: cover?.url ?? null,
     coverSource: cover ? 'hardcover' : null,
-    coverId: cover ? book.id : null,
+    coverId: cover?.id ?? null,
     url: `${SITE}/id/book/${book.id}`,
     byIsbn,
   };
@@ -150,25 +159,49 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     return data.data;
   }
 
+  /** The ids of the books a search finds. */
+  const search = async (q) => foundIds((await query(SEARCH, { q: q.slice(0, 300) })).search);
+  // A search that only adds to another: when it fails, the other's books are offered.
+  const extraSearch = (q) => search(q).catch((err) => {
+    if (err instanceof LookupError) return [];
+    throw err;
+  });
+
   /**
    * Books matching a book's ISBNs and a title and author, ranked by rankMatches(). At most five.
    * @param {{title?: string, author?: string, isbns?: string[]}} book
    */
   async function lookup({ title = '', author = '', isbns = [] }) {
     const typed = String(title).trim();
-    const ids = typed ? foundIds((await query(SEARCH, { q: `${typed} ${String(author).trim()}`.trim().slice(0, 300) })).search) : [];
+    const who = String(author).trim();
+    // With an author, the title alone as well: that finds a book listed with other authors than its
+    // edition's. Of the books only it finds, those by the authors typed are offered.
+    const [ids, more] = typed ? await Promise.all([search(`${typed} ${who}`.trim()), who ? extraSearch(typed) : []]) : [[], []];
+    const extra = new Set(more.filter((id) => !ids.includes(id)));
+    const all = [...ids, ...extra];
     const isbn13 = isbns.filter((i) => /^\d{13}$/.test(i)).slice(0, 2);
-    if (!ids.length && !isbn13.length) return [];
-    const data = await query(DETAILS, { ids, isbns: isbn13 });
-    const found = list(data.editions).filter((e) => isBook(e?.book)).map((e) => toMatch(e.book, { byIsbn: true, editionTitle: e.title }));
-    // In the order the search found them.
+    if (!all.length && !isbn13.length) return [];
+    const data = await query(DETAILS, { ids: all, isbns: isbn13 });
+    const found = list(data.editions).filter((e) => isBook(e?.book)).map((e) => toMatch(e.book, { edition: e, byIsbn: true }));
+    // In the order the searches found them.
     const books = new Map(list(data.books).filter(isBook).map((b) => [b.id, b]));
-    for (const id of ids) if (books.has(id)) found.push(toMatch(books.get(id)));
+    for (const id of all) {
+      const book = books.get(id);
+      if (!book) continue;
+      const m = toMatch(book, { edition: fittingEdition(book, { title, author }) });
+      if (!extra.has(id) || sameAuthor(m.author, who)) found.push(m);
+    }
     return rankMatches(found, { title, author });
   }
 
-  /** The bytes at an address, or a LookupError saying why not. */
-  async function download(address) {
+  /**
+   * The picture of a match's cover, by its `coverId` (the picture's id), as Hardcover stores it.
+   * @returns {Promise<Buffer>} the image as sent; the caller checks that it is one
+   */
+  async function cover(id) {
+    if (!Number.isSafeInteger(id) || id <= 0) throw new TypeError(`Not a Hardcover picture id: ${id}`);
+    const address = publicImageUrl((await query(COVER, { id })).images_by_pk?.url);
+    if (!address) throw new LookupError('Hardcover no longer has this cover.');
     let res;
     let image;
     try {
@@ -179,23 +212,6 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     }
     if (!res.ok) throw new LookupError(`Hardcover did not send the cover (error ${res.status}). Try again in a moment.`);
     return image;
-  }
-
-  /**
-   * The picture of a book's cover, by the `coverId` of a match (the book's id): the one its website
-   * shows, enlarged the way the website does when it is small.
-   * @returns {Promise<Buffer>} the image as sent; the caller checks that it is one
-   */
-  async function cover(id) {
-    if (!Number.isInteger(id) || id <= 0) throw new TypeError(`Not a Hardcover book id: ${id}`);
-    const shown = shownCover(list((await query(COVER, { id })).books)[0] ?? {});
-    if (!shown) throw new LookupError('Hardcover has no cover for this book.');
-    const enlarged = enlargedAddress(shown);
-    if (enlarged) {
-      const image = await download(enlarged).catch(() => null);
-      if (['jpg', 'png', 'webp'].includes(sniffImage(image))) return image;
-    }
-    return download(shown.url);
   }
 
   /** Why the token cannot work, when that is plain from the start. */

@@ -29,7 +29,7 @@ export function likeness(a, b) {
 }
 
 /** Whether two authors share a name: "Adler-Olsen, Jussi" and "Jussi Adler-Olsen". Initials do not count. */
-function sameAuthor(a, b) {
+export function sameAuthor(a, b) {
   const x = words(a);
   return [...words(b)].some((w) => w.length > 1 && x.has(w));
 }

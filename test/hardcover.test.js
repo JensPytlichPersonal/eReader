@@ -10,12 +10,11 @@ import { encodePng } from '../server/converters/png.js';
 import { makeEpub } from './helpers/make-epub.mjs';
 
 // Books as Hardcover's GraphQL API sends them, with the fields asked for.
-// Its own image is small; the edition Hardcover shows it with has a larger cover, as on the website.
+// Its own image is an older one; the edition Hardcover shows it with has another cover, as on the website.
 const leviathan = {
   id: 427, title: 'Leviathan Wakes', release_year: 2011,
-  image: { url: 'https://assets.hardcover.app/books/427/cover.jpg', width: 98, height: 150 },
-  cached_image: { url: 'https://assets.hardcover.app/editions/31/cover.jpg', width: 500, height: 765 },
-  default_cover_edition: { image: { url: 'https://assets.hardcover.app/editions/31/cover.jpg', width: 500, height: 765 } },
+  image: { id: 11, url: 'https://assets.hardcover.app/books/427/cover.jpg' },
+  default_cover_edition: { image: { id: 31, url: 'https://assets.hardcover.app/editions/31/cover.jpg' } },
   contributions: [{ contribution: null, author: { name: 'James S. A. Corey' } }, { contribution: 'Narrator', author: { name: 'Jefferson Mays' } }],
   book_series: [{ position: 1, featured: false, series: { name: 'The Expanse Universe' } }, { position: 1, featured: true, series: { name: 'The Expanse' } }],
 };
@@ -46,14 +45,16 @@ function standIn(answer, pictures = {}) {
   return { calls, fetch };
 }
 
-test('Hardcover lookup: a search, then the books it found and the file\'s edition', async () => {
+test('Hardcover lookup: the searches, then the books they found and the file\'s edition', async () => {
+  // The file's edition has no cover or authors of its own, so the book's are used.
   const site = standIn((operation) => (operation === 'Search'
     ? { search: { ids: ['999', '427'] } }
-    : { books: [leviathan, graphicNovel], editions: [{ title: 'Leviathan Wakes', book: leviathan }] }));
+    : { books: [leviathan, graphicNovel], editions: [{ id: 8, title: 'Leviathan Wakes', release_year: 2011, image: null, contributions: [], book: leviathan }] }));
   const hardcover = createHardcover({ token: 'abc123', fetch: site.fetch });
   const results = await hardcover.lookup({ title: 'Leviathan Wakes', author: 'James S. A. Corey', isbns: ['9780316129084'] });
   assert.deepEqual(site.calls.map((c) => [c.operation, c.variables]), [
     ['Search', { q: 'Leviathan Wakes James S. A. Corey' }],
+    ['Search', { q: 'Leviathan Wakes' }],
     ['Details', { ids: [999, 427], isbns: ['9780316129084'] }],
   ]);
   assert.equal(site.calls[0].headers.authorization, 'Bearer abc123');
@@ -63,7 +64,7 @@ test('Hardcover lookup: a search, then the books it found and the file\'s editio
       key: 'hardcover:427', source: 'hardcover', title: 'Leviathan Wakes', author: 'James S. A. Corey', year: 2011,
       // The featured series first; the narrator is not an author.
       series: [{ name: 'The Expanse', position: 1 }, { name: 'The Expanse Universe', position: 1 }],
-      cover: 'https://assets.hardcover.app/editions/31/cover.jpg', coverSource: 'hardcover', coverId: 427,
+      cover: 'https://assets.hardcover.app/editions/31/cover.jpg', coverSource: 'hardcover', coverId: 31,
       url: 'https://hardcover.app/id/book/427', byIsbn: true,
     },
     {
@@ -99,53 +100,96 @@ test('Hardcover failures say what to do', async () => {
   assert.equal(found.key, 'hardcover:427');
 });
 
-test('the cover Hardcover\'s website shows is used, even when the book\'s own image is larger', async () => {
+test('a Hardcover match comes with the cover Hardcover\'s website shows, and the picture\'s id', async () => {
   const coverOf = async (book) => {
     const site = standIn(() => ({ search: { ids: [1] }, books: [{ id: 1, title: 'Book', ...book }], editions: [] }));
     const [found] = await createHardcover({ token: 'abc', fetch: site.fetch }).lookup({ title: 'Book' });
-    return found.cover;
+    return [found.cover, found.coverId];
   };
-  const at = (name, width, height) => ({ url: `https://assets.hardcover.app/${name}.jpg`, width, height });
-  assert.equal(await coverOf({ image: at('own', 98, 150), default_cover_edition: { image: at('shown', 500, 765) } }), 'https://assets.hardcover.app/shown.jpg');
-  assert.equal(await coverOf({ image: at('own', 1000, 1530), default_cover_edition: { image: at('shown', 500, 765) } }), 'https://assets.hardcover.app/shown.jpg');
-  assert.equal(await coverOf({ image: { url: at('own').url }, cached_image: { url: at('cached').url }, default_cover_edition: { image: { url: at('shown').url } } }), 'https://assets.hardcover.app/shown.jpg');
-  assert.equal(await coverOf({ image: at('own', 98, 150), cached_image: JSON.stringify(at('cached', 500, 765)) }), 'https://assets.hardcover.app/cached.jpg');
-  assert.equal(await coverOf({ image: at('own', 98, 150), default_cover_edition: { image: { url: 'https://10.0.0.8/big.jpg', width: 900, height: 1400 } } }), 'https://assets.hardcover.app/own.jpg');
-  assert.equal(await coverOf({ image: null, cached_image: {}, default_cover_edition: null }), null);
+  const at = (id) => ({ id, url: `https://assets.hardcover.app/${id}.jpg` });
+  // Its display edition's cover, else its own image.
+  assert.deepEqual(await coverOf({ image: at(1), default_cover_edition: { image: at(2) } }), ['https://assets.hardcover.app/2.jpg', 2]);
+  assert.deepEqual(await coverOf({ image: at(1), default_cover_edition: null }), ['https://assets.hardcover.app/1.jpg', 1]);
+  // A picture at an address inside a network, or without an id to fetch it by, is not offered.
+  assert.deepEqual(await coverOf({ image: at(1), default_cover_edition: { image: { id: 2, url: 'https://10.0.0.8/big.jpg' } } }), ['https://assets.hardcover.app/1.jpg', 1]);
+  assert.deepEqual(await coverOf({ image: { url: at(1).url }, default_cover_edition: null }), [null, null]);
+  assert.deepEqual(await coverOf({ image: null, default_cover_edition: null }), [null, null]);
 });
 
-test('a small Hardcover cover comes enlarged, the way Hardcover\'s website shows it', async () => {
-  const original = 'https://assets.hardcover.app/edition/30562820/a1aff912.jpeg';
-  const enlarged = (width, height) => `https://production-img.hardcover.app/enlarge?${new URLSearchParams({ url: original, width, height, type: 'jpeg' })}`;
-  const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(60, 7)]);
-  const shown = (width, height) => () => ({ books: [{ default_cover_edition: { image: { url: original, width, height } } }] });
-  const fetchCover = async (answer, pictures) => {
-    const site = standIn(answer, pictures);
-    const image = await createHardcover({ token: 'abc', fetch: site.fetch }).cover(1);
-    return { image, fetched: site.calls.filter((c) => c.picture).map((c) => c.picture) };
-  };
-  // 310 × 500, as Beyond the Dark Portal is stored: enlarged to 1200 pixels on the longer side.
-  assert.deepEqual(await fetchCover(shown(310, 500), { [enlarged(744, 1200)]: JPEG, [original]: PNG }), { image: JPEG, fetched: [enlarged(744, 1200)] });
-  // At most four times.
-  assert.deepEqual((await fetchCover(shown(98, 150), { [enlarged(392, 600)]: JPEG })).fetched, [enlarged(392, 600)]);
-  // The service is not part of the API: when it fails, or sends something other than a picture, the original is used.
-  assert.deepEqual(await fetchCover(shown(310, 500), { [original]: PNG }), { image: PNG, fetched: [enlarged(744, 1200), original] });
-  assert.deepEqual((await fetchCover(shown(310, 500), { [enlarged(744, 1200)]: Buffer.from('{"error":"not found"}'), [original]: PNG })).image, PNG);
-  // A large cover, or one of unknown size, is used as it is.
-  assert.deepEqual(await fetchCover(shown(1400, 2100), { [original]: PNG }), { image: PNG, fetched: [original] });
-  assert.deepEqual(await fetchCover(() => ({ books: [{ image: { url: original } }] }), { [original]: PNG }), { image: PNG, fetched: [original] });
-});
+// Beyond the Dark Portal as Hardcover has it. One book is listed under its title with a small cover.
+// Another is listed as "World of Warcraft, Vol. 4" by other authors, and its edition has the title,
+// the authors and a better cover. A third has the title but other authors.
+const credit = (...names) => names.map((name) => ({ contribution: null, author: { name } }));
+const portal = { id: 4001, title: 'Beyond the Dark Portal', release_year: 2008, image: { id: 800, url: 'https://assets.hardcover.app/books/4001/small.jpg' }, contributions: credit('Aaron Rosenberg', 'Christie Golden'), book_series: [], editions: [] };
+const volume4 = {
+  id: 5001, title: 'World of Warcraft, Vol. 4', release_year: 2010,
+  image: { id: 700, url: 'https://assets.hardcover.app/books/5001/other.jpg' },
+  contributions: credit('Walter Simonson', 'Louise Simonson'),
+  book_series: [{ position: 4, featured: true, series: { name: 'World of Warcraft' } }],
+  editions: [
+    { id: 17, title: 'World of Warcraft, Vol. 4', release_year: 2010, image: null, contributions: [] },
+    { id: 30562820, title: 'Beyond the Dark Portal', release_year: 2008, image: { id: 900, url: 'https://assets.hardcover.app/edition/30562820/good.jpeg' }, contributions: credit('Aaron Rosenberg', 'Christie Golden') },
+  ],
+};
+const namesake = { id: 6001, title: 'Beyond the Dark Portal', release_year: 2020, image: null, contributions: credit('Someone Else'), book_series: [], editions: [] };
 
-test('Hardcover covers are fetched from the address Hardcover gives, if it is a public one', async () => {
-  const url = leviathan.image.url;
-  const site = standIn((operation, { id }) => ({ books: id === 427 ? [{ image: { url } }] : id === 5 ? [{ image: { url: 'https://10.0.0.8/cover.jpg' } }] : [{ image: null }] }), { [url]: PNG });
+test('a book Hardcover lists under another title and authors is found by the title alone, and offered as its edition', async () => {
+  const site = standIn((operation, { q, ids }) => (operation === 'Search'
+    ? { search: { ids: q === 'Beyond the Dark Portal' ? [4001, 5001, 6001] : [4001] } }
+    : { books: [portal, volume4, namesake].filter((b) => ids.includes(b.id)), editions: [] }));
   const hardcover = createHardcover({ token: 'abc', fetch: site.fetch });
-  assert.deepEqual(await hardcover.cover(427), PNG);
-  assert.deepEqual(site.calls.map((c) => c.operation ?? c.picture), ['Cover', url]);
-  await assert.rejects(hardcover.cover(5), /no cover/, 'an address inside a network is not fetched');
-  await assert.rejects(hardcover.cover(6), /no cover/);
+  const results = await hardcover.lookup({ title: 'Beyond the Dark Portal', author: 'Aaron Rosenberg, Christie Golden' });
+  assert.deepEqual(site.calls.map((c) => [c.operation, c.variables.q ?? c.variables.ids]), [
+    ['Search', 'Beyond the Dark Portal Aaron Rosenberg, Christie Golden'],
+    ['Search', 'Beyond the Dark Portal'],
+    ['Details', [4001, 5001, 6001]],
+  ]);
+  // Volume 4 comes as its edition, with the book's series; the namesake by someone else is left out.
+  assert.deepEqual(results.map((m) => [m.key, m.title, m.author, m.year, m.series, m.cover, m.coverId]), [
+    ['hardcover:4001', 'Beyond the Dark Portal', 'Aaron Rosenberg, Christie Golden', 2008, [], 'https://assets.hardcover.app/books/4001/small.jpg', 800],
+    ['hardcover:5001', 'Beyond the Dark Portal', 'Aaron Rosenberg, Christie Golden', 2008, [{ name: 'World of Warcraft', position: 4 }], 'https://assets.hardcover.app/edition/30562820/good.jpeg', 900],
+  ]);
+
+  // Without an author there is one search, and a book is offered as it is listed.
+  const titleOnly = standIn((operation) => (operation === 'Search' ? { search: { ids: [5001] } } : { books: [volume4], editions: [] }));
+  const [listed] = await createHardcover({ token: 'abc', fetch: titleOnly.fetch }).lookup({ title: 'World of Warcraft Vol 4' });
+  assert.deepEqual([listed.title, listed.author, listed.coverId, titleOnly.calls.length], ['World of Warcraft, Vol. 4', 'Walter Simonson, Louise Simonson', 700, 2]);
+
+  // When the search by the title alone fails, the other one's books are still offered.
+  const halfWorking = standIn((operation, { q, ids }) => {
+    if (q === 'Beyond the Dark Portal') return { status: 500 };
+    return operation === 'Search' ? { search: { ids: [4001] } } : { books: [portal].filter((b) => ids.includes(b.id)), editions: [] };
+  });
+  const found = await createHardcover({ token: 'abc', fetch: halfWorking.fetch }).lookup({ title: 'Beyond the Dark Portal', author: 'Aaron Rosenberg' });
+  assert.deepEqual(found.map((m) => m.key), ['hardcover:4001']);
+});
+
+test('the file\'s edition, found by its ISBN, comes with its own title, authors and cover', async () => {
+  const stone = {
+    id: 1, title: 'Harry Potter and the Philosopher\'s Stone', release_year: 1997, image: { id: 3, url: 'https://assets.hardcover.app/books/1/en.jpg' },
+    contributions: credit('J.K. Rowling'), book_series: [{ position: 1, featured: true, series: { name: 'Harry Potter' } }],
+    editions: [{ id: 99, title: 'Harry Potter og De Vises Sten', release_year: 1998, image: { id: 4, url: 'https://assets.hardcover.app/editions/99/da.jpg' }, contributions: [{ contribution: null, author: { name: 'J.K. Rowling' } }, { contribution: 'Translator', author: { name: 'Hanna Lützen' } }] }],
+  };
+  const site = standIn((operation) => (operation === 'Search' ? { search: { ids: [] } } : { books: [], editions: [{ ...stone.editions[0], book: stone }] }));
+  const [byIsbn] = await createHardcover({ token: 'abc', fetch: site.fetch }).lookup({ title: 'Harry Potter og De Vises Sten', isbns: ['9788700398368'] });
+  assert.deepEqual([byIsbn.title, byIsbn.author, byIsbn.year, byIsbn.series, byIsbn.coverId, byIsbn.byIsbn], ['Harry Potter og De Vises Sten', 'J.K. Rowling', 1998, [{ name: 'Harry Potter', position: 1 }], 4, true]);
+
+  // Found by its title, the book comes as the edition with that title too.
+  const byTitle = standIn((operation) => (operation === 'Search' ? { search: { ids: [1] } } : { books: [stone], editions: [] }));
+  const [found] = await createHardcover({ token: 'abc', fetch: byTitle.fetch }).lookup({ title: 'Harry Potter og De Vises Sten' });
+  assert.deepEqual([found.title, found.coverId, found.byIsbn], ['Harry Potter og De Vises Sten', 4, false]);
+});
+
+test('Hardcover covers are fetched by the picture\'s id, from the address Hardcover gives if it is a public one', async () => {
+  const url = leviathan.image.url;
+  const site = standIn((operation, { id }) => ({ images_by_pk: id === 11 ? { url } : id === 5 ? { url: 'https://10.0.0.8/cover.jpg' } : null }), { [url]: PNG });
+  const hardcover = createHardcover({ token: 'abc', fetch: site.fetch });
+  assert.deepEqual(await hardcover.cover(11), PNG);
+  assert.deepEqual(site.calls.map((c) => [c.operation ?? c.picture, c.variables]), [['Cover', { id: 11 }], [url, undefined]]);
+  await assert.rejects(hardcover.cover(5), /no longer has this cover/, 'an address inside a network is not fetched');
+  await assert.rejects(hardcover.cover(6), /no longer has this cover/);
   assert.equal(site.calls.filter((c) => c.picture).length, 1);
-  await assert.rejects(hardcover.cover('427'), TypeError);
+  await assert.rejects(hardcover.cover('11'), TypeError);
 });
 
 // ---- both catalogues ----
@@ -159,7 +203,7 @@ test('a book found in both catalogues is offered once, with what only one of the
     match({ key: 'hardcover:500', source: 'hardcover', title: 'Leviathan Falls', author: 'James S. A. Corey' }),
   ];
   const fromOpenLibrary = [
-    match({ key: '/works/OL1W', source: 'openlibrary', title: 'Leviathan wakes', author: 'James S.A. Corey', cover: 'https://covers.openlibrary.org/b/id/7-M.jpg', coverSource: 'openlibrary', coverId: 7 }),
+    match({ key: '/works/OL1W', source: 'openlibrary', title: 'Leviathan wakes', author: 'James S.A. Corey', cover: 'https://covers.openlibrary.org/b/id/7-L.jpg?default=false', coverSource: 'openlibrary', coverId: 7 }),
     match({ key: '/works/OL2W', source: 'openlibrary', title: 'Leviathan Wakes', author: 'Someone Else' }),
   ];
   const lookups = createLookup({ hardcover: catalogue(async () => fromHardcover), openLibrary: catalogue(async () => fromOpenLibrary) });
@@ -203,7 +247,7 @@ const covers = [];
 before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ereader-hardcover-'));
   const hardcover = catalogue(
-    async () => [match({ key: 'hardcover:427', source: 'hardcover', title: 'Leviathan Wakes', author: 'James S. A. Corey', series: [{ name: 'The Expanse', position: 1 }], cover: leviathan.image.url, coverSource: 'hardcover', coverId: 427 })],
+    async () => [match({ key: 'hardcover:427', source: 'hardcover', title: 'Leviathan Wakes', author: 'James S. A. Corey', series: [{ name: 'The Expanse', position: 1 }], cover: leviathan.image.url, coverSource: 'hardcover', coverId: 11 })],
     async (id) => { covers.push(id); return PNG; },
   );
   const openLibrary = catalogue(async () => { throw new LookupError('Open Library did not answer. Try again in a moment.'); });
@@ -253,10 +297,10 @@ test('looking up with Hardcover, and using its cover', async () => {
   assert.deepEqual(r.data.sources, ['hardcover', 'openlibrary']);
   assert.deepEqual((await jens('/api/health')).data.lookup, ['hardcover', 'openlibrary']);
 
-  r = await jens(`/api/books/${book.id}/cover`, { method: 'PUT', body: { source: 'hardcover', coverId: 427 } });
+  r = await jens(`/api/books/${book.id}/cover`, { method: 'PUT', body: { source: 'hardcover', coverId: 11 } });
   assert.equal(r.status, 200);
   assert.equal(r.data.book.coverSource, 'custom');
-  assert.deepEqual(covers, [427]);
+  assert.deepEqual(covers, [11]);
   assert.deepEqual(fs.readFileSync(path.join(dataDir, 'books', book.id, 'custom-cover.png')), PNG);
 });
 

@@ -460,8 +460,8 @@ document.addEventListener('paste', (e) => {
 });
 
 // ---- dialogs ----
-function dialog(html) {
-  els.dialogRoot.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet" role="dialog">${html}</div>`;
+function dialog(html, className = '') {
+  els.dialogRoot.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet${className ? ` ${className}` : ''}" role="dialog">${html}</div>`;
   const close = () => { els.dialogRoot.innerHTML = ''; };
   els.dialogRoot.querySelector('.sheet-backdrop').addEventListener('click', close);
   els.dialogRoot.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
@@ -525,18 +525,38 @@ const seriesRow = (s = { name: '', position: null }) => `<div class="series-row"
 // The catalogues the server looks books up in.
 const CATALOGUES = { hardcover: 'Hardcover', openlibrary: 'Open Library' };
 
-/** A book found online, offered in the edit dialog. */
+/**
+ * A book found online, offered in the edit dialog: choosing it (anywhere on it) fills in the form, and
+ * "Cover only" takes just its cover. The size of the cover is filled in once it has loaded (see showSize()).
+ */
 const matchRow = (m, i) => {
   const about = [m.series.map(seriesLabel).join(', '), m.byIsbn ? 'Same ISBN as the file' : ''].filter(Boolean).join(' · ');
-  return `<button type="button" class="match" data-match="${i}">
+  return `<div class="match" data-match="${i}">
     ${m.cover ? `<img class="cover" src="${escapeHtml(m.cover)}" alt="" loading="lazy">` : '<span class="cover"></span>'}
     <span class="body">
-      <span class="title">${escapeHtml(m.title)}</span>
-      <span class="about">${escapeHtml([m.author, m.year, CATALOGUES[m.source]].filter(Boolean).join(' · '))}</span>
-      ${about ? `<span class="about">${escapeHtml(about)}</span>` : ''}
+      <button type="button" class="pick">
+        <span class="title">${escapeHtml(m.title)}</span>
+        <span class="about">${escapeHtml([m.author, m.year, CATALOGUES[m.source]].filter(Boolean).join(' · '))}</span>
+        ${about ? `<span class="about">${escapeHtml(about)}</span>` : ''}
+      </button>
+      ${m.cover ? '<span class="about" data-size>Cover loading…</span>' : ''}
+      ${m.cover && m.coverId ? `<button type="button" class="btn small" data-cover-only="${i}">Cover only</button>` : ''}
     </span>
-  </button>`;
+  </div>`;
 };
+
+/**
+ * Writes the size of an image in pixels into `label` once it has loaded, so a sharp cover can be told
+ * from a small one. `text` words it, and is given null when the image could not be loaded.
+ */
+function showSize(img, label, text) {
+  const show = () => { label.textContent = text(img.naturalWidth ? `${img.naturalWidth} × ${img.naturalHeight} pixels` : null); };
+  if (img.complete) show();
+  else {
+    img.addEventListener('load', show, { once: true });
+    img.addEventListener('error', show, { once: true });
+  }
+}
 
 /** Title, author and the series and collections a book is in. */
 function editDetails(b) {
@@ -549,6 +569,7 @@ function editDetails(b) {
       <div class="lookup">
         <button type="button" class="btn small" data-lookup>Look up online</button>
         <div data-matches aria-live="polite"></div>
+        <div data-picked aria-live="polite"></div>
       </div>
       <fieldset class="field">
         <legend>Series and collections</legend>
@@ -559,16 +580,21 @@ function editDetails(b) {
       <p class="error hidden" data-error></p>
       <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button></div>
     </form>
-    <datalist id="series-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`);
+    <datalist id="series-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`, 'wide');
   const form = root.querySelector('form');
   const rows = root.querySelector('.series-rows');
   const error = root.querySelector('[data-error]');
   const lookupBtn = root.querySelector('[data-lookup]');
   const matches = root.querySelector('[data-matches]');
+  const picked = root.querySelector('[data-picked]');
   const fail = (message) => { error.textContent = message; error.classList.remove('hidden'); };
   const addRow = () => { rows.insertAdjacentHTML('beforeend', seriesRow()); return rows.lastElementChild; };
+  // The book's cover now, which the covers found are compared with.
+  const current = b.hasCover ? Object.assign(new Image(), { src: `/books/${b.id}/cover?v=${b.coverVersion}` }) : null;
   let found = [];
-  let picked = null; // the match the form was filled in from
+  let filled = null; // the match the form was filled in from
+  let coverFrom = null; // the match whose cover is offered
+  let coverOnly = false; // taken with "Cover only", so filling in from another match keeps it
 
   // Searches the catalogues for the title and author as typed (and the ISBN in the file).
   async function lookUp() {
@@ -582,8 +608,14 @@ function editDetails(b) {
       // A catalogue that could not be asked, such as Hardcover with an expired token.
       const notes = answer.notes.map((note) => `<p class="muted hint">${escapeHtml(note)}</p>`).join('');
       matches.innerHTML = (found.length
-        ? `<p class="muted hint">Choose the matching book to fill in the details. Nothing changes until you save.</p><div class="matches">${found.map(matchRow).join('')}</div>`
+        ? `<p class="muted hint">Choose the matching book to fill in the details, or take only its cover. Nothing changes until you save.</p>
+          ${current ? '<p class="muted hint" data-current></p>' : ''}<div class="matches">${found.map(matchRow).join('')}</div>`
         : `<p class="muted hint">No match on ${escapeHtml(answer.sources.map((s) => CATALOGUES[s]).join(' or '))}. Try a shorter title, or leave out the author.</p>`) + notes;
+      if (found.length && current) showSize(current, matches.querySelector('[data-current]'), (size) => (size ? `The current cover is ${size}.` : ''));
+      for (const row of matches.querySelectorAll('.match')) {
+        const img = row.querySelector('img.cover');
+        if (img) showSize(img, row.querySelector('[data-size]'), (size) => (size ? `Cover ${size}` : 'The cover could not be loaded'));
+      }
     } catch (err) {
       matches.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     } finally {
@@ -592,11 +624,30 @@ function editDetails(b) {
     }
   }
 
+  // Shows what the form takes from the matches: the details, and the cover to use when ticked. The
+  // rows they came from are marked in the list.
+  function showPicked() {
+    const from = (m) => `<a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${CATALOGUES[m.source]}</a>`;
+    picked.innerHTML = `${filled ? `<p class="hint">Filled in from ${from(filled)}. Check the details, then save.</p>` : ''}
+      ${coverOnly ? `<p class="hint">Cover from ${from(coverFrom)}.</p>` : ''}
+      ${coverFrom ? `<label class="use-cover"><input type="checkbox" name="useCover"${coverOnly || !b.hasCover ? ' checked' : ''}>
+        <img class="cover" src="${escapeHtml(coverFrom.cover)}" alt="">
+        <span><span>${b.hasCover ? 'Use this cover instead of the current one' : 'Use this cover'}</span>
+          <span class="about"><span data-size></span>${current ? '<span data-current></span>' : ''}</span></span></label>` : ''}`;
+    if (coverFrom) {
+      showSize(picked.querySelector('.use-cover img'), picked.querySelector('[data-size]'), (size) => size ?? 'The cover could not be loaded');
+      if (current) showSize(current, picked.querySelector('[data-current]'), (size) => (size ? ` · now ${size}` : ''));
+    }
+    for (const row of matches.querySelectorAll('[data-match]')) row.classList.toggle('chosen', found[Number(row.dataset.match)] === filled);
+    for (const btn of matches.querySelectorAll('[data-cover-only]')) btn.classList.toggle('chosen', coverOnly && found[Number(btn.dataset.coverOnly)] === coverFrom);
+    picked.scrollIntoView({ block: 'nearest' });
+  }
+
   // Fills in the form from a match. Its series join the rows already there; a series that is
   // already listed takes the match's number. Its cover is offered too, and chosen by default
-  // when the book has none.
+  // when the book has none, unless a cover was taken with "Cover only".
   function useMatch(m) {
-    picked = m;
+    filled = m;
     form.elements.title.value = m.title;
     if (m.author) form.elements.author.value = m.author;
     const nameKey = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -607,10 +658,15 @@ function editDetails(b) {
       if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
       if (s.position != null) row.querySelector('[name="series-no"]').value = s.position;
     }
-    matches.innerHTML = `<p class="hint">Filled in from <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${CATALOGUES[m.source]}</a>. Check the details, then save.</p>
-      ${m.cover && m.coverId ? `<label class="use-cover"><input type="checkbox" name="useCover"${b.hasCover ? '' : ' checked'}>
-        <img class="cover" src="${escapeHtml(m.cover)}" alt=""><span>${b.hasCover ? 'Use this cover instead of the current one' : 'Use this cover'}</span></label>` : ''}`;
-    lookupBtn.focus();
+    if (!coverOnly) coverFrom = m.cover && m.coverId ? m : null;
+    showPicked();
+  }
+
+  // Takes only a match's cover: the details stay as they are.
+  function useCover(m) {
+    coverFrom = m;
+    coverOnly = true;
+    showPicked();
   }
 
   root.addEventListener('click', (ev) => {
@@ -621,8 +677,10 @@ function editDetails(b) {
       if (rows.children.length > 1) row.remove(); else row.querySelectorAll('input').forEach((i) => { i.value = ''; });
     }
     if (ev.target.closest('[data-lookup]')) lookUp();
+    const coverButton = ev.target.closest('[data-cover-only]');
     const match = ev.target.closest('[data-match]');
-    if (match) useMatch(found[Number(match.dataset.match)]);
+    if (coverButton) useCover(found[Number(coverButton.dataset.coverOnly)]);
+    else if (match) useMatch(found[Number(match.dataset.match)]);
   });
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -638,7 +696,7 @@ function editDetails(b) {
     saveBtn.textContent = 'Saving…';
     try {
       // The cover first: when the catalogue cannot send it, nothing has changed yet.
-      if (form.elements.useCover?.checked) await api(`/api/books/${b.id}/cover`, { method: 'PUT', body: { source: picked.coverSource, coverId: picked.coverId } });
+      if (form.elements.useCover?.checked) await api(`/api/books/${b.id}/cover`, { method: 'PUT', body: { source: coverFrom.coverSource, coverId: coverFrom.coverId } });
       await api(`/api/books/${b.id}`, { method: 'PATCH', body: { title, author: form.elements.author.value.trim(), series } });
       close();
       await load();
