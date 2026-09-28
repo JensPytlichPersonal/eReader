@@ -280,12 +280,15 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .use-cover .cover { flex: none; width: 40px; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
 .use-cover > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .use-cover .about { font-size: 13px; font-weight: 400; color: var(--muted); }
-/* Desktops: the details dialog is wider, with the matches beside the form and their covers larger. */
+/* Desktops: once there are matches, the details dialog grows, with them beside the form (the button
+   stays under the author) and their covers larger. */
 @media (min-width: 900px) {
   .sheet.wide { width: min(94vw, 980px); }
-  .sheet.wide .details { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: repeat(5, auto) 1fr; column-gap: 28px; align-items: start; }
+  .sheet.wide .details { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: repeat(6, auto) 1fr; column-gap: 28px; align-items: start; }
   .sheet.wide .details > * { grid-column: 1; }
-  .sheet.wide .details > .lookup { grid-column: 2; grid-row: 1 / -1; margin: 0; }
+  .sheet.wide .lookup { display: contents; }
+  .sheet.wide .lookup > .btn { grid-column: 1; justify-self: start; margin: -4px 0 14px; }
+  .sheet.wide .found { grid-column: 2; grid-row: 1 / -1; }
   .sheet.wide .match { grid-template-columns: 72px minmax(0, 1fr); }
   .sheet.wide .match .cover, .sheet.wide .use-cover .cover { width: 72px; }
 }

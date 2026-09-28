@@ -460,8 +460,8 @@ document.addEventListener('paste', (e) => {
 });
 
 // ---- dialogs ----
-function dialog(html, className = '') {
-  els.dialogRoot.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet${className ? ` ${className}` : ''}" role="dialog">${html}</div>`;
+function dialog(html) {
+  els.dialogRoot.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet" role="dialog">${html}</div>`;
   const close = () => { els.dialogRoot.innerHTML = ''; };
   els.dialogRoot.querySelector('.sheet-backdrop').addEventListener('click', close);
   els.dialogRoot.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
@@ -568,8 +568,10 @@ function editDetails(b) {
       <div class="field"><label for="ed-author">Author</label><input id="ed-author" name="author" value="${escapeHtml(b.author || '')}" maxlength="500"></div>
       <div class="lookup">
         <button type="button" class="btn small" data-lookup>Look up online</button>
-        <div data-matches aria-live="polite"></div>
-        <div data-picked aria-live="polite"></div>
+        <div class="found">
+          <div data-matches aria-live="polite"></div>
+          <div data-picked aria-live="polite"></div>
+        </div>
       </div>
       <fieldset class="field">
         <legend>Series and collections</legend>
@@ -580,7 +582,7 @@ function editDetails(b) {
       <p class="error hidden" data-error></p>
       <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button></div>
     </form>
-    <datalist id="series-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`, 'wide');
+    <datalist id="series-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`);
   const form = root.querySelector('form');
   const rows = root.querySelector('.series-rows');
   const error = root.querySelector('[data-error]');
@@ -595,12 +597,15 @@ function editDetails(b) {
   let filled = null; // the match the form was filled in from
   let coverFrom = null; // the match whose cover is offered
   let coverOnly = false; // taken with "Cover only", so filling in from another match keeps it
+  // On a wide screen the dialog grows, with the matches beside the form, once there is something to show there.
+  const widen = () => root.classList.toggle('wide', found.length > 0 || !!filled || !!coverFrom);
 
   // Searches the catalogues for the title and author as typed (and the ISBN in the file).
   async function lookUp() {
     lookupBtn.disabled = true;
     lookupBtn.textContent = 'Looking up…';
     matches.innerHTML = '';
+    found = [];
     try {
       const query = new URLSearchParams({ title: form.elements.title.value.trim(), author: form.elements.author.value.trim() });
       const answer = await api(`/api/books/${b.id}/lookup?${query}`);
@@ -621,6 +626,7 @@ function editDetails(b) {
     } finally {
       lookupBtn.disabled = false;
       lookupBtn.textContent = 'Look up online';
+      widen();
     }
   }
 
@@ -640,6 +646,7 @@ function editDetails(b) {
     }
     for (const row of matches.querySelectorAll('[data-match]')) row.classList.toggle('chosen', found[Number(row.dataset.match)] === filled);
     for (const btn of matches.querySelectorAll('[data-cover-only]')) btn.classList.toggle('chosen', coverOnly && found[Number(btn.dataset.coverOnly)] === coverFrom);
+    widen();
     picked.scrollIntoView({ block: 'nearest' });
   }
 
