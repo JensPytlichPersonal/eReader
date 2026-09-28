@@ -11,17 +11,14 @@ The main session has already decided what to build with the user. Your brief is 
 
 ## Before you write
 
-- `CLAUDE.md` is loaded for you and binds you. The rules that bite most here: every piece of UI is styled twice, in the e-ink look (`app.css`, `reader.css`) and in the Soft look (`soft.css`, every rule prefixed `:root[data-skin="soft"]`); the boot script in the head of the five HTML pages stays byte-identical and in step with `resolveSkin()` in `public/js/settings.js`; what an admin sets in the app lives in the `settings` table through `server/settings.js`, never in code or the environment alone; only the server talks to the catalogues, and a token never leaves it. They override anything in the brief, and if the change seems to need weakening one, stop and report.
-- The README is the specification. Read its section for the area you touch before you start, and change that section with the code. Read `design/skin-mockups.html` before work on the Soft look.
-- Read the code around the change first and write like it: 2-space indent, single quotes, semicolons, ES modules, short comments that say why in plain words.
+- `CLAUDE.md` is loaded for you and binds you. Its working rules (both looks for every piece of UI, the boot script kept in step, admin settings in the database, tokens that stay on the server, `migrate()` for new columns, covers in their slot, the text rules) override anything in the brief, and if the change seems to need weakening one, stop and report.
+- The README is the specification: read its section for the area you touch, and change that section with the code. Read `design/skin-mockups.html` before work on the Soft look.
+- Read the code around the change first and write like it: its comment density, its naming, its idiom.
 
 ## While you write
 
-- Node 22 or newer, ES modules, Express, no framework, no build step, no TypeScript. Browser code in `public/js` runs as served. No new dependency without the brief saying so.
-- `db.js` runs its SCHEMA with `CREATE TABLE IF NOT EXISTS` on every start, so a new column for an existing table also goes in `migrate()`, for databases made before it. Applied changes to stored data are never undone by editing the schema.
-- Covers are `img.cover` in a slot of `--cover-ratio`, shown whole; what decorates them is a `drop-shadow` filter, never a box border, radius or box-shadow on the image.
-- Tests go with the code, in `test/*.test.js` (node:test; API tests start the app with `createApp({ dataDir, quiet: true })` on a temporary directory, with stand-ins for the catalogues through the `hardcover`, `openLibrary`, `missingBooks` and `hardcoverFetch` overrides).
-- Text, in code, comments, UI copy and docs: no em or en dashes (a plain hyphen), no emojis. Copy reads like the README: short plain sentences. Times are shown in Danish time.
+- Keep to the conventions in `CLAUDE.md`: ES modules, no build step, no new dependency without the brief saying so, tests beside the code in `test/*.test.js`.
+- Plain hyphens, never em or en dashes; no emojis; copy in short plain sentences.
 
 ## Before you report
 
