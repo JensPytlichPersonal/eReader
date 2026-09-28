@@ -244,17 +244,21 @@
 :root[data-skin="soft"] .dup-flag { color: var(--accent-ink); text-decoration-color: var(--accent-ink); }
 /* "Preparing..." over the cover */
 :root[data-skin="soft"] .card .status { margin: 0 10px; border: 0; border-radius: 8px; background: var(--glass); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: 0 1px 4px rgba(0,0,0,.15); font-weight: 600; }
-:root[data-skin="soft"] .card .menu-btn { z-index: 3; width: 30px; height: 30px; border: 0; background: var(--glass); color: var(--fg); box-shadow: 0 1px 4px rgba(0,0,0,.20); font-weight: 700; font-size: 16px; }
-/* With a pointer the menu button shows on the card under it */
+/* The options button: a dark disc with a light ring and a white glyph, so it shows on any picture. With a
+   pointer it appears in the middle of the cover under it; on touch it stays at the cover's corner. */
+:root[data-skin="soft"] .card .menu-btn {
+  z-index: 3; width: 40px; height: 40px; border: 0; background: var(--tag-bg); color: var(--tag-fg);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 0 0 1px rgba(255,255,255,.3), 0 2px 8px rgba(0,0,0,.35);
+  font-weight: 700; font-size: 22px; line-height: 1;
+}
 @media (hover: hover) and (pointer: fine) {
-  :root[data-skin="soft"] .card .menu-btn { opacity: 0; }
+  :root[data-skin="soft"] .card .menu-btn { opacity: 0; top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); }
   :root[data-skin="soft"] .card:hover .menu-btn,
   :root[data-skin="soft"] .card:focus-within .menu-btn,
   :root[data-skin="soft"] .card .menu-btn:focus-visible { opacity: 1; }
 }
-/* On touch it stays on the cover's corner, a little larger for a finger */
 @media (hover: none) {
-  :root[data-skin="soft"] .card .menu-btn { width: 34px; height: 34px; }
+  :root[data-skin="soft"] .card .menu-btn { width: 36px; height: 36px; font-size: 20px; top: auto; bottom: 8px; right: 8px; }
 }
 :root[data-skin="soft"] .card .cover-tag,
 :root[data-skin="soft"] .shelf-book .cover-tag {
@@ -270,7 +274,6 @@
    app.css), so a single book's cover slot starts level with a series'; the buttons sit at the slot's foot. */
 :root[data-skin="soft"] .grid:has(.card.group) > .card:not(.group),
 :root[data-skin="soft"] .card.group { --count-line: 28px; }
-:root[data-skin="soft"] .card > .menu-btn,
 :root[data-skin="soft"] .card > .check { top: auto; bottom: 8px; }
 :root[data-skin="soft"] .card > .cover-tag { top: auto; bottom: 8px; }
 
@@ -312,7 +315,7 @@
 :root[data-skin="soft"] .missing .cover.placeholder { color: var(--muted); }
 
 /* ---- Choosing books (Select) ---- */
-:root[data-skin="soft"] .check { border: 0; background: var(--glass); color: var(--fg); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+:root[data-skin="soft"] .check { border: 0; background: var(--tag-bg); color: var(--tag-fg); box-shadow: 0 0 0 1px rgba(255,255,255,.3), 0 2px 8px rgba(0,0,0,.35); }
 :root[data-skin="soft"] .selected .check,
 :root[data-skin="soft"] .part-selected .check { background: var(--accent); color: var(--accent-fg); }
 :root[data-skin="soft"] .card.selected,
