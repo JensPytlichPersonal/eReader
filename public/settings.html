@@ -5,8 +5,10 @@
 <title>Settings - eReader</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
-<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=(s.v||s.theme!=='light')&&s.theme||'auto';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
+<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=(s.v||s.theme!=='light')&&s.theme||'auto';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var d=document.documentElement;d.dataset.theme=t;var k=s.skin&&s.skin!=='auto'?s.skin:(s.eink||/boox|onyx|kobo|kindle|tolino|pocketbook|remarkable|bigme|hisense|meebook|e-?ink/i.test(navigator.userAgent+' '+(s.device||''))?'eink':'soft');d.dataset.skin=k;if(k==='eink'&&s.eink)d.dataset.eink='1';}catch(e){document.documentElement.dataset.skin=document.documentElement.dataset.skin||'soft'}</script>
+<link rel="stylesheet" href="/css/fonts.css">
 <link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/soft.css">
 </head>
 <body>
 <header class="app-header">
@@ -17,10 +19,12 @@
 <main class="page narrow">
   <h1>Settings</h1>
   <h2>This device</h2>
-  <p class="muted">Theme, text size and weight, margins and line spacing are stored on each device separately, so your e-reader, phone and laptop can each look the way you want.</p>
+  <p class="muted">Theme, look, text size and weight, margins and line spacing are stored on each device separately, so your e-reader, phone and laptop can each look the way you want. Soft is the look for phones, tablets and laptops; E-ink is the high-contrast look for e-ink readers, which the app picks by itself on a Boox, Kobo or similar.</p>
   <div class="field"><label for="device">Device name</label><input id="device"></div>
   <div class="field"><label for="theme">Theme</label>
     <select id="theme"><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option><option value="auto">Follow system</option></select></div>
+  <div class="field"><label for="skin">Look</label>
+    <select id="skin"><option value="soft">Soft</option><option value="eink">E-ink</option></select></div>
   <div class="field"><label class="row" style="font-weight:600"><input type="checkbox" id="eink" style="width:22px;height:22px"> High contrast (e-ink)</label></div>
   <p class="muted">Text size and weight, margins and line spacing are changed from inside the reader (the <b>Aa</b> button).</p>
   <h2>Reload</h2>

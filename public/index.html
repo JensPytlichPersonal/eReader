@@ -11,8 +11,10 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=(s.v||s.theme!=='light')&&s.theme||'auto';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
+<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=(s.v||s.theme!=='light')&&s.theme||'auto';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var d=document.documentElement;d.dataset.theme=t;var k=s.skin&&s.skin!=='auto'?s.skin:(s.eink||/boox|onyx|kobo|kindle|tolino|pocketbook|remarkable|bigme|hisense|meebook|e-?ink/i.test(navigator.userAgent+' '+(s.device||''))?'eink':'soft');d.dataset.skin=k;if(k==='eink'&&s.eink)d.dataset.eink='1';}catch(e){document.documentElement.dataset.skin=document.documentElement.dataset.skin||'soft'}</script>
+<link rel="stylesheet" href="/css/fonts.css">
 <link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/soft.css">
 </head>
 <body class="library">
 <header class="app-header">
@@ -33,36 +35,36 @@
       <button type="button" data-view="series" aria-pressed="false">Series &amp; collections<span class="n"></span></button>
     </div>
     <div class="toolbar">
-      <input type="search" id="search" placeholder="Search title, author, series or genre" autocomplete="off">
-      <select id="filter" aria-label="Filter">
+      <label class="control search"><span>Search</span><input type="search" id="search" placeholder="Title, author, series or genre" autocomplete="off"></label>
+      <label class="control"><span>Filter</span><select id="filter">
         <option value="all">All books</option>
         <option value="reading">Reading</option>
         <option value="unread">Not started</option>
         <option value="finished">Finished</option>
         <option value="duplicates">Duplicates</option>
-      </select>
-      <select id="sort" aria-label="Sort">
+      </select></label>
+      <label class="control"><span>Sort by</span><select id="sort">
         <option value="recent">Recently read</option>
         <option value="added">Recently added</option>
         <option value="title">Title</option>
         <option value="author">Author</option>
-      </select>
-      <select id="group" aria-label="Group by">
+      </select></label>
+      <label class="control"><span>Group by</span><select id="group">
         <option value="none">No grouping</option>
-        <option value="author">Group by author</option>
-        <option value="genre">Group by genre</option>
-      </select>
-      <select id="layout" aria-label="Show series as">
+        <option value="author">Author</option>
+        <option value="genre">Genre</option>
+      </select></label>
+      <label class="control"><span>Library view</span><select id="layout">
         <option value="stacks">Series as stacks</option>
         <option value="shelves">Series as shelves</option>
         <option value="every">Every book separately</option>
-      </select>
-      <select id="display" aria-label="View">
+      </select></label>
+      <label class="control"><span>Book view</span><select id="display">
         <option value="list">List</option>
         <option value="cards-2">Large cards</option>
         <option value="cards-3">Cards</option>
         <option value="cards-4">Small cards</option>
-      </select>
+      </select></label>
       <button type="button" class="btn" id="btn-select" aria-pressed="false">Select</button>
       <button class="btn primary" id="btn-upload">Upload books</button>
       <input type="file" id="file-input" class="hidden" multiple accept=".epub,.mobi,.prc,.azw,.azw3,.pdf,.md,.markdown,.txt,.text,application/epub+zip,application/pdf,text/plain,text/markdown">

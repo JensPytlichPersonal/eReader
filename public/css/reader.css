@@ -119,7 +119,7 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
 .stepper { display: flex; align-items: center; gap: 8px; }
 .stepper button { width: 48px; height: 44px; border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 20px; }
 .stepper output { min-width: 60px; text-align: center; font-weight: 700; }
-.settings select, .settings input[type="text"] { width: 100%; min-height: 44px; padding: 6px 10px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+.settings select, .settings input[type="text"] { width: 100%; height: var(--ctl); padding: 6px 10px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
 .settings .check { display: flex; align-items: center; gap: 10px; min-height: 40px; font-weight: 600; }
 .settings .check input { width: 22px; height: 22px; }
 .bookmarks .bm { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--line); }

@@ -1,0 +1,416 @@
+/* The soft skin: warm and muted, with thin lines, shadows and slimmer controls, for laptops, phones and
+   tablets. app.css and reader.css stay the e-ink skin (black on white, thick lines, no motion). This sheet
+   comes after them on every page and only applies under <html data-skin="soft">, which the script in each
+   page's <head> and applyTheme() in settings.js set (see resolveSkin() there): every rule starts with
+   :root[data-skin="soft"], and where an app rule names an id, the rule here names it too, so it wins. */
+
+/* ---- Tokens. The app's own names take the soft palette, so every rule that uses them follows. ---- */
+:root[data-skin="soft"] {
+  --bg: #F4EFE6; --surface: #FBF8F2; --surface-2: #ECE5D8; --surface-3: #E1D9CA; --panel: var(--surface-2);
+  --fg: #2B2521; --muted: #6B6258; --line: #DCD3C5; --line-2: #CBC1B0;
+  --accent: #A65B3F; --accent-ink: #94503A; --accent-fg: #FFFFFF; --accent-soft: #F0DDD2;
+  --ok: #56704F; --danger: #A8433A;
+  --glass: rgba(251,248,242,.86); --scrim: rgba(43,37,33,.30); --tag-bg: rgba(43,37,33,.70); --tag-fg: #F7F2EA;
+  --cover-shadow: 0 1px 2px rgba(60,40,20,.16), 0 10px 20px -12px rgba(60,40,20,.40);
+  --cover-hover: 0 2px 4px rgba(60,40,20,.16), 0 16px 28px -12px rgba(60,40,20,.45);
+  --pop-shadow: 0 18px 50px -14px rgba(50,35,20,.40), 0 0 0 1px rgba(60,40,20,.06);
+  --radius: 10px;
+  --serif: Literata, Georgia, "Iowan Old Style", serif;
+  --ctl: 44px; --ctl-menu: 40px;
+  /* A <select> cannot show a pseudo-element, so its arrow and the search field's magnifier are images */
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B6258' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --search-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B6258' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+}
+:root[data-skin="soft"][data-theme="sepia"] {
+  --bg: #EFE3CF; --surface: #F7EEDD; --surface-2: #E5D7BF; --surface-3: #D8C8A9;
+  --fg: #3B2F24; --muted: #6E5E49; --line: #D6C6A8; --line-2: #C4B08A;
+  --accent: #9A5232; --accent-ink: #88472A; --accent-soft: #EAD3C2;
+  --ok: #55704B; --danger: #9E3E33;
+  --glass: rgba(247,238,221,.86);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236E5E49' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --search-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236E5E49' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+}
+:root[data-skin="soft"][data-theme="dark"] {
+  --bg: #1C1A18; --surface: #252220; --surface-2: #2E2A27; --surface-3: #3A3531;
+  --fg: #E9E2D8; --muted: #A69C91; --line: #3B3632; --line-2: #4B453F;
+  --accent: #D18A6A; --accent-ink: #DA9B7E; --accent-fg: #1C1A18; --accent-soft: #3D2C24;
+  --ok: #8FAA8C; --danger: #E08A80;
+  --glass: rgba(37,34,32,.84); --scrim: rgba(0,0,0,.5); --tag-bg: rgba(20,18,16,.72); --tag-fg: #F0EAE0;
+  --cover-shadow: 0 1px 2px rgba(0,0,0,.5), 0 12px 22px -12px rgba(0,0,0,.8);
+  --cover-hover: 0 2px 4px rgba(0,0,0,.5), 0 18px 30px -12px rgba(0,0,0,.85);
+  --pop-shadow: 0 20px 60px -14px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.06);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A69C91' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --search-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A69C91' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+}
+/* A mouse or trackpad gets slimmer controls; touch keeps 44 px */
+@media (hover: hover) and (pointer: fine) {
+  :root[data-skin="soft"] { --ctl: 38px; --ctl-menu: 32px; }
+}
+
+/* ---- Base ---- */
+:root[data-skin="soft"] body { font-size: 15px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+/* Headings in the serif. Not the book's own: the text of a book keeps the reader's font. */
+:root[data-skin="soft"] :is(h1, h2, h3):not(.book-content *),
+:root[data-skin="soft"] .app-header .brand,
+:root[data-skin="soft"] .section-title h2,
+:root[data-skin="soft"] .section-title h3,
+:root[data-skin="soft"] .group-head h2,
+:root[data-skin="soft"] .shelf-head h2,
+:root[data-skin="soft"] .shelf-head h3,
+:root[data-skin="soft"] .series-head h1,
+:root[data-skin="soft"] .sheet h2,
+:root[data-skin="soft"] .panel header,
+:root[data-skin="soft"] .library .section-name { font-family: var(--serif); font-weight: 600; letter-spacing: -.005em; }
+:root[data-skin="soft"] h1:not(.book-content *) { font-size: 28px; }
+:root[data-skin="soft"] h2:not(.book-content *) { font-size: 21px; }
+:root[data-skin="soft"] .series-head h1 { font-size: 32px; letter-spacing: -.015em; }
+:root[data-skin="soft"] .group-head h2 { font-size: 22px; }
+:root[data-skin="soft"] .shelf-head h2,
+:root[data-skin="soft"] .shelf-head h3 { font-size: 20px; }
+:root[data-skin="soft"] .group-section .shelf-head h3 { font-size: 17px; }
+:root[data-skin="soft"] .section-title h2 { font-size: 21px; }
+:root[data-skin="soft"] .sheet h2 { font-size: 21px; }
+:root[data-skin="soft"] .panel header { font-size: 18px; }
+/* The panel's Close button stays in the interface font */
+:root[data-skin="soft"] .panel header .btn { font-family: var(--ui-font); }
+:root[data-skin="soft"] :is(.btn, button, input, select, a, .pick, .cover-choice, .dup-flag, .match .pick, .tabs button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:root[data-skin="soft"] input[type="checkbox"],
+:root[data-skin="soft"] input[type="radio"] { accent-color: var(--accent); }
+:root[data-skin="soft"] .menu-btn { transition: opacity .15s; }
+:root[data-skin="soft"] .list-row { transition: background-color .15s; }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-skin="soft"] *,
+  :root[data-skin="soft"] *::before,
+  :root[data-skin="soft"] *::after { transition: none !important; }
+}
+
+/* ---- Buttons ---- */
+:root[data-skin="soft"] .btn {
+  min-height: var(--ctl); padding: 0 16px; border: 1px solid var(--line-2); border-radius: 999px;
+  background: var(--surface); color: var(--fg); font-weight: 600; font-size: 14px;
+  transition: background-color .15s, border-color .15s, color .15s;
+}
+:root[data-skin="soft"] .btn.danger { color: var(--danger); border-color: var(--line-2); }
+:root[data-skin="soft"] .btn:hover { border-color: var(--muted); }
+:root[data-skin="soft"] .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+:root[data-skin="soft"] .btn.small { min-height: 34px; padding: 0 12px; font-size: 13px; }
+@media (hover: none) {
+  :root[data-skin="soft"] .btn.small { min-height: 40px; }
+}
+:root[data-skin="soft"] .btn.icon { min-width: var(--ctl); padding: 0 10px; }
+/* Quiet buttons: no outline, and a background under the pointer */
+:root[data-skin="soft"] .app-header nav .btn,
+:root[data-skin="soft"] .bar .btn,
+:root[data-skin="soft"] .panel header .btn.small,
+:root[data-skin="soft"] .series-head > .btn.small,
+:root[data-skin="soft"] .active-filters .btn.small,
+:root[data-skin="soft"] .dropzone .btn.small,
+:root[data-skin="soft"] .library .menu-toggle { border-color: transparent; background: transparent; color: var(--muted); }
+:root[data-skin="soft"] .app-header nav .btn:hover,
+:root[data-skin="soft"] .bar .btn:hover,
+:root[data-skin="soft"] .panel header .btn.small:hover,
+:root[data-skin="soft"] .series-head > .btn.small:hover,
+:root[data-skin="soft"] .active-filters .btn.small:hover,
+:root[data-skin="soft"] .dropzone .btn.small:hover,
+:root[data-skin="soft"] .library .menu-toggle:hover { border-color: transparent; background: var(--surface-2); color: var(--fg); }
+:root[data-skin="soft"] .bar .btn { color: var(--fg); }
+:root[data-skin="soft"] .bar .btn.icon { font-size: 18px; }
+/* Pressed toggles */
+:root[data-skin="soft"] #btn-select[aria-pressed="true"],
+:root[data-skin="soft"] .genre-choices .btn[aria-pressed="true"],
+:root[data-skin="soft"] .match .btn.chosen { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+
+/* ---- Fields. They sit on cards and panels, so the page's colour reads as sunk into them. ---- */
+:root[data-skin="soft"] .field input:not([type="checkbox"]),
+:root[data-skin="soft"] .field select,
+:root[data-skin="soft"] .field textarea,
+:root[data-skin="soft"] .settings select,
+:root[data-skin="soft"] .settings input[type="text"],
+:root[data-skin="soft"] .cover-page input,
+:root[data-skin="soft"] .series-row input { padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius); background-color: var(--bg); color: var(--fg); font-size: 14px; }
+/* The toolbar's sit on the page, so they take the colour of a card */
+:root[data-skin="soft"] .toolbar input[type="search"],
+:root[data-skin="soft"] .toolbar select { height: var(--ctl); border: 1px solid var(--line); border-radius: var(--radius); background-color: var(--surface); font-size: 14px; }
+:root[data-skin="soft"] .toolbar select { height: var(--ctl-menu); }
+:root[data-skin="soft"] .toolbar input[type="search"] {
+  padding-left: 36px; -webkit-appearance: none; appearance: none;
+  background-image: var(--search-icon); background-repeat: no-repeat; background-position: 12px center; background-size: 18px 18px;
+}
+:root[data-skin="soft"] .toolbar input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
+/* Every menu draws its own arrow, after the rules above so its padding wins */
+:root[data-skin="soft"] select,
+:root[data-skin="soft"] :is(.field, .toolbar, .settings) select {
+  -webkit-appearance: none; appearance: none; padding-right: 32px;
+  background-image: var(--select-arrow); background-repeat: no-repeat; background-position: right 10px center; background-size: 16px 16px;
+}
+/* A field in use: an accent border and a ring, which also mark it for the keyboard */
+:root[data-skin="soft"] :is(.field input:not([type="checkbox"]), .field select, .field textarea, .settings select, .settings input[type="text"], .cover-page input, .series-row input, .toolbar input[type="search"], .toolbar select):focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none;
+}
+
+/* ---- Header, tabs, toolbar, uploads ---- */
+:root[data-skin="soft"] .app-header { gap: 18px; border-bottom: 0; }
+:root[data-skin="soft"] .app-header .brand { display: flex; align-items: center; gap: 10px; font-size: 21px; letter-spacing: -.01em; }
+:root[data-skin="soft"] .app-header .brand::before {
+  --mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z'/%3E%3Cpath d='M4 20.5V5.5'/%3E%3Cpath d='M9 8h7M9 11.5h5'/%3E%3C/svg%3E");
+  content: ""; flex: none; width: 22px; height: 22px; background: var(--accent);
+  -webkit-mask: var(--mark) center / contain no-repeat; mask: var(--mark) center / contain no-repeat;
+}
+@media (min-width: 600px) {
+  :root[data-skin="soft"] .app-header { padding: calc(14px + var(--safe-top)) calc(28px + var(--safe-right)) 8px calc(28px + var(--safe-left)); }
+  :root[data-skin="soft"] main.page { padding: 4px calc(28px + var(--safe-right)) 40px calc(28px + var(--safe-left)); }
+  /* Room for the bar at the bottom while choosing books */
+  :root[data-skin="soft"] .selecting main.page { padding-bottom: calc(90px + var(--safe-bottom)); }
+  :root[data-skin="soft"] .grid { gap: 28px 20px; }
+}
+:root[data-skin="soft"] .tabs { gap: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
+:root[data-skin="soft"] .tabs button { position: relative; min-height: 0; padding: 10px 8px 12px; margin-bottom: -1px; border: 0; color: var(--muted); font-weight: 600; font-size: 15px; }
+:root[data-skin="soft"] .tabs button[aria-pressed="true"] { color: var(--fg); }
+:root[data-skin="soft"] .tabs button[aria-pressed="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+:root[data-skin="soft"] .tabs .n { margin-left: 7px; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-weight: 600; font-size: 11.5px; vertical-align: 1px; }
+:root[data-skin="soft"] .toolbar { gap: 10px; margin-bottom: 6px; }
+:root[data-skin="soft"] .toolbar .control.search { flex: 1 1 160px; }
+:root[data-skin="soft"] .toolbar .control > span { padding-left: 13px; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+/* Dropping books: one quiet line, until files are dragged over the page */
+:root[data-skin="soft"] .dropzone:not(.active) { margin: 4px 0 14px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12.5px; text-align: left; }
+:root[data-skin="soft"] .dropzone .btn.small { min-height: 0; padding: 0 4px; margin-left: 2px; color: var(--accent-ink); font-size: 12.5px; vertical-align: baseline; }
+:root[data-skin="soft"] .dropzone.active { padding: 14px; border: 1.5px dashed var(--accent); border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); text-align: center; }
+:root[data-skin="soft"] .uploads .item { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+:root[data-skin="soft"] .uploads .summary { border-color: var(--line-2); }
+:root[data-skin="soft"] .notice { border: 0; border-radius: 12px; background: var(--surface-2); }
+:root[data-skin="soft"] .active-filters { color: var(--muted); font-weight: 500; }
+
+/* ---- Phones: the name of the section large in the header, the controls behind the menu button ---- */
+@media (max-width: 599px) {
+  :root[data-skin="soft"] .library .app-header { flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; padding: calc(14px + var(--safe-top)) calc(20px + var(--safe-right)) 6px calc(20px + var(--safe-left)); }
+  :root[data-skin="soft"] .library .app-header .brand,
+  :root[data-skin="soft"] .library .app-header .spacer { display: none; }
+  :root[data-skin="soft"] .library .section-name { order: 1; flex: 1; font-size: 28px; line-height: 1.1; letter-spacing: -.015em; }
+  :root[data-skin="soft"] .library .menu-toggle { order: 2; width: 44px; color: var(--muted); font-size: 22px; font-weight: 400; }
+  :root[data-skin="soft"] .library .app-header nav { order: 3; }
+  :root[data-skin="soft"] .library main.page { padding-top: 4px; }
+  :root[data-skin="soft"] .library .section-title { margin: 18px 0 12px; }
+  :root[data-skin="soft"] .library .section-title h2 { font-size: 19px; }
+}
+
+/* ---- Cards: the cover itself, with a shadow, and the text under it ---- */
+:root[data-skin="soft"] .card { gap: 10px; border: 0; border-radius: 0; overflow: visible; background: none; }
+:root[data-skin="soft"] .card:hover,
+:root[data-skin="soft"] .card:focus-within { border-color: transparent; }
+:root[data-skin="soft"] .card .cover { border: 0; border-radius: 6px; background: var(--surface-2); box-shadow: var(--cover-shadow); transition: transform .15s, box-shadow .15s; }
+:root[data-skin="soft"] .card .stack { border-bottom: 0; transition: transform .15s, box-shadow .15s; }
+:root[data-skin="soft"] .card .cover.placeholder { background: linear-gradient(160deg, var(--surface-2), var(--surface-3)); color: var(--fg); }
+:root[data-skin="soft"] .cover.placeholder .t { font-family: var(--serif); }
+@media (hover: hover) {
+  :root[data-skin="soft"] .card:hover > .cover,
+  :root[data-skin="soft"] .card:hover > .stack,
+  :root[data-skin="soft"] .card:focus-within > .cover,
+  :root[data-skin="soft"] .card:focus-within > .stack { transform: translateY(-2px); }
+  :root[data-skin="soft"] .card:hover > .cover,
+  :root[data-skin="soft"] .card:hover > .stack > .cover { box-shadow: var(--cover-hover); }
+}
+:root[data-skin="soft"] .card .info { gap: 3px; padding: 0 2px; }
+:root[data-skin="soft"] .card .title { font-weight: 600; line-height: 1.3; }
+:root[data-skin="soft"] .card .author { color: var(--muted); }
+:root[data-skin="soft"] .card .series-line a { color: var(--accent-ink); font-weight: 500; }
+:root[data-skin="soft"] .card .series-line a,
+:root[data-skin="soft"] .list-row .about a,
+:root[data-skin="soft"] .sheet .series-links a { text-decoration: none; }
+:root[data-skin="soft"] .card .meta .place,
+:root[data-skin="soft"] .list-row .meta .place { color: var(--accent-ink); font-weight: 600; }
+:root[data-skin="soft"] .progress { height: 3px; margin-top: 5px; border: 0; border-radius: 3px; background: var(--surface-3); }
+:root[data-skin="soft"] .progress > div { border-radius: 3px; background: var(--accent); }
+:root[data-skin="soft"] .list-row .meta .progress { margin-top: 0; }
+/* At the foot of a card or a shelf book, as in app.css */
+:root[data-skin="soft"] .card .info > .progress,
+:root[data-skin="soft"] .shelf-book .progress { margin-top: auto; }
+:root[data-skin="soft"] .badge { padding: 2px 6px; border: 0; border-radius: 4px; background: var(--surface-2); color: var(--muted); font-weight: 600; font-size: 10.5px; letter-spacing: .06em; }
+:root[data-skin="soft"] .dup-flag { color: var(--accent-ink); text-decoration-color: var(--accent-ink); }
+/* "Preparing..." over the cover */
+:root[data-skin="soft"] .card .status { margin: 0 10px; border: 0; border-radius: 8px; background: var(--glass); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: 0 1px 4px rgba(0,0,0,.15); font-weight: 600; }
+:root[data-skin="soft"] .card .menu-btn { z-index: 3; width: 30px; height: 30px; border: 0; background: var(--glass); color: var(--fg); box-shadow: 0 1px 4px rgba(0,0,0,.20); font-weight: 700; font-size: 16px; }
+/* With a pointer the menu button shows on the card under it */
+@media (hover: hover) and (pointer: fine) {
+  :root[data-skin="soft"] .card .menu-btn { opacity: 0; }
+  :root[data-skin="soft"] .card:hover .menu-btn,
+  :root[data-skin="soft"] .card:focus-within .menu-btn,
+  :root[data-skin="soft"] .card .menu-btn:focus-visible { opacity: 1; }
+}
+/* On touch it stays on the cover's corner, a little larger for a finger */
+@media (hover: none) {
+  :root[data-skin="soft"] .card .menu-btn { width: 34px; height: 34px; }
+}
+:root[data-skin="soft"] .card .cover-tag,
+:root[data-skin="soft"] .shelf-book .cover-tag {
+  top: 8px; left: 8px; padding: 3px 8px; border: 0; border-radius: 999px; background: var(--tag-bg); color: var(--tag-fg);
+  font-weight: 600; font-size: 11.5px; letter-spacing: .02em; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+/* On a stack the number of books sits on the top cover, below the sheets behind it */
+:root[data-skin="soft"] .card.pile .cover-tag { top: calc(var(--edge, 8px) + 8px); }
+:root[data-skin="soft"] #library.cols-4 .card .cover-tag { padding: 2px 7px; font-size: 10.5px; }
+/* A series folded into one tile: the cover you are on, the others as sheets behind it */
+:root[data-skin="soft"] .stack::before,
+:root[data-skin="soft"] .stack::after { border: 0; border-radius: 5px; background: var(--surface-3); box-shadow: var(--cover-shadow); }
+:root[data-skin="soft"] .stack::before { opacity: .75; }
+:root[data-skin="soft"] .stack .cover { border: 0; border-radius: 6px; }
+
+/* ---- Shelves ---- */
+:root[data-skin="soft"] .shelf-head h2 a::after,
+:root[data-skin="soft"] .shelf-head h3 a::after { color: var(--muted); }
+:root[data-skin="soft"] .shelf-row { gap: 18px 16px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+:root[data-skin="soft"] .shelf-book .cover { border: 0; border-radius: 6px; box-shadow: var(--cover-shadow); }
+:root[data-skin="soft"] .shelf-book.current .cover { border: 0; outline: 2px solid var(--accent); outline-offset: 3px; }
+:root[data-skin="soft"] .shelf-book:hover .cover,
+:root[data-skin="soft"] .shelf-book:focus-within .cover { border-color: transparent; }
+:root[data-skin="soft"] .shelf-book .title { font-weight: 600; line-height: 1.3; }
+
+/* ---- List ---- */
+:root[data-skin="soft"] .list { border-top: 0; }
+:root[data-skin="soft"] .list-row { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px; padding: 10px 8px; border-bottom: 1px solid var(--line); border-radius: 10px; }
+:root[data-skin="soft"] .list-row:hover,
+:root[data-skin="soft"] .list-row:focus-within { background: var(--surface); }
+:root[data-skin="soft"] .list-row.current { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+:root[data-skin="soft"] .list-row .thumb { width: 44px; }
+:root[data-skin="soft"] .list-row .cover { border: 0; border-radius: 3px; box-shadow: 0 1px 2px rgba(60,40,20,.25); }
+:root[data-skin="soft"] .list-row .stack .cover { border: 0; }
+:root[data-skin="soft"] .list-row .title { font-weight: 600; font-size: 14.5px; }
+:root[data-skin="soft"] .list-row .title .no { font-weight: 500; }
+:root[data-skin="soft"] .list-row .about a { color: var(--accent-ink); font-weight: 500; }
+:root[data-skin="soft"] .list-row .menu-btn { position: relative; top: auto; right: auto; bottom: auto; border: 0; background: none; color: var(--muted); box-shadow: none; opacity: 1; font-size: 18px; }
+:root[data-skin="soft"] .list-row .chevron { color: var(--muted); font-weight: 400; }
+
+/* ---- Books a series lacks: a dashed outline in their place ---- */
+:root[data-skin="soft"] .card.missing { border: 0; }
+:root[data-skin="soft"] .missing .cover.placeholder { border: 1.5px dashed var(--line-2); border-radius: 6px; background: none; box-shadow: none; }
+:root[data-skin="soft"] .missing .cover-tag { border: 1px dashed var(--line-2); background: none; color: var(--muted); -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root[data-skin="soft"] .missing .title,
+:root[data-skin="soft"] .missing .cover.placeholder { color: var(--muted); }
+
+/* ---- Choosing books (Select) ---- */
+:root[data-skin="soft"] .check { border: 0; background: var(--glass); color: var(--fg); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+:root[data-skin="soft"] .selected .check,
+:root[data-skin="soft"] .part-selected .check { background: var(--accent); color: var(--accent-fg); }
+:root[data-skin="soft"] .card.selected,
+:root[data-skin="soft"] .card.part-selected { border-color: transparent; box-shadow: none; }
+:root[data-skin="soft"] .card.selected > .cover,
+:root[data-skin="soft"] .card.selected > .stack,
+:root[data-skin="soft"] .card.part-selected > .cover,
+:root[data-skin="soft"] .card.part-selected > .stack { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+:root[data-skin="soft"] .list-row.selected { box-shadow: inset 0 0 0 2px var(--accent); }
+:root[data-skin="soft"] .shelf-book.selected .cover { border: 0; outline: 2px solid var(--accent); outline-offset: 3px; }
+:root[data-skin="soft"] .select-bar { border-top: 1px solid var(--line); background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: 0 -8px 24px -16px rgba(0,0,0,.25); }
+
+/* ---- Sections and series pages ---- */
+:root[data-skin="soft"] .section-title { margin: 28px 0 14px; }
+:root[data-skin="soft"] .section-title .muted { font-size: 13px; }
+:root[data-skin="soft"] .group-head { margin: 36px 0 14px; padding-top: 18px; border-top: 1px solid var(--line); }
+:root[data-skin="soft"] .dup-group .grid { border-bottom: 1px solid var(--line); }
+/* The button that continues the series may wrap, as in app.css */
+:root[data-skin="soft"] .series-head .btn.primary { border-radius: 999px; padding-top: 6px; padding-bottom: 6px; }
+:root[data-skin="soft"] .empty { color: var(--muted); }
+
+/* ---- Dialogs ---- */
+:root[data-skin="soft"] .sheet-backdrop { background: var(--scrim); }
+:root[data-skin="soft"] .sheet { padding: 22px; border: 0; border-radius: 18px; background: var(--surface); box-shadow: var(--pop-shadow); }
+:root[data-skin="soft"] .sheet hr { margin: 14px 0; border-top: 1px solid var(--line); }
+:root[data-skin="soft"] .sheet .hint { color: var(--muted); }
+:root[data-skin="soft"] .menu { gap: 2px; margin: 0 -10px; }
+:root[data-skin="soft"] .menu .btn { min-height: 42px; padding: 0 12px; border: 0; border-radius: 10px; background: none; font-weight: 500; font-size: 14.5px; }
+:root[data-skin="soft"] .menu .btn:hover { background: var(--surface-2); }
+:root[data-skin="soft"] .menu .btn.danger { color: var(--danger); }
+/* The cover dialog's buttons may wrap, as in app.css */
+:root[data-skin="soft"] .cover-edit .menu > .btn { padding-top: 6px; padding-bottom: 6px; }
+:root[data-skin="soft"] .match { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+:root[data-skin="soft"] .match.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+@media (hover: hover) {
+  :root[data-skin="soft"] .match:hover { border-color: var(--line-2); }
+}
+:root[data-skin="soft"] .match .cover,
+:root[data-skin="soft"] .use-cover .cover,
+:root[data-skin="soft"] .cover-choice img,
+:root[data-skin="soft"] .copy .cover { border: 0; border-radius: 3px; box-shadow: 0 1px 2px rgba(60,40,20,.25); }
+:root[data-skin="soft"] .cover-choice.chosen { background: var(--accent-soft); }
+:root[data-skin="soft"] .match .cover-choice.chosen .about { color: var(--accent-ink); }
+:root[data-skin="soft"] .copy { border: 1px solid var(--line); border-radius: 12px; }
+:root[data-skin="soft"] .copy:first-child { border-color: var(--accent); }
+:root[data-skin="soft"] .cover-preview .cover { border: 0; border-radius: 6px; box-shadow: var(--cover-shadow); }
+:root[data-skin="soft"] .genre-choices .btn { border-radius: 999px; }
+:root[data-skin="soft"] table.list th,
+:root[data-skin="soft"] table.list td { border-bottom: 1px solid var(--line); }
+:root[data-skin="soft"] .toast { padding: 12px 18px; border-radius: 12px; box-shadow: var(--pop-shadow); font-weight: 500; }
+
+/* ---- Sign in, Settings and Users: the form on a card ---- */
+:root[data-skin="soft"] main.narrow { margin: 24px auto; padding: 26px; border-radius: 18px; background: var(--surface); box-shadow: var(--pop-shadow); }
+@media (max-width: 599px) {
+  :root[data-skin="soft"] main.narrow { margin: 8px 12px; padding: 20px 18px; }
+}
+:root[data-skin="soft"] main.narrow h1 { margin-top: 0; }
+:root[data-skin="soft"] .field label { font-size: 13px; }
+
+/* ---- Reader: the bars, panels and controls around the book. The book's text is left as it is. ---- */
+:root[data-skin="soft"] .bar {
+  gap: 4px; padding-left: calc(12px + var(--safe-left)); padding-right: calc(12px + var(--safe-right));
+  border-color: var(--line); background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+}
+:root[data-skin="soft"] #topbar { border-bottom-width: 1px; }
+:root[data-skin="soft"] #topbar .title { padding: 0 6px; font-family: var(--serif); font-weight: 600; font-size: 15px; }
+:root[data-skin="soft"] #bottombar { gap: 4px; padding-left: calc(20px + var(--safe-left)); padding-right: calc(20px + var(--safe-right)); border-top-width: 1px; }
+:root[data-skin="soft"] #bottombar .row .pos { color: var(--muted); font-size: 13px; text-align: center; }
+/* The position slider: a thin track, filled up to the thumb (reader.js sets --pct) */
+:root[data-skin="soft"] #slider { height: 24px; margin: 0; background: none; -webkit-appearance: none; appearance: none; }
+:root[data-skin="soft"] #slider::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(var(--accent), var(--accent)) 0 0 / var(--pct, 0%) 100% no-repeat var(--surface-3); }
+:root[data-skin="soft"] #slider::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7px; border: 2px solid var(--accent); border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.2); -webkit-appearance: none; }
+:root[data-skin="soft"] #slider::-moz-range-track { height: 4px; border-radius: 4px; background: var(--surface-3); }
+:root[data-skin="soft"] #slider::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--accent); }
+:root[data-skin="soft"] #slider::-moz-range-thumb { width: 14px; height: 14px; border: 2px solid var(--accent); border-radius: 50%; background: var(--surface); }
+:root[data-skin="soft"] #statusline { font-size: 12px; letter-spacing: .01em; }
+/* Panels: a card at the side on wide screens, a sheet from the bottom on phones */
+:root[data-skin="soft"] .panel-backdrop { background: var(--scrim); }
+:root[data-skin="soft"] .panel {
+  top: calc(12px + var(--safe-top)); right: 12px; bottom: calc(12px + var(--safe-bottom)); width: min(92vw, 380px);
+  padding-top: 0; padding-bottom: 0; overflow: hidden; border-left: 0; border-radius: 18px; background: var(--surface); box-shadow: var(--pop-shadow);
+}
+:root[data-skin="soft"] .panel header { padding: 14px 12px 8px 20px; border-bottom: 0; }
+:root[data-skin="soft"] .panel .body { padding: 0 12px 20px; }
+@media (max-width: 599px) {
+  :root[data-skin="soft"] .panel { top: auto; right: 0; bottom: 0; left: 0; width: auto; max-height: 86%; padding-bottom: var(--safe-bottom); border-radius: 22px 22px 0 0; }
+  :root[data-skin="soft"] .panel::before { content: ""; display: block; flex: none; width: 36px; height: 5px; margin: 8px auto 0; border-radius: 3px; background: var(--line-2); }
+}
+/* Contents. The indents of the levels under the first stay as reader.css has them. */
+:root[data-skin="soft"] .toc button { padding-top: 10px; padding-right: 10px; padding-bottom: 10px; border-bottom: 0; border-radius: 8px; }
+:root[data-skin="soft"] .toc .lvl0 > button { padding-left: 10px; font-size: 14.5px; }
+:root[data-skin="soft"] .toc button.current { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+/* Display settings */
+:root[data-skin="soft"] .settings .group > label:not(.check),
+:root[data-skin="soft"] .settings .group > .lbl { margin-bottom: 9px; font-size: 11.5px; letter-spacing: .1em; }
+:root[data-skin="soft"] .seg { gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2); }
+:root[data-skin="soft"] .seg button { flex: 1 1 auto; min-height: 34px; padding: 0 8px; border: 0; border-radius: 8px; background: none; color: var(--muted); font-weight: 600; font-size: 13px; }
+:root[data-skin="soft"] .seg button.on { border: 0; background: var(--surface); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.14); }
+:root[data-skin="soft"][data-theme="dark"] .seg button.on { background: var(--surface-3); }
+:root[data-skin="soft"] #theme-seg button::before { content: ""; display: inline-block; width: 13px; height: 13px; margin-right: 6px; border: 1px solid rgba(0,0,0,.15); border-radius: 50%; vertical-align: -2px; }
+:root[data-skin="soft"] #theme-seg button[data-v="light"]::before { background: #F4EFE6; }
+:root[data-skin="soft"] #theme-seg button[data-v="sepia"]::before { background: #EFE3CF; }
+:root[data-skin="soft"] #theme-seg button[data-v="dark"]::before { background: #1C1A18; }
+:root[data-skin="soft"] #theme-seg button[data-v="auto"]::before { background: linear-gradient(90deg, #F4EFE6 50%, #1C1A18 50%); }
+:root[data-skin="soft"] .stepper button { width: 44px; height: 36px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); font-weight: 600; font-size: 18px; }
+:root[data-skin="soft"] .stepper output { font-weight: 600; }
+/* Checkboxes become switches, the label first. The label rule in reader.css and the tick of Select in
+   app.css (.check) match these rows too, so this undoes them. */
+:root[data-skin="soft"] .settings label.check {
+  display: flex; flex-direction: row-reverse; justify-content: space-between; width: auto; height: auto; margin-bottom: 0;
+  border: 0; border-radius: 0; background: none; box-shadow: none; pointer-events: auto;
+  color: var(--fg); font-weight: 500; font-size: 14px; line-height: inherit; text-transform: none; letter-spacing: normal;
+}
+:root[data-skin="soft"] .settings .check input {
+  position: relative; flex: none; width: 42px; height: 26px; margin: 0; border-radius: 13px; background: var(--surface-3);
+  -webkit-appearance: none; appearance: none; transition: background-color .15s;
+}
+:root[data-skin="soft"] .settings .check input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+:root[data-skin="soft"] .settings .check input:checked { background: var(--accent); }
+:root[data-skin="soft"] .settings .check input:checked::after { transform: translateX(16px); }
+:root[data-skin="soft"] .bookmarks .bm { border-bottom: 1px solid var(--line); }
+/* The tap zones, the page of a PDF, and the loading screen */
+:root[data-skin="soft"] #tap-hint div { border: 1.5px dashed var(--line-2); border-radius: 12px; }
+:root[data-skin="soft"] #tap-hint div span { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+:root[data-skin="soft"] #pdfview canvas { box-shadow: 0 1px 2px rgba(0,0,0,.2), 0 12px 24px -12px rgba(0,0,0,.4); }
+:root[data-skin="soft"] #loading { color: var(--muted); }

@@ -646,7 +646,7 @@ function render() {
   document.body.classList.toggle('selecting', selecting);
   els.select.setAttribute('aria-pressed', String(selecting));
   els.selectBar.classList.toggle('hidden', !selecting);
-  els.layout.classList.toggle('hidden', shown !== 'books');
+  els.layout.closest('.control').classList.toggle('hidden', shown !== 'books');
   els.sectionName.textContent = shown === 'series' ? 'Series & collections' : 'Books';
   const dupCount = books.filter(flagged).length;
   els.filter.querySelector('[value="duplicates"]').textContent = dupCount ? `Duplicates (${dupCount})` : 'Duplicates';

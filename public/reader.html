@@ -9,9 +9,10 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=(s.v||s.theme!=='light')&&s.theme||'auto';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
+<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=(s.v||s.theme!=='light')&&s.theme||'auto';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var d=document.documentElement;d.dataset.theme=t;var k=s.skin&&s.skin!=='auto'?s.skin:(s.eink||/boox|onyx|kobo|kindle|tolino|pocketbook|remarkable|bigme|hisense|meebook|e-?ink/i.test(navigator.userAgent+' '+(s.device||''))?'eink':'soft');d.dataset.skin=k;if(k==='eink'&&s.eink)d.dataset.eink='1';}catch(e){document.documentElement.dataset.skin=document.documentElement.dataset.skin||'soft'}</script>
 <link rel="stylesheet" href="/css/app.css">
 <link rel="stylesheet" href="/css/reader.css">
+<link rel="stylesheet" href="/css/soft.css">
 <link rel="stylesheet" href="/css/fonts.css">
 <link rel="stylesheet" id="book-styles" href="" disabled>
 </head>
@@ -55,6 +56,8 @@
       <div class="seg" id="theme-seg">
         <button data-v="light">Light</button><button data-v="sepia">Sepia</button><button data-v="dark">Dark</button><button data-v="auto">System</button>
       </div>
+      <span class="lbl" style="margin-top:10px">Look</span>
+      <div class="seg" id="skin-seg"><button data-v="soft">Soft</button><button data-v="eink">E-ink</button></div>
       <label class="check" style="margin-top:8px"><input type="checkbox" id="opt-eink"> High contrast (e-ink)</label>
     </div>
     <div class="group"><label for="font">Font <span class="muted">· on all your devices</span></label><select id="font"></select></div>

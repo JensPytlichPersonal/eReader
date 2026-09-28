@@ -8,8 +8,10 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=(s.v||s.theme!=='light')&&s.theme||'auto';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;if(s.eink)document.documentElement.dataset.eink='1';}catch(e){}</script>
+<script>try{var s=JSON.parse(localStorage.getItem('ereader.settings')||'{}');var t=(s.v||s.theme!=='light')&&s.theme||'auto';if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var d=document.documentElement;d.dataset.theme=t;var k=s.skin&&s.skin!=='auto'?s.skin:(s.eink||/boox|onyx|kobo|kindle|tolino|pocketbook|remarkable|bigme|hisense|meebook|e-?ink/i.test(navigator.userAgent+' '+(s.device||''))?'eink':'soft');d.dataset.skin=k;if(k==='eink'&&s.eink)d.dataset.eink='1';}catch(e){document.documentElement.dataset.skin=document.documentElement.dataset.skin||'soft'}</script>
+<link rel="stylesheet" href="/css/fonts.css">
 <link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/soft.css">
 </head>
 <body>
 <header class="app-header"><a class="brand" href="/">eReader</a></header>
