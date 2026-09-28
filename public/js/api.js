@@ -7,8 +7,8 @@ export class ApiError extends Error {
   }
 }
 
-export async function api(path, { method = 'GET', body, headers = {}, raw = false, keepalive = false, noRedirect = false } = {}) {
-  const opts = { method, headers: { ...headers }, credentials: 'same-origin', keepalive };
+export async function api(path, { method = 'GET', body, headers = {}, raw = false, keepalive = false, noRedirect = false, signal } = {}) {
+  const opts = { method, headers: { ...headers }, credentials: 'same-origin', keepalive, signal };
   if (body !== undefined) {
     if (raw) opts.body = body;
     else { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }

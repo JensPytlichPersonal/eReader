@@ -32,14 +32,23 @@ export function pickSeries(found, { name, books }) {
   return best;
 }
 
+// The numbers a book holds: its own, and for a book holding several, such as an omnibus (1 to 3),
+// every whole number in its range.
+function numbers({ position, positionEnd }) {
+  if (position == null) return [];
+  const out = [position];
+  for (let n = Math.ceil(position); n <= (positionEnd ?? position); n++) out.push(n);
+  return out;
+}
+
 /**
  * The books of a catalogue's series the library lacks: the main ones (whole numbers, so not the
- * novellas at 1.5), where no book in the library has the number or the title.
+ * novellas at 1.5), where no book in the library holds the number or has the title.
  * @param {{books: Array<{position: number, title: string}>}} series
- * @param {Array<{title: string, position: number|null}>} books the books of the series in the library
+ * @param {Array<{title: string, position: number|null, positionEnd?: number|null}>} books the books of the series in the library
  */
 export function missingBooks(series, books) {
-  const held = new Set(books.map((b) => b.position));
+  const held = new Set(books.flatMap(numbers));
   return series.books.filter((e) => Number.isInteger(e.position) && !held.has(e.position) && !books.some((b) => sameTitle(e.title, b.title)));
 }
 

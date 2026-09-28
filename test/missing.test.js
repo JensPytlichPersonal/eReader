@@ -44,29 +44,42 @@ test('the books the library lacks are the main ones with a number and a title it
   // "Dune Messiah" is not "Dune".
   const dune = { books: [entry(1, 'Dune'), entry(2, 'Dune Messiah'), entry(3, 'Children of Dune')] };
   assert.deepEqual(missingBooks(dune, [{ title: 'Dune', position: 1 }]).map((e) => e.title), ['Dune Messiah', 'Children of Dune']);
+  // An omnibus holds the books in it.
+  assert.deepEqual(lacking([{ title: 'Leviathan Wakes', position: 1 }, { title: 'The Expanse Books 2-4', position: 2, positionEnd: 4 }]), [9, 10]);
 });
 
+// Books of a series in the library, by their places: a number, or [first, last] for an omnibus.
+const at = (...places) => places.map((p) => (Array.isArray(p) ? { position: p[0], positionEnd: p[1] } : { position: p }));
+
 test('the library shows gaps in the numbers, and what Hardcover lists in their place', () => {
-  assert.deepEqual(gaps([1, 2, 4]), [3]);
-  assert.deepEqual(gaps([1, 4.5, null]), [2, 3, 4]);
-  assert.deepEqual(gaps([3]), [1, 2]);
-  assert.deepEqual(gaps([1, 2, 2.5, 3]), []);
-  assert.deepEqual(gaps([null, null]), []);
-  assert.equal(gaps([2019, 2020]), null, 'numbered by year, not book after book');
+  assert.deepEqual(gaps(at(1, 2, 4)), [3]);
+  assert.deepEqual(gaps(at(1, 4.5, null)), [2, 3, 4]);
+  assert.deepEqual(gaps(at(3)), [1, 2]);
+  assert.deepEqual(gaps(at(1, 2, 2.5, 3)), []);
+  assert.deepEqual(gaps(at(null, null)), []);
+  assert.equal(gaps(at(2019, 2020)), null, 'numbered by year, not book after book');
+  // An omnibus holds every book in it: with #1–3 and #5 only #4 is missing.
+  assert.deepEqual(gaps(at([1, 3], 5)), [4]);
+  assert.deepEqual(gaps(at(1, [4, 6])), [2, 3]);
 
   const answer = { series: { name: 'The Expanse', url: expanse.url }, missing: missingBooks(expanse, [{ title: 'Leviathan Wakes', position: 1 }, { title: 'Cibola Burn', position: 4 }]) };
   // A shelf shows the gaps, with Hardcover's titles; the series' page every book the library lacks.
-  assert.deepEqual(toShow([1, 4], answer).map((m) => [m.position, m.title]), [[2, "Caliban's War"], [3, "Abaddon's Gate"]]);
-  assert.deepEqual(toShow([1, 4], answer, { all: true }).map((m) => m.position), [2, 3, 9, 10]);
+  assert.deepEqual(toShow(at(1, 4), answer).map((m) => [m.position, m.title]), [[2, "Caliban's War"], [3, "Abaddon's Gate"]]);
+  assert.deepEqual(toShow(at(1, 4), answer, { all: true }).map((m) => m.position), [2, 3, 9, 10]);
   // Until Hardcover answers, or when it has no such series, the gaps show with only their number.
-  assert.deepEqual(toShow([1, 4], null), [{ position: 2 }, { position: 3 }]);
-  assert.deepEqual(toShow([1, 4], { series: null, missing: [] }, { all: true }), [{ position: 2 }, { position: 3 }]);
-  // Hardcover knows the series has no #3: no gap there. A book added since it answered is not missing.
-  assert.deepEqual(toShow([1, 2, 4], { series: answer.series, missing: [] }), []);
-  assert.deepEqual(toShow([1, 2, 4], answer).map((m) => m.position), [3]);
+  assert.deepEqual(toShow(at(1, 4), null), [{ position: 2 }, { position: 3 }]);
+  assert.deepEqual(toShow(at(1, 4), { series: null, missing: [] }, { all: true }), [{ position: 2 }, { position: 3 }]);
+  // Hardcover knows the series has no #3: no gap there. Books added since it answered are not missing.
+  assert.deepEqual(toShow(at(1, 2, 4), { series: answer.series, missing: [] }), []);
+  assert.deepEqual(toShow(at(1, 2, 4), answer).map((m) => m.position), [3]);
+  assert.deepEqual(toShow(at(1, [2, 3], 4), answer, { all: true }).map((m) => m.position), [9, 10]);
 
-  const items = [{ position: 1, book: 'a' }, { position: 4, book: 'b' }, { position: null, book: 'c' }];
-  assert.deepEqual(inOrder(items, [{ position: 2 }, { position: 9 }]).map((i) => i.book ?? `#${i.missing.position}`), ['a', '#2', 'b', '#9', 'c']);
+  // In the library's order, an omnibus after the books it holds.
+  const book = (name, position, positionEnd) => ({ book: name, position, positionEnd });
+  const order = (items, missing) => inOrder(items, missing.map((position) => ({ position }))).map((i) => i.book ?? `#${i.missing.position}`);
+  assert.deepEqual(order([book('one', 1), book('two', 2), book('three', 3), book('omnibus', 1, 3), book('five', 5), book('extra', null)], [4, 6]),
+    ['one', 'two', 'three', 'omnibus', '#4', 'five', '#6', 'extra']);
+  assert.deepEqual(order([book('one', 1), book('omnibus', 4, 6)], [2, 3, 7]), ['one', '#2', '#3', 'omnibus', '#7']);
 });
 
 test('Hardcover is asked once a day for a series, one lookup at a time', async () => {
@@ -178,6 +191,11 @@ test('every reader can see which books of a series the library lacks', async () 
   assert.equal((await client()(`/api/series/${id}/missing`)).status, 401);
   // Changing a series is still for admins.
   assert.equal((await anna(`/api/series/${id}`, { method: 'PATCH', body: { name: 'Mine' } })).status, 403);
+
+  // An omnibus holds the books in it.
+  const omnibus = await upload(jens, 'omnibus.epub', coreyBook('The Expanse Books 2-3', calibre('Expanse', '2-3')));
+  assert.deepEqual(omnibus.series.map((s) => [s.id, s.position, s.positionEnd]), [[id, 2, 3]]);
+  assert.deepEqual((await anna(`/api/series/${id}/missing`)).data.missing.map((m) => m.position), [9, 10]);
 
   reply = async () => { throw new LookupError('Hardcover did not answer. Try again in a moment.'); };
   const failed = await anna(`/api/series/${id}/missing`);

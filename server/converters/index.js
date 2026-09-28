@@ -1,4 +1,4 @@
-import { convertEpub, readEpubMetadata } from './epub.js';
+import { convertEpub, readEpubMetadata, readOpfDetails } from './epub.js';
 import { convertMobi, readMobiMetadata } from './mobi.js';
 import { convertMarkdown, readMarkdownMetadata } from './markdown.js';
 import { convertText } from './text.js';
@@ -8,6 +8,36 @@ import { titleFromFilename } from './bundle.js';
 import { withTitleSeries } from './series.js';
 
 export const SUPPORTED_EXTENSIONS = ['epub', 'mobi', 'prc', 'azw', 'azw3', 'kf8', 'pdf', 'md', 'markdown', 'txt', 'text'];
+
+// An OPF file that came with a book (see the upload) is kept beside its original under this name.
+export const OPF_FILE = 'metadata.opf';
+export { readOpfDetails };
+
+// A language as a tag browsers know: calibre writes "eng" where a book has "en", and "und" for none.
+function languageTag(language) {
+  try {
+    const tag = Intl.getCanonicalLocales(language || [])[0] || '';
+    return tag === 'und' ? '' : tag;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * A book's details with those of an OPF file that came with it, such as calibre's metadata.opf. The
+ * OPF's win, being where a library keeps the details as someone corrected them; the file's own fill in
+ * what it leaves out, and the ISBNs of both count.
+ */
+export function withOpfDetails(meta, opf) {
+  return withTitleSeries({
+    ...meta,
+    title: opf.title || meta.title,
+    author: opf.author || meta.author,
+    language: languageTag(opf.language) || meta.language,
+    series: opf.series.length ? opf.series : meta.series,
+    isbns: [...new Set([...(meta.isbns || []), ...opf.isbns])],
+  });
+}
 
 export function detectFormat(filename, buffer) {
   const ext = (filename.split('.').pop() || '').toLowerCase();
@@ -36,7 +66,7 @@ async function convertFormat(buffer, { filename }) {
   }
 }
 
-/** Converts a book. `meta.series` lists the series and collections it belongs to: [{name, position}]. */
+/** Converts a book. `meta.series` lists the series and collections it belongs to: [{name, position, positionEnd?}]. */
 export async function convert(buffer, { filename }) {
   const book = await convertFormat(buffer, { filename });
   return { ...book, meta: withTitleSeries(book.meta) };

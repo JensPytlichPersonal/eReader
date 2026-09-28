@@ -50,11 +50,25 @@ CREATE TABLE IF NOT EXISTS books (
   -- picked (custom-cover.<ext> in the book's folder) or 'none'. Converting again keeps it.
   cover_source TEXT NOT NULL DEFAULT 'file',
   -- When someone last changed the cover. It versions the cover's address, so every device fetches the new one.
-  cover_edited_at INTEGER NOT NULL DEFAULT 0
+  cover_edited_at INTEGER NOT NULL DEFAULT 0,
+  -- The SHA-256 of the uploaded file, so the same file is not added twice ('' until known; see duplicates.js).
+  sha256 TEXT NOT NULL DEFAULT '',
+  -- The ISBNs in the book's file, 13 digits each, separated by spaces. The same book in another file shares one.
+  isbns TEXT NOT NULL DEFAULT ''
 );
 
+-- Two books that look like the same book, but that someone said are different books, so they are no
+-- longer flagged as possible duplicates. book_id is the smaller id of the two.
+CREATE TABLE IF NOT EXISTS distinct_books (
+  book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  other_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  PRIMARY KEY (book_id, other_id)
+);
+CREATE INDEX IF NOT EXISTS distinct_books_other ON distinct_books(other_id);
+
 -- Series and collections: books that belong together. A book can be in several; position
--- orders a series (1, 2, 2.5 ...) and is NULL in collections without an order.
+-- orders a series (1, 2, 2.5 ...) and is NULL in collections without an order. A book holding
+-- several, such as an omnibus, has a range: position_end is its last number (1 to 3), else NULL.
 CREATE TABLE IF NOT EXISTS series (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -66,6 +80,7 @@ CREATE TABLE IF NOT EXISTS book_series (
   book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
   series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
   position REAL,
+  position_end REAL,
   PRIMARY KEY (book_id, series_id)
 );
 CREATE INDEX IF NOT EXISTS book_series_series ON book_series(series_id);
@@ -116,6 +131,12 @@ function migrate(db) {
   if (!columns.has('metadata_version')) db.exec('ALTER TABLE books ADD COLUMN metadata_version INTEGER NOT NULL DEFAULT 0');
   if (!columns.has('cover_source')) db.exec("ALTER TABLE books ADD COLUMN cover_source TEXT NOT NULL DEFAULT 'file'");
   if (!columns.has('cover_edited_at')) db.exec('ALTER TABLE books ADD COLUMN cover_edited_at INTEGER NOT NULL DEFAULT 0');
+  if (!columns.has('sha256')) db.exec("ALTER TABLE books ADD COLUMN sha256 TEXT NOT NULL DEFAULT ''");
+  if (!columns.has('isbns')) db.exec("ALTER TABLE books ADD COLUMN isbns TEXT NOT NULL DEFAULT ''");
+  // Here rather than in SCHEMA, which runs before an older database has the column.
+  db.exec('CREATE INDEX IF NOT EXISTS books_sha256 ON books(sha256)');
+  const seriesColumns = new Set(db.prepare('PRAGMA table_info(book_series)').all().map((c) => c.name));
+  if (!seriesColumns.has('position_end')) db.exec('ALTER TABLE book_series ADD COLUMN position_end REAL');
 }
 
 /** Runs `fn` in a transaction (a savepoint, so calls can nest). `fn` must be synchronous. */

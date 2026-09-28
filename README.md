@@ -44,7 +44,9 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   the cards are 2, 3 or 4 across, and the tabs, search, menus, upload and account links sit behind
   the ☰ button so the books fill the screen.
 - **Table of contents, bookmarks, progress slider, chapter titles** and a "who else is reading" peek.
-- **Upload from the app** (button or drag and drop). Conversion runs in the background.
+- **Upload from the app**: books, or whole folders of them, with a button or by drag and drop.
+  Conversion runs in the background. The same file is never added twice, and the same book in another
+  file is flagged as a possible duplicate.
 - **Installable, and readable offline.** Add it to the home screen on iOS or Android for a full-screen
   app. When served over https, every book you open is kept on the device, all of it, so it can be read
   without a connection.
@@ -158,7 +160,7 @@ them in the `command=` of the authorized key, for example
 | `DATA_DIR` | `./data` | Where the database and books are stored |
 | `ALLOW_REGISTRATION` | `false` | Let anyone create an account (the very first account is always allowed) |
 | `SESSION_DAYS` | `365` | How long a sign-in lasts on a device |
-| `MAX_UPLOAD_MB` | `500` | Maximum upload size |
+| `MAX_UPLOAD_MB` | `500` | Maximum size of an uploaded file |
 | `SECURE_COOKIES` | `false` | Set to `true` when the server is only reachable over https |
 | `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy that sets `X-Forwarded-*` |
 | `HARDCOVER_TOKEN` | (none) | A Hardcover API token, so looking books up asks Hardcover as well as Open Library, and the books a series lacks get their titles (see below) |
@@ -198,6 +200,47 @@ kept the next time they open online. Reading positions sync when the connection 
 the display settings, `m` the menu, `+`/`-` change the text size, Home/End jump to the start or end.
 Wide windows show two columns; switch to one column in the display settings if you prefer.
 
+## Adding books
+
+*Upload books* picks one or more files. On a computer, *Upload a folder* (in the drop area) picks a
+whole folder, and files or folders can be dropped on the page. A folder brings every book in it and in
+its subfolders, in the order of their paths. Hidden files (such as `.DS_Store`) and files in other
+formats are left out, and the upload says how many there were of each kind.
+
+An `.opf` file and a cover picture beside a book go up with it, as calibre keeps them: named like the
+book (`Dune.opf` and `Dune.jpg`, as calibre's *Save to disk* writes them), or `metadata.opf` and
+`cover.jpg` in a folder holding one book, in one or more formats (as in a calibre library). The title,
+author, series, language and ISBN in the `.opf` file win over those inside the book, which fill in what
+it leaves out, and it is kept with the book, so *Convert again* uses it too; details edited by hand
+still win over both. The picture becomes the book's cover like one picked by hand, so *Change cover*
+can still go back to the book's own. The upload says how many books came with each.
+
+Books go up one at a time while the server converts the ones already there. A line above the library
+shows how far the upload has come, with a *Stop* button; keep the page open until it is done (the
+browser asks before leaving it). Files that could not be added are listed under that line with the
+reason. Each file can be up to `MAX_UPLOAD_MB` (500 MB by default).
+
+### Duplicates
+
+A file that is already in the library is not added again, whatever its name and whoever added it: the
+upload lists it as *already in the library* and names the book it is. So an upload that was stopped or
+cut off can simply be started again with the same folder, and only the missing books go up.
+
+The same book in another file, such as an EPUB and a PDF of it, can't be told for certain, so it is
+added and flagged instead. Books that share an ISBN (EPUB and MOBI files usually carry one), or have
+the same title and author, are marked *Possible duplicate*; so are books with the same title when one
+of them names no author, as PDFs often don't. Titles and authors are compared loosely: case, accents
+and punctuation don't matter, nor the order of an author's names ("Herbert, Frank").
+
+The *Duplicates* filter lists the flagged books in groups. The mark on a book opens it side by side
+with the books it looks like, each with its format, size, who added it and who is reading it, to keep
+the right one: *Delete* removes a copy for everyone, with its reading positions and bookmarks, and *Not
+the same book* stops flagging the two. Deleting is for the uploader or an admin, *Not the same book* for
+the uploader of either book or an admin.
+
+Books already in the library when this arrived are fingerprinted, and their ISBNs read, once in the
+background when the server starts, without converting them again, so copies among them are flagged too.
+
 ## Formats
 
 | Format | Notes |
@@ -231,7 +274,10 @@ is converted again.
 A series is a group of books with numbers (1, 2, 2.5 …); a collection is a group without an order,
 such as a book club. A book can be in several. Opening a series lists its books in order and offers
 *Continue*, *Next up* or *Start with* for the book to read next. The *Series & collections* tab lists
-every group.
+every group. A book holding several, such as an omnibus, has a range of numbers (#1–3): type `1-3` as
+its number, or let its title or EPUB metadata give it. It is listed after the books it holds, before the
+next one: #1, #2, #3, #1–3, #4. *Next up* passes over a book whose numbers you have all finished, such
+as an omnibus of books you have read, or a book you read in an omnibus.
 
 The Books view shows each series in one of three ways, chosen in the toolbar and remembered per device:
 
@@ -247,7 +293,8 @@ lists the matching books themselves. Filters apply to a whole series: *Reading* 
 started but not finished.
 
 A book the library lacks shows as a dashed outline in its place: with #1, #2 and #4 in the library, #3
-sits between them, on the series' page and on its shelf. The numbers alone tell which are missing.
+sits between them, on the series' page and on its shelf. The numbers alone tell which are missing, and
+an omnibus counts for the books it holds: with #1–3 and #5, only #4 is missing.
 When the server has a [Hardcover](#hardcover) token, Hardcover says what they are: the outline gets
 the title and author, and opens the book on Hardcover. The series' page then shows the whole series,
 including the books after the last one the library has, marking those not out yet; a shelf keeps to
@@ -264,7 +311,7 @@ Where the series comes from:
 | EPUB metadata | calibre's series and series index, EPUB 3 collections (`belongs-to-collection` with `group-position`; sets become collections), EPUB 3 collection titles |
 | PDF metadata | calibre's series in the XMP metadata |
 | Markdown front matter | `series: The Expanse` with `series_index: 3` (or `volume: 3`); `collection:` works too |
-| The title | "Leviathan Wakes (The Expanse Book 1)", "Caliban's War (The Expanse, #2)", "A Game of Thrones: A Song of Ice and Fire: Book One", "Kvinden i buret (Afdeling Q, bind 1)", "The Expanse 03 - Abaddon's Gate". This is the only place MOBI and text files carry a series. Only explicit forms count (a `#`, or a word such as Book, Volume, Part, Bind or Band before the number), so a title like "Windows 10" is left alone. The series part is removed from the title. |
+| The title | "Leviathan Wakes (The Expanse Book 1)", "Caliban's War (The Expanse, #2)", "A Game of Thrones: A Song of Ice and Fire: Book One", "Kvinden i buret (Afdeling Q, bind 1)", "The Expanse 03 - Abaddon's Gate", and for an omnibus "Box Set (The Expanse, #1-3)" or "(The Expanse, Books 1–3)". This is the only place MOBI and text files carry a series. Only explicit forms count (a `#`, or a word such as Book, Volume, Part, Bind or Band before the number), so a title like "Windows 10" is left alone. The series part is removed from the title. |
 
 Series names are matched regardless of case, spacing and quote style, so books from different
 sources end up together. To add books to a series or collection by hand, or to fix one, choose
@@ -381,7 +428,7 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), and the books a series lacks (`missing.js`)
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, and `missing.js`, which finds the books a series lacks
 - `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
 - `public/` the web app: library (`js/library.js`, which places the books a series lacks with `js/missing.js`), reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)

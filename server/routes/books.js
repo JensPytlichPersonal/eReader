@@ -5,10 +5,11 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { now, transaction } from '../db.js';
-import { detectFormat, readMetadata, SUPPORTED_EXTENSIONS } from '../converters/index.js';
+import { detectFormat, readMetadata, readOpfDetails, OPF_FILE, SUPPORTED_EXTENSIONS } from '../converters/index.js';
 import { sniffImage, titleFromFilename } from '../converters/bundle.js';
-import { cleanSeriesName, knownSeriesName, parsePosition } from '../converters/series.js';
+import { cleanSeriesName, knownSeriesName, parsePlace } from '../converters/series.js';
 import { LookupError } from '../lookup.js';
+import { fingerprint } from '../duplicates.js';
 
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
 const COVER_TYPES = ['jpg', 'png', 'gif', 'webp'];
@@ -20,7 +21,10 @@ const MIME = {
   '.pdf': 'application/pdf', '.epub': 'application/epub+zip', '.mobi': 'application/x-mobipocket-ebook', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8',
 };
 
-/** Checks the `series` of a book edit: [{ name, position }], position a number, a numeric string or empty. */
+/**
+ * Checks the `series` of a book edit: [{ name, position }], position a number, a numeric string, a range
+ * such as "1-3" for a book holding several (an omnibus), or empty.
+ */
 export function parseSeriesInput(input) {
   const invalid = { error: 'series must be a list of { name, position }' };
   if (!Array.isArray(input) || input.length > 50) return invalid;
@@ -30,14 +34,14 @@ export function parseSeriesInput(input) {
     const name = cleanSeriesName(e.name);
     if (!name) continue;
     const empty = e.position == null || String(e.position).trim() === '';
-    const position = empty ? null : parsePosition(e.position);
-    if (!empty && position == null) return { error: `The number in "${name}" must be a number, such as 3 or 2.5` };
-    series.push({ name, position });
+    const place = empty ? { position: null } : parsePlace(e.position);
+    if (!place) return { error: `The number in "${name}" must be a number, such as 3 or 2.5, or a range for a book holding several, such as 1-3` };
+    series.push({ name, ...place });
   }
   return { series };
 }
 
-export function bookRoutes(db, auth, config, processor, series, lookups) {
+export function bookRoutes(db, auth, config, processor, series, lookups, duplicates) {
   const r = Router();
   const stmts = {
     list: db.prepare(`SELECT b.*, u.username AS added_by_name,
@@ -46,7 +50,10 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
       LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?
       ORDER BY COALESCE(p.updated_at, 0) DESC, b.added_at DESC`),
     get: db.prepare('SELECT b.*, u.username AS added_by_name FROM books b LEFT JOIN users u ON u.id = b.added_by WHERE b.id = ?'),
-    insert: db.prepare('INSERT INTO books (id, title, author, format, original_name, size, added_by, added_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+    insert: db.prepare(`INSERT INTO books (id, title, author, format, original_name, size, added_by, added_at, status, sha256, cover_source, cover_edited_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+    // The book a file already is, the first one added when there are several (from before uploads were checked).
+    withFile: db.prepare('SELECT b.*, u.username AS added_by_name FROM books b LEFT JOIN users u ON u.id = b.added_by WHERE b.sha256 = ? ORDER BY b.added_at LIMIT 1'),
     delete: db.prepare('DELETE FROM books WHERE id = ?'),
     updateMeta: db.prepare('UPDATE books SET title = ?, author = ?, edited_at = ? WHERE id = ?'),
     // Always later than the cover's current version, even for two changes within a millisecond.
@@ -63,7 +70,7 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
     deleteBookmark: db.prepare('DELETE FROM bookmarks WHERE id = ? AND user_id = ?'),
   };
 
-  // `inSeries`: the series and collections the book is in, [{ id, name, position }].
+  // `inSeries`: the series and collections the book is in, [{ id, name, position, positionEnd? }].
   const shapeBook = (b, inSeries = series.forBook(b.id)) => ({
     id: b.id, title: b.title, author: b.author, language: b.language, format: b.format, originalName: b.original_name, size: b.size,
     series: inSeries,
@@ -88,8 +95,10 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
     try { files = await fsp.readdir(bookDir(id)); } catch { /* no folder */ }
     for (const f of files) if (f.startsWith('custom-cover.') && f !== keep) await fsp.rm(path.join(bookDir(id), f), { force: true });
   };
-  // The ISBNs in the book's file. EPUB and MOBI files carry them, and reading their details is quick.
+  // The book's ISBNs: those kept when it was converted, from its file and any OPF file that came with it,
+  // else those in its file. EPUB and MOBI files carry them, and reading their details is quick.
   const readIsbns = async (b) => {
+    if (b.isbns) return b.isbns.split(' ');
     const name = ['epub', 'mobi'].includes(b.format) && findOriginal(b.id);
     if (!name) return [];
     try { return (await readMetadata(await fsp.readFile(path.join(bookDir(b.id), name)), { filename: b.original_name })).isbns || []; } catch { return []; }
@@ -97,30 +106,64 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
 
   r.use(auth.requireUser);
 
+  // The library. Only here does a book list its possible duplicates, [{ id, reason }] (see duplicates.js),
+  // since finding them compares every book.
   r.get('/', (req, res) => {
     const bookSeries = series.byBook();
-    const books = stmts.list.all(req.user.id).map((b) => shapeBook(b, bookSeries.get(b.id) || []));
+    const alike = duplicates.byBook();
+    const books = stmts.list.all(req.user.id).map((b) => ({ ...shapeBook(b, bookSeries.get(b.id) || []), duplicates: alike.get(b.id) || [] }));
     res.json({ books, processing: processor.isBusy(), supported: SUPPORTED_EXTENSIONS });
   });
 
-  // Upload: raw body, filename in X-File-Name (URL encoded)
+  // Upload: raw body, filename in X-File-Name (URL encoded). A file that is already in the library, under
+  // any name, is not added again: the answer is 409, with the book it is.
+  // Files that came with the book go ahead of it in the body, their sizes in X-Opf-Size and X-Cover-Size:
+  // its details in an OPF file, as calibre keeps one beside each book, and its cover. Their details win
+  // over the book's own (see withOpfDetails), and the cover becomes the book's like one picked by hand.
+  // `used` in the answer says which of them were taken.
   r.post('/', express.raw({ type: () => true, limit: config.maxUploadBytes }), async (req, res) => {
     let filename = '';
     try { filename = decodeURIComponent(req.get('x-file-name') || ''); } catch { filename = req.get('x-file-name') || ''; }
     filename = path.basename(filename).replace(/[\r\n\t]/g, ' ').trim().slice(0, 255);
-    const body = req.body;
-    if (!Buffer.isBuffer(body) || !body.length) return res.status(400).json({ error: 'No file data received' });
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'No file data received' });
     if (!filename) return res.status(400).json({ error: 'Missing X-File-Name header' });
+    const [opfSize, coverSize] = ['x-opf-size', 'x-cover-size'].map((h) => (req.get(h) == null ? 0 : Number(req.get(h))));
+    if (![opfSize, coverSize].every((n) => Number.isInteger(n) && n >= 0) || opfSize + coverSize > req.body.length) {
+      return res.status(400).json({ error: 'X-Opf-Size and X-Cover-Size must be the sizes of the files ahead of the book' });
+    }
+    const opf = req.body.subarray(0, opfSize);
+    const cover = req.body.subarray(opfSize, opfSize + coverSize);
+    const body = req.body.subarray(opfSize + coverSize);
+    if (!body.length) return res.status(400).json({ error: 'No file data received' });
     const format = detectFormat(filename, body);
     if (!format) return res.status(415).json({ error: `Unsupported file type. Supported: ${SUPPORTED_EXTENSIONS.join(', ')}` });
+    const sha256 = fingerprint(body);
+    const alreadyIn = (b) => res.status(409).json({ error: `Already in the library as "${b.title}"`, book: shapeBook(b) });
+    let same = stmts.withFile.get(sha256);
+    if (same) return alreadyIn(same);
     const id = crypto.randomBytes(8).toString('hex');
     const ext = (path.extname(filename).slice(1).toLowerCase() || format).replace(/[^a-z0-9]/g, '') || 'bin';
     const dir = bookDir(id);
+    const details = opf.length ? readOpfDetails(opf) : null;
+    const coverType = cover.length && cover.length <= MAX_COVER_BYTES ? sniffImage(cover) : null;
+    const useCover = COVER_TYPES.includes(coverType);
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(path.join(dir, `original.${ext}`), body);
-    stmts.insert.run(id, titleFromFilename(filename), '', format, filename, body.length, req.user.id, now(), 'processing');
+    // Kept beside the original, as the processor reads it whenever the book is converted.
+    if (details) await fsp.writeFile(path.join(dir, OPF_FILE), opf);
+    if (useCover) await fsp.writeFile(path.join(dir, `custom-cover.${coverType}`), cover);
+    // Asked again: the same file may have been sent twice at once, and the other copy saved meanwhile.
+    // From here to the insert nothing waits, so only one of them gets in.
+    same = stmts.withFile.get(sha256);
+    if (same) {
+      await fsp.rm(dir, { recursive: true, force: true });
+      return alreadyIn(same);
+    }
+    const added = now();
+    stmts.insert.run(id, (details?.title || titleFromFilename(filename)).slice(0, 500), (details?.author || '').slice(0, 500), format, filename, body.length,
+      req.user.id, added, 'processing', sha256, useCover ? 'custom' : 'file', useCover ? added : 0);
     processor.enqueue(id);
-    res.status(202).json({ book: shapeBook({ ...stmts.get.get(id) }, []) });
+    res.status(202).json({ book: shapeBook({ ...stmts.get.get(id) }, []), used: { opf: !!details, cover: useCover } });
   });
 
   r.get('/:id', async (req, res) => {
@@ -182,6 +225,23 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
     stmts.delete.run(b.id);
     series.prune();
     await fsp.rm(bookDir(b.id), { recursive: true, force: true });
+    res.json({ ok: true });
+  });
+
+  // Says that two books which look alike are different books, so neither is flagged as a possible
+  // duplicate of the other any more. Body: { of: the other book's id }. The uploader of either book or
+  // an admin can.
+  r.post('/:id/not-duplicate', (req, res) => {
+    const otherId = req.body?.of;
+    if (typeof otherId !== 'string') return res.status(400).json({ error: 'of must be the id of the other book' });
+    const b = stmts.get.get(req.params.id);
+    const other = stmts.get.get(otherId);
+    if (!b || !other) return res.status(404).json({ error: 'No such book' });
+    if (b.id === other.id) return res.status(400).json({ error: 'That is the same book' });
+    if (!req.user.isAdmin && b.added_by !== req.user.id && other.added_by !== req.user.id) {
+      return res.status(403).json({ error: 'Only the uploader of one of the books or an admin can do this' });
+    }
+    duplicates.markDifferent(b.id, other.id);
     res.json({ ok: true });
   });
 

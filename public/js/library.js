@@ -20,7 +20,9 @@ const els = {
   activeFilters: document.getElementById('active-filters'),
   offlineNote: document.getElementById('offline-note'),
   upload: document.getElementById('btn-upload'),
+  uploadFolder: document.getElementById('btn-upload-folder'),
   file: document.getElementById('file-input'),
+  folderInput: document.getElementById('folder-input'),
   drop: document.getElementById('dropzone'),
   uploads: document.getElementById('uploads'),
   dialogRoot: document.getElementById('dialog-root'),
@@ -61,6 +63,7 @@ const tiles = (html) => `<div class="${display === 'list' ? 'list' : 'grid'}">${
 const SAVED = 'ereader.library-books';
 
 async function load() {
+  loadedAt = Date.now();
   let data;
   try {
     data = await api('/api/books');
@@ -70,6 +73,7 @@ async function load() {
   }
   offline = false;
   books = data.books;
+  supported = new Set(data.supported);
   try { if (me) localStorage.setItem(SAVED, JSON.stringify({ me, books })); } catch { /* storage full */ }
   render();
   const processing = books.some((b) => b.status === 'processing');
@@ -106,7 +110,9 @@ function status(b) {
 }
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const seriesLabel = (s) => (s.position != null ? `${s.name} #${s.position}` : s.name);
+// A book's number in a series: "3", or a range such as "1–3" for a book holding several (an omnibus). null for none.
+const numberIn = (s) => (s.position == null ? null : s.positionEnd != null ? `${s.position}–${s.positionEnd}` : String(s.position));
+const seriesLabel = (s) => (s.position != null ? `${s.name} #${numberIn(s)}` : s.name);
 const seriesLink = (s) => `<a href="/?series=${s.id}" data-series="${s.id}">${escapeHtml(seriesLabel(s))}</a>`;
 
 // Books and series sort alike: a series by its most recently read and newest book, its name and main author.
@@ -124,14 +130,19 @@ function sorter() {
   return (a, b) => by(sortKeys(a), sortKeys(b));
 }
 
+const matchesSearch = (b, q) => `${b.title} ${b.author} ${b.series.map((s) => s.name).join(' ')}`.toLowerCase().includes(q);
+// Books that look like another book in the library (see duplicates.js on the server).
+const flagged = (b) => b.duplicates?.length > 0;
+
 function visible() {
   const q = els.search.value.trim().toLowerCase();
   const f = els.filter.value;
   let list = books.filter((b) => {
-    if (q && !(`${b.title} ${b.author} ${b.series.map((s) => s.name).join(' ')}`.toLowerCase().includes(q))) return false;
+    if (q && !matchesSearch(b, q)) return false;
     if (f === 'reading') return status(b) === 'reading';
     if (f === 'unread') return status(b) === 'unread';
     if (f === 'finished') return status(b) === 'finished';
+    if (f === 'duplicates') return flagged(b);
     return true;
   });
   return list.sort(sorter());
@@ -142,7 +153,10 @@ const coverHtml = (b) => (b.hasCover && (b.status === 'ready' || b.coverSource =
   ? `<img class="cover" loading="lazy" alt="" src="/books/${b.id}/cover?v=${b.coverVersion}">`
   : `<div class="cover placeholder"><div class="t">${escapeHtml(b.title)}</div><div class="a">${escapeHtml(b.author)}</div></div>`);
 
-/** A book card. In a series view (`ctx.seriesId`) the cover shows the book's number in that series. */
+// A book that looks like another in the library says so, and the flag opens them side by side.
+const dupFlag = (b) => (flagged(b) ? `<button type="button" class="dup-flag" data-dups="${b.id}">Possible duplicate</button>` : '');
+
+/** A book card. In a series view (`ctx.seriesId`) the cover shows the book's number in that series (`ctx.position`, as numberIn() gives it). */
 function card(b, ctx = {}) {
   if (display === 'list') return bookRow(b, ctx);
   const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
@@ -160,6 +174,7 @@ function card(b, ctx = {}) {
       <div class="title">${escapeHtml(b.title)}</div>
       <div class="author">${escapeHtml(b.author || '')}</div>
       ${seriesHtml}
+      ${dupFlag(b)}
       ${progressHtml}
       <div class="meta"><span>${b.progress ? `${pct}%` : ''} ${when}</span><span class="badge">${b.format}</span></div>
     </div>
@@ -179,7 +194,7 @@ function bookRow(b, ctx = {}) {
     <div class="body">
       <div class="title">${ctx.position != null ? `<span class="no">#${ctx.position}</span> ` : ''}${escapeHtml(b.title)}</div>
       ${about ? `<div class="about">${about}</div>` : ''}
-      <div class="meta">${b.progress ? `<div class="progress"><div style="width:${pct}%"></div></div>` : ''}<span>${state}</span><span class="badge">${b.format}</span></div>
+      <div class="meta">${b.progress ? `<div class="progress"><div style="width:${pct}%"></div></div>` : ''}<span>${state}</span><span class="badge">${b.format}</span>${dupFlag(b)}</div>
     </div>
     <button class="menu-btn" aria-label="Options for ${escapeHtml(b.title)}" data-menu="${b.id}">&#8943;</button>
   </div>`;
@@ -201,11 +216,14 @@ function groupSeries() {
   for (const b of books) {
     for (const s of b.series) {
       if (!groups.has(s.id)) groups.set(s.id, { id: s.id, name: s.name, items: [] });
-      groups.get(s.id).items.push({ book: b, position: s.position });
+      groups.get(s.id).items.push({ book: b, position: s.position, positionEnd: s.positionEnd });
     }
   }
   for (const g of groups.values()) {
-    g.items.sort((x, y) => (x.position ?? Infinity) - (y.position ?? Infinity) || x.book.title.localeCompare(y.book.title));
+    // A book holding several, such as an omnibus, comes after the books it holds and before the next:
+    // #1, #2, #3, #1–3, #4.
+    const last = (i) => i.positionEnd ?? i.position ?? Infinity;
+    g.items.sort((x, y) => last(x) - last(y) || (y.position ?? 0) - (x.position ?? 0) || x.book.title.localeCompare(y.book.title));
     const states = g.items.map((i) => status(i.book));
     g.numbered = g.items.some((i) => i.position != null);
     g.finished = states.filter((st) => st === 'finished').length;
@@ -225,8 +243,17 @@ function seriesPlace(g) {
   const st = (i) => status(i.book);
   const reading = g.items.filter((i) => st(i) === 'reading').sort((a, b) => b.book.progress.updatedAt - a.book.progress.updatedAt)[0];
   const done = g.items.map(st).lastIndexOf('finished');
-  const unread = g.items.slice(done + 1).find((i) => st(i) === 'unread') || g.items.find((i) => st(i) === 'unread');
-  const no = (i) => (i.position != null ? `#${i.position}` : '');
+  // A book whose numbers finished books already hold does not come next: an omnibus of books you have
+  // read, or a book you read in an omnibus (or in another format). Numbers such as 2.5 hold no whole one.
+  const numbers = (i) => {
+    const out = [];
+    if (i.position != null) for (let n = Math.ceil(i.position); n <= (i.positionEnd ?? i.position); n++) out.push(n);
+    return out;
+  };
+  const read = new Set(g.items.filter((i) => st(i) === 'finished').flatMap(numbers));
+  const next = (i) => st(i) === 'unread' && !(numbers(i).length && numbers(i).every((n) => read.has(n)));
+  const unread = g.items.slice(done + 1).find(next) || g.items.find(next);
+  const no = (i) => (i.position != null ? `#${numberIn(i)}` : '');
   if (reading) return { item: reading, verb: 'Continue', text: `Reading ${no(reading)}`.trim() };
   if (unread && done >= 0) return { item: unread, verb: 'Next up:', text: no(unread) ? `Next: ${no(unread)}` : 'Next up' };
   if (unread) return { item: unread, verb: 'Start with', text: 'Not started' };
@@ -251,12 +278,11 @@ let renderSoon = null;
  */
 function lacking(g, { all = false } = {}) {
   if (!g.numbered) return [];
-  const positions = g.items.map((i) => i.position);
-  const key = `${g.name}\n${g.items.map((i) => `${i.book.id}@${i.position}`).join(' ')}`;
+  const key = `${g.name}\n${g.items.map((i) => `${i.book.id}@${numberIn(i)}`).join(' ')}`;
   const known = catalogued.get(g.id);
   const outdated = !known || known.key !== key || (known.failed && Date.now() - known.at > RETRY);
-  if (outdated && !known?.asking && !offline && (all || gaps(positions)?.length)) askCatalogue(g.id, key);
-  return missingBooks(positions, known?.answer, { all });
+  if (outdated && !known?.asking && !offline && (all || gaps(g.items)?.length)) askCatalogue(g.id, key);
+  return missingBooks(g.items, known?.answer, { all });
 }
 
 function askCatalogue(id, key) {
@@ -355,12 +381,12 @@ function groupRow(g) {
 function shelf(g) {
   const place = seriesPlace(g);
   const facts = [g.author, plural(g.items.length, 'book', 'books'), place.text].filter(Boolean).map(escapeHtml).join(' · ');
-  const shelfBook = ({ book: b, position }, current) => {
+  const shelfBook = ({ book: b, ...place }, current) => {
     const st = status(b);
     const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
     const state = { finished: '&#10003; Finished', reading: `${pct}% read`, unread: 'Not started', processing: 'Preparing…', error: 'Could not convert' }[st];
     return `<div class="shelf-book${current ? ' current' : ''}">
-      ${coverHtml(b)}${position != null ? `<span class="cover-tag">#${position}</span>` : ''}
+      ${coverHtml(b)}${place.position != null ? `<span class="cover-tag">#${numberIn(place)}</span>` : ''}
       ${b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : ''}
       <div class="title">${escapeHtml(b.title)}</div>
       ${st === 'reading' ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : ''}
@@ -370,7 +396,7 @@ function shelf(g) {
   const current = (i) => i === place.item && g.state !== 'unread';
   const items = inOrder(g.items, lacking(g));
   const books = display === 'list'
-    ? tiles(items.map((i) => (i.missing ? missingRow(i.missing) : bookRow(i.book, { seriesId: g.id, position: i.position, current: current(i) }))).join(''))
+    ? tiles(items.map((i) => (i.missing ? missingRow(i.missing) : bookRow(i.book, { seriesId: g.id, position: numberIn(i), current: current(i) }))).join(''))
     : `<div class="shelf-row">${items.map((i) => (i.missing ? missingShelfBook(i.missing) : shelfBook(i, current(i)))).join('')}</div>`;
   return `<section class="shelf">
     <div class="shelf-head"><h2><a href="/?series=${g.id}" data-series="${g.id}">${escapeHtml(g.name)}</a></h2><span class="muted">${facts}</span></div>
@@ -396,6 +422,7 @@ function renderSeriesList() {
   const f = els.filter.value;
   const list = all.filter((g) => {
     if (q && !`${g.name} ${g.items.map((i) => `${i.book.title} ${i.book.author}`).join(' ')}`.toLowerCase().includes(q)) return false;
+    if (f === 'duplicates') return g.items.some((i) => flagged(i.book));
     return f === 'all' || g.state === f;
   });
   if (!list.length) { els.library.innerHTML = '<div class="empty">No series or collections match.</div>'; return; }
@@ -409,7 +436,7 @@ function renderSeries(id) {
     return;
   }
   const place = seriesPlace(g);
-  const next = place.item && `${place.verb} ${place.item.position != null ? `#${place.item.position} ` : ''}${place.item.book.title}`;
+  const next = place.item && `${place.verb} ${place.item.position != null ? `#${numberIn(place.item)} ` : ''}${place.item.book.title}`;
   // Every book of the series the library lacks, from Hardcover when it knows the series.
   const missing = lacking(g, { all: true });
   const facts = [g.numbered ? 'Series' : 'Collection', plural(g.items.length, 'book', 'books'), g.author, g.finished ? `${g.finished} finished` : '',
@@ -423,7 +450,7 @@ function renderSeries(id) {
         ${me.isAdmin ? `<button class="btn" data-edit-series="${g.id}">Rename or remove</button>` : ''}
       </div>
     </div>
-    ${tiles(inOrder(g.items, missing).map((i) => (i.missing ? missingCard(i.missing) : card(i.book, { seriesId: g.id, position: i.position }))).join(''))}`;
+    ${tiles(inOrder(g.items, missing).map((i) => (i.missing ? missingCard(i.missing) : card(i.book, { seriesId: g.id, position: numberIn(i) }))).join(''))}`;
 }
 
 const heading = (text, count) => `<div class="section-title"><h2 style="margin:0">${text}</h2><span class="muted">${count}</span></div>`;
@@ -435,7 +462,52 @@ function continueReading() {
   return reading.length ? `<div class="section-title"><h2 style="margin:0">Continue reading</h2></div>${tiles(reading.map((b) => card(b)).join(''))}` : '';
 }
 
+/** Books that look alike, in groups: a book, the books it looks like, theirs in turn. Oldest first in a group, groups by title. */
+function duplicateGroups() {
+  const byId = new Map(books.map((b) => [b.id, b]));
+  const seen = new Set();
+  const groups = [];
+  for (const b of books.filter(flagged)) {
+    if (seen.has(b.id)) continue;
+    const group = [];
+    const todo = [b];
+    seen.add(b.id);
+    while (todo.length) {
+      const x = todo.pop();
+      group.push(x);
+      for (const d of x.duplicates) {
+        const y = byId.get(d.id);
+        if (y && !seen.has(y.id)) { seen.add(y.id); todo.push(y); }
+      }
+    }
+    groups.push(group.sort((x, y) => x.addedAt - y.addedAt));
+  }
+  return groups.sort((x, y) => x[0].title.localeCompare(y[0].title));
+}
+
+// Why two books look alike, as the server says (see duplicates.js).
+const likeness = (reason, a, b) => ({ file: 'the same file', isbn: 'the same ISBN', title: a.author && b.author ? 'the same title and author' : 'the same title' }[reason]);
+
+/** The Duplicates filter: each group of books that look alike under a heading, with what they have in common. */
+function renderDuplicates() {
+  const q = els.search.value.trim().toLowerCase();
+  const groups = duplicateGroups().filter((g) => !q || g.some((b) => matchesSearch(b, q)));
+  if (!groups.length) {
+    els.library.innerHTML = q ? '<div class="empty">No possible duplicates match.</div>'
+      : '<div class="empty"><p>No possible duplicates.</p><p>Books that share an ISBN, or have the same title and author, are listed here.</p></div>';
+    return;
+  }
+  els.library.innerHTML = groups.map((g) => {
+    const alike = new Set(g.flatMap((b) => b.duplicates.map((d) => { const o = g.find((x) => x.id === d.id); return o ? likeness(d.reason, b, o) : null; })).filter(Boolean));
+    return `<section class="shelf dup-group">
+      <div class="shelf-head"><h2>${escapeHtml(g[0].title)}</h2><span class="muted">${plural(g.length, 'book', 'books')} with ${escapeHtml([...alike].join(', '))}</span></div>
+      ${tiles(g.map((b) => card(b)).join(''))}
+    </section>`;
+  }).join('');
+}
+
 function renderBooks() {
+  if (els.filter.value === 'duplicates') { renderDuplicates(); return; }
   const cont = continueReading();
   const allBooks = cont && `${cont}${heading('All books', books.length)}`;
   // Searching always lists the matching books themselves.
@@ -487,6 +559,8 @@ function render() {
   document.body.classList.toggle('series-open', seriesId != null);
   els.layout.classList.toggle('hidden', shown !== 'books');
   els.sectionName.textContent = shown === 'series' ? 'Series & collections' : 'Books';
+  const dupCount = books.filter(flagged).length;
+  els.filter.querySelector('[value="duplicates"]').textContent = dupCount ? `Duplicates (${dupCount})` : 'Duplicates';
   els.library.className = display === 'list' ? 'view-list' : `cols-${display.slice(-1)}`;
   // With the controls folded away on a phone, say when a search or filter hides books.
   const q = els.search.value.trim();
@@ -504,27 +578,250 @@ function render() {
 }
 
 // ---- uploads ----
-async function uploadFiles(files) {
-  const list = [...files];
-  if (!list.length) return;
-  for (const f of list) {
-    const item = document.createElement('div');
-    item.className = 'item';
-    item.innerHTML = `<span>${escapeHtml(f.name)}</span><span class="muted">uploading…</span>`;
-    els.uploads.appendChild(item);
-    try {
-      await api('/api/books', { method: 'POST', raw: true, body: f, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name) } });
-      item.lastElementChild.textContent = 'uploaded - preparing';
-      setTimeout(() => item.remove(), 4000);
-    } catch (err) {
-      item.lastElementChild.textContent = err.message;
-      item.lastElementChild.classList.add('error');
+// Books go up one at a time, in order, and files added meanwhile join the queue. A folder brings the books
+// in it and in its subfolders, each with the OPF file and cover picture that go with it; hidden files and
+// files in other formats stay behind. One line sums up the batch as it goes, with a line under it for each
+// file that could not be added or was in the library already.
+
+// The formats the server takes, by extension, as the library lists them; until it has loaded, those the picker offers.
+let supported = new Set(els.file.accept.split(',').filter((a) => a.startsWith('.')).map((a) => a.slice(1)));
+const queue = []; // { file, path, opf, cover } waiting to go up, the last two the files that go with it or null
+let batch = null; // what the files added since the uploads line was last closed came to
+let sending = null; // the file going up now: { path, abort }
+
+// Pictures that can be the cover of a book beside them.
+const COVER_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+const extOf = (name) => /\.([^.]+)$/.exec(name)?.[1].toLowerCase() ?? '';
+const baseOf = (name) => name.replace(/\.[^.]*$/, '').toLowerCase();
+
+/**
+ * The books among files, in the order of their paths, each with the OPF file and cover picture that go
+ * with it, and how many other files there were of each extension. What goes with a book is named like it
+ * ("Dune.opf", "Dune.jpg", as calibre saves books to disk), or, in a folder holding one book (in one or
+ * more formats, as in a calibre library), is metadata.opf and cover.jpg.
+ */
+function booksAmong(files) {
+  const folders = new Map();
+  for (const f of files) {
+    if (f.path.split('/').some((part) => part.startsWith('.'))) continue; // hidden, such as .DS_Store
+    const folder = f.path.slice(0, f.path.lastIndexOf('/') + 1);
+    if (!folders.has(folder)) folders.set(folder, []);
+    folders.get(folder).push(f);
+  }
+  const found = [];
+  const skipped = new Map();
+  for (const inFolder of folders.values()) {
+    const byName = new Map(inFolder.map((f) => [f.file.name.toLowerCase(), f]));
+    const books = new Set(inFolder.filter((f) => supported.has(extOf(f.file.name))));
+    const oneBook = new Set([...books].map((f) => baseOf(f.file.name))).size === 1;
+    const used = new Set();
+    const first = (names) => {
+      const f = names.map((n) => byName.get(n)).find((x) => x && !books.has(x));
+      if (f) used.add(f);
+      return f?.file ?? null;
+    };
+    for (const b of books) {
+      const base = baseOf(b.file.name);
+      const opf = first([`${base}.opf`, ...(oneBook ? ['metadata.opf'] : [])]);
+      const cover = first([...COVER_EXTS.map((e) => `${base}.${e}`), ...(oneBook ? COVER_EXTS.map((e) => `cover.${e}`) : [])]);
+      found.push({ ...b, opf, cover });
     }
-    load();
+    for (const f of inFolder) {
+      if (books.has(f) || used.has(f)) continue;
+      const ext = extOf(f.file.name);
+      skipped.set(ext, (skipped.get(ext) || 0) + 1);
+    }
+  }
+  found.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+  return { found, skipped };
+}
+
+function startBatch() {
+  batch = { total: 0, handled: 0, added: 0, withOpf: 0, withCover: 0, already: 0, failed: 0, skipped: new Map(), looking: null, lastPath: '', ended: null };
+  els.uploads.innerHTML = `<div class="item summary"><span data-summary></span><button type="button" class="btn small" data-act="stop">Stop</button></div>
+    <div class="upload-lines"><div data-failed></div><div data-already></div></div>`;
+}
+
+/** Sums the batch up in its line: the file going up, or how it ended, and what was not added. */
+function showBatch() {
+  const b = batch;
+  const others = [...b.skipped.values()].reduce((sum, n) => sum + n, 0);
+  const kinds = [...b.skipped].sort((x, y) => y[1] - x[1]).map(([ext]) => (ext ? `.${ext}` : 'no extension'));
+  const head = sending ? `Uploading ${b.total > 1 ? `${b.handled + 1} of ${b.total}: ` : ''}${sending.path}`
+    : b.looking != null ? `Looking through the folder: ${plural(b.looking, 'file', 'files')} so far`
+    : !b.total ? 'No books found. The library takes EPUB, MOBI, PDF, Markdown and text files'
+    : b.ended === 'stopped' ? `Stopped after adding ${b.added} of ${b.total} books`
+    : b.ended === 'lost' ? `Lost the connection to the server after adding ${b.added} of ${b.total} books`
+    : !b.added ? 'No books added'
+    : b.total === 1 ? `Added ${b.lastPath}`
+    : b.added === b.total ? `Added ${plural(b.added, 'book', 'books')}` : `Added ${b.added} of ${b.total} books`;
+  const notes = [
+    b.withOpf && `${b.withOpf} with an .opf file`,
+    b.withCover && `${b.withCover} with a cover picture`,
+    b.already && `${b.already} already in the library`,
+    b.failed && `${b.failed} could not be added`,
+    others && `${plural(others, 'other file', 'other files')} left out (${kinds.slice(0, 4).join(', ')}${kinds.length > 4 ? ' …' : ''})`,
+  ];
+  const cut = !sending && (b.ended === 'stopped' || b.ended === 'lost');
+  els.uploads.querySelector('[data-summary]').textContent = [head, ...notes].filter(Boolean).join(' · ')
+    + (cut ? '. Upload the same files again to add the rest: the books already in the library are skipped.' : '');
+  const button = els.uploads.querySelector('[data-act]');
+  const done = !sending && b.looking == null && !!b.ended;
+  button.dataset.act = done ? 'close' : 'stop';
+  button.textContent = done ? 'Close' : 'Stop';
+  button.classList.toggle('hidden', !sending && !done);
+}
+
+/** A line under the summary for a file that was not added, saying why, or which book it already is. */
+function addLine(kind, path, message) {
+  const item = document.createElement('div');
+  item.className = 'item';
+  item.innerHTML = `<span>${escapeHtml(path)}</span><span class="${kind === 'failed' ? 'error' : 'muted'}">${escapeHtml(message)}</span>`;
+  els.uploads.querySelector(`[data-${kind}]`).appendChild(item);
+}
+
+/** Queues books to go up, as booksAmong() finds them, with `skipped` the other files found beside them. */
+function upload(files, skipped = new Map()) {
+  if (!batch || (batch.ended && !sending)) startBatch();
+  batch.total += files.length;
+  for (const [ext, n] of skipped) batch.skipped.set(ext, (batch.skipped.get(ext) || 0) + n);
+  queue.push(...files);
+  if (sending) showBatch();
+  else sendQueue();
+}
+
+async function sendQueue() {
+  while (queue.length) {
+    const { file, path, opf, cover } = queue.shift();
+    const abort = new AbortController();
+    sending = { path, abort };
+    batch.lastPath = path;
+    showBatch();
+    try {
+      if (!file.size) throw new ApiError(400, { error: 'The file is empty' });
+      // What goes with the book goes ahead of it in the body, its size saying where it ends. A cover is
+      // scaled down first like one picked by hand; one the browser cannot read stays behind.
+      const picture = cover && await coverImage(cover).catch(() => null);
+      const headers = { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) };
+      if (opf) headers['X-Opf-Size'] = String(opf.size);
+      if (picture) headers['X-Cover-Size'] = String(picture.size);
+      const body = opf || picture ? new Blob([opf, picture, file].filter(Boolean)) : file;
+      const answer = await api('/api/books', { method: 'POST', raw: true, body, signal: abort.signal, headers });
+      batch.added++;
+      if (answer.used?.opf) batch.withOpf++;
+      if (answer.used?.cover) batch.withCover++;
+    } catch (err) {
+      if (abort.signal.aborted) continue; // stopped: the queue is empty, unless files were added since
+      if (err.status === 409 && err.body?.book) {
+        batch.already++;
+        addLine('already', path, `already in the library as "${err.body.book.title}"`);
+      } else if (err instanceof ApiError) {
+        batch.failed++;
+        addLine('failed', path, err.message);
+      } else {
+        // No answer at all, so the files after it would fare no better.
+        batch.ended = 'lost';
+        queue.length = 0;
+      }
+    }
+    batch.handled++;
+    reloadSoon();
+  }
+  sending = null;
+  if (batch.looking != null) return; // a folder still being read adds its books to this batch
+  batch.ended ||= 'done';
+  showBatch();
+  // A single book that went in as planned folds away by itself; a batch stays, to be read, until it is closed.
+  const ended = batch;
+  if (ended.ended === 'done' && ended.total === 1 && ended.added === 1 && !ended.skipped.size) setTimeout(() => { if (batch === ended) closeBatch(); }, 4000);
+  clearTimeout(reloadTimer);
+  reloadTimer = null;
+  load();
+}
+
+/** Stops the batch: the file going up now is cut off, and the files after it stay behind. */
+function stopUploads() {
+  queue.length = 0;
+  batch.ended = 'stopped';
+  sending?.abort.abort();
+}
+
+function closeBatch() {
+  if (sending || batch?.looking != null) return;
+  batch = null;
+  els.uploads.innerHTML = '';
+}
+
+const readBatch = (reader) => new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+const fileOf = (entry) => new Promise((resolve, reject) => entry.file(resolve, reject));
+
+/** Adds the files in a dropped folder and in its subfolders to `found`, as { file, path }, leaving hidden ones out. */
+async function readFolder(dir, found) {
+  const reader = dir.createReader();
+  try {
+    // A folder is read some entries at a time (100 in Chrome), until none come back.
+    for (let entries = await readBatch(reader); entries.length; entries = await readBatch(reader)) {
+      const shown = entries.filter((e) => !e.name.startsWith('.'));
+      found.push(...await Promise.all(shown.filter((e) => e.isFile).map(async (e) => ({ file: await fileOf(e), path: e.fullPath.slice(1) }))));
+      batch.looking = found.length;
+      showBatch();
+      for (const sub of shown.filter((e) => e.isDirectory)) await readFolder(sub, found);
+    }
+  } catch (err) {
+    batch.failed++;
+    addLine('failed', dir.fullPath.slice(1), `The folder could not be read (${err.message})`);
   }
 }
+
+/** Uploads the books among files: [{ file, path }]. */
+function uploadFiles(files) {
+  const { found, skipped } = booksAmong(files);
+  upload(found, skipped);
+}
+
+/** Uploads what was dropped: loose files, and the books in folders and their subfolders. */
+async function uploadDropped(entries) {
+  if (!batch || (batch.ended && !sending)) startBatch();
+  batch.looking = 0;
+  showBatch();
+  const files = [];
+  for (const entry of entries) {
+    if (entry.isDirectory) await readFolder(entry, files);
+    else {
+      await fileOf(entry).then((file) => files.push({ file, path: entry.name }), (err) => {
+        batch.failed++;
+        addLine('failed', entry.name, `The file could not be read (${err.message})`);
+      });
+    }
+  }
+  batch.looking = null;
+  uploadFiles(files);
+}
+
+// While books go up, the library reloads every few seconds rather than after each one.
+let reloadTimer = null;
+let loadedAt = 0;
+function reloadSoon() {
+  if (!reloadTimer) reloadTimer = setTimeout(() => { reloadTimer = null; load(); }, Math.max(0, loadedAt + 3000 - Date.now()));
+}
+
 els.upload.addEventListener('click', () => { setMenu(false); els.file.click(); });
-els.file.addEventListener('change', () => { uploadFiles(els.file.files); els.file.value = ''; });
+els.file.addEventListener('change', () => { uploadFiles([...els.file.files].map((file) => ({ file, path: file.name }))); els.file.value = ''; });
+// A folder is picked where the browser can, with a mouse: on a phone the picker only picks files.
+if ('webkitdirectory' in els.folderInput && matchMedia('(pointer: fine)').matches) els.uploadFolder.classList.remove('hidden');
+els.uploadFolder.addEventListener('click', () => els.folderInput.click());
+els.folderInput.addEventListener('change', () => {
+  const files = [...els.folderInput.files].map((file) => ({ file, path: file.webkitRelativePath || file.name }));
+  els.folderInput.value = '';
+  uploadFiles(files);
+});
+els.uploads.addEventListener('click', (e) => {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'stop') stopUploads();
+  else if (act === 'close') closeBatch();
+});
+// Leaving the page stops the upload, so the browser asks first.
+window.addEventListener('beforeunload', (e) => { if (sending) { e.preventDefault(); e.returnValue = ''; } });
 // While the cover dialog is open, an image dropped or pasted on the page becomes the cover instead.
 const coverOpen = () => !!coverEditor?.root.isConnected;
 for (const ev of ['dragenter', 'dragover']) document.addEventListener(ev, (e) => { e.preventDefault(); if (!coverOpen()) els.drop.classList.add('active'); });
@@ -532,8 +829,11 @@ for (const ev of ['dragleave', 'drop']) document.addEventListener(ev, (e) => { e
 document.addEventListener('drop', (e) => {
   const files = e.dataTransfer?.files;
   if (!files?.length) return;
-  if (coverOpen()) coverEditor.useFile(files[0]);
-  else uploadFiles(files);
+  if (coverOpen()) { coverEditor.useFile(files[0]); return; }
+  // A folder's files are read through its entry, which has to be taken while the drop lasts.
+  const entries = [...e.dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
+  if (entries.some((entry) => entry.isDirectory)) uploadDropped(entries);
+  else uploadFiles([...files].map((file) => ({ file, path: file.name })));
 });
 document.addEventListener('paste', (e) => {
   if (!coverOpen()) return;
@@ -565,6 +865,7 @@ function bookMenu(b) {
     <div class="menu">
       ${b.status === 'ready' ? `<a class="btn" href="/read/${b.id}">Open</a>` : ''}
       ${b.progress ? '<button class="btn" data-act="reset">Reset my reading position</button>' : ''}
+      ${flagged(b) ? '<button class="btn" data-act="duplicates">Compare with possible duplicates</button>' : ''}
       <button class="btn" data-act="readers">Who is reading this</button>
       <a class="btn" href="/books/${b.id}/original" download="${escapeHtml(b.originalName)}">Download original file</a>
       ${canEdit ? '<button class="btn" data-act="edit">Edit details and series</button>' : ''}
@@ -580,6 +881,7 @@ function bookMenu(b) {
     if (!act) return;
     try {
       if (act === 'edit') { editDetails(b); return; }
+      if (act === 'duplicates') { compareCopies(b); return; }
       if (act === 'cover') { editCover(b); return; }
       if (act === 'delete') {
         if (!confirm(`Delete "${b.title}" for everyone? This cannot be undone.`)) return;
@@ -600,9 +902,67 @@ function bookMenu(b) {
   });
 }
 
+/**
+ * A book beside the books it looks like, to keep the right one: each with its format, size, who added it
+ * and who is reading it, and ways to delete it or say it is a different book. The dialog stays open while
+ * any of them still looks like another.
+ */
+function compareCopies(b) {
+  const others = b.duplicates.map((d) => ({ book: books.find((x) => x.id === d.id), reason: d.reason })).filter((o) => o.book);
+  const canDelete = (x) => me.isAdmin || x.addedById === me.id;
+  const canSeparate = (x) => me.isAdmin || x.addedById === me.id || b.addedById === me.id;
+  const copy = (x, reason) => `<div class="copy">
+      <div class="thumb">${coverHtml(x)}</div>
+      <div class="body">
+        <div class="title">${escapeHtml(x.title)}</div>
+        ${x.author ? `<div class="about">${escapeHtml(x.author)}</div>` : ''}
+        <div class="about">${x.format.toUpperCase()} · ${(x.size / 1048576).toFixed(1)} MB · added by ${escapeHtml(x.addedBy || 'unknown')} ${formatDate(x.addedAt)}</div>
+        ${reason ? `<div class="about why">${escapeHtml(likeness(reason, b, x).replace(/^t/, 'T'))}</div>` : ''}
+        <div class="about" data-readers="${x.id}"></div>
+      </div>
+      <div class="row">
+        ${x.status === 'ready' ? `<a class="btn small" href="/read/${x.id}">Open</a>` : ''}
+        ${reason && canSeparate(x) ? `<button type="button" class="btn small" data-different="${x.id}">Not the same book</button>` : ''}
+        ${canDelete(x) ? `<button type="button" class="btn small danger" data-delete="${x.id}">Delete</button>` : ''}
+      </div>
+    </div>`;
+  const { root, close } = dialog(`
+    <h2>Possible duplicates</h2>
+    <p class="muted hint">These look like the same book. Keep the one you want and delete the others, or say which is a different book.</p>
+    <div class="copies">${copy(b)}${others.map((o) => copy(o.book, o.reason)).join('')}</div>
+    <div class="row"><button type="button" class="btn" data-close>Close</button></div>`);
+  root.classList.add('compare');
+  // Who is reading which: the one to keep is usually the one being read.
+  for (const x of [b, ...others.map((o) => o.book)]) {
+    api(`/api/books/${x.id}/readers`).then(({ readers }) => {
+      const line = root.querySelector(`[data-readers="${x.id}"]`);
+      if (line) line.textContent = readers.length ? `Read by ${readers.map((r) => `${r.displayName || r.username} (${Math.round(r.percent * 100)}%)`).join(', ')}` : 'Nobody has started it';
+    }, () => {});
+  }
+  root.addEventListener('click', async (ev) => {
+    const del = ev.target.closest('[data-delete]');
+    const apart = ev.target.closest('[data-different]');
+    if (!del && !apart) return;
+    try {
+      if (del) {
+        const x = books.find((y) => y.id === del.dataset.delete);
+        if (!confirm(`Delete this ${x.format.toUpperCase()} of "${x.title}" for everyone? Reading positions and bookmarks in it go with it. This cannot be undone.`)) return;
+        await api(`/api/books/${x.id}`, { method: 'DELETE' });
+      } else {
+        await api(`/api/books/${b.id}/not-duplicate`, { method: 'POST', body: { of: apart.dataset.different } });
+      }
+      await load();
+      // Go on with whatever among these books still looks like another, or close when nothing does.
+      const next = [b, ...others.map((o) => o.book)].map((x) => books.find((y) => y.id === x.id)).find((x) => x && flagged(x));
+      if (next) compareCopies(next);
+      else close();
+    } catch (err) { toast(err.message); }
+  });
+}
+
 const seriesRow = (s = { name: '', position: null }) => `<div class="series-row">
     <input type="text" name="series-name" list="series-names" value="${escapeHtml(s.name)}" placeholder="Series or collection" aria-label="Series or collection" maxlength="200" autocomplete="off">
-    <input type="text" name="series-no" inputmode="decimal" value="${s.position ?? ''}" placeholder="No." aria-label="Number in the series" maxlength="8" autocomplete="off">
+    <input type="text" name="series-no" value="${numberIn(s) ?? ''}" placeholder="No." aria-label="Number in the series" maxlength="20" autocomplete="off">
     <button type="button" class="btn icon" data-remove-row aria-label="Remove">&times;</button>
   </div>`;
 
@@ -661,7 +1021,7 @@ function editDetails(b) {
         <legend>Series and collections</legend>
         <div class="series-rows">${(b.series.length ? b.series : [undefined]).map((s) => seriesRow(s)).join('')}</div>
         <button type="button" class="btn small" data-add-row>Add to another</button>
-        <p class="muted hint">The number puts a series in order (1, 2, 2.5 …). Leave it empty for a collection without an order.</p>
+        <p class="muted hint">The number puts a series in order (1, 2, 2.5 …); a book holding several, such as an omnibus, takes a range (1-3). Leave it empty for a collection without an order.</p>
       </fieldset>
       <p class="error hidden" data-error></p>
       <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button></div>
@@ -747,7 +1107,7 @@ function editDetails(b) {
       const nameOf = (row) => row.querySelector('[name="series-name"]');
       const row = all.find((r) => nameKey(nameOf(r).value) === nameKey(s.name)) || all.find((r) => !nameOf(r).value.trim()) || addRow();
       if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
-      if (s.position != null) row.querySelector('[name="series-no"]').value = s.position;
+      if (s.position != null) row.querySelector('[name="series-no"]').value = numberIn(s);
     }
     if (!coverOnly) coverFrom = m.cover && m.coverId ? m : null;
     showPicked();
@@ -779,9 +1139,9 @@ function editDetails(b) {
     const series = [...rows.querySelectorAll('.series-row')]
       .map((r) => ({ name: r.querySelector('[name="series-name"]').value.trim(), position: r.querySelector('[name="series-no"]').value.trim() || null }))
       .filter((s) => s.name);
-    const bad = series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?$/.test(s.position));
+    const bad = series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?(\s*[-–—]\s*\d{1,5}([.,]\d+)?)?$/.test(s.position));
     if (!title) return fail('The book needs a title.');
-    if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5.`);
+    if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5, or a range for a book holding several, such as 1-3.`);
     const saveBtn = form.querySelector('[type="submit"]');
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving…';
@@ -964,6 +1324,12 @@ els.library.addEventListener('click', (e) => {
   if (e.target.closest('[data-back]')) { closeSeries(); return; }
   const edit = e.target.closest('[data-edit-series]');
   if (edit) { editSeries(Number(edit.dataset.editSeries)); return; }
+  const dups = e.target.closest('[data-dups]');
+  if (dups) {
+    const b = books.find((x) => x.id === dups.dataset.dups);
+    if (b) compareCopies(b);
+    return;
+  }
   const btn = e.target.closest('button[data-menu]');
   if (!btn) return;
   e.preventDefault();

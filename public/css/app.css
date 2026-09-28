@@ -119,8 +119,15 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .series-open .toolbar, .series-open .dropzone:not(.active) { display: none; }
 .dropzone { border: 2px dashed var(--line); border-radius: var(--radius); padding: 14px; text-align: center; margin-bottom: 16px; color: var(--muted); }
 .dropzone.active { border-color: var(--fg); color: var(--fg); background: var(--panel); }
+.dropzone .btn { margin-left: 8px; vertical-align: middle; }
 .uploads { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-.uploads .item { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; border: 2px solid var(--line); border-radius: var(--radius); font-size: 14px; }
+.uploads .item { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; border: 2px solid var(--line); border-radius: var(--radius); font-size: 14px; overflow-wrap: anywhere; }
+/* The line summing up a batch, with Stop or Close; under it the files that were not added, scrolling when there are many */
+.uploads .summary { align-items: center; border-color: var(--fg); font-weight: 600; }
+.uploads .summary .btn { flex: none; }
+.upload-lines { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
+.upload-lines > div { display: flex; flex-direction: column; gap: 6px; }
+.upload-lines:empty, .upload-lines > div:empty { display: none; }
 
 /* Book grid. The View menu sets the card size: exactly 2, 3 or 4 across on a phone, and on wider
    screens as many cards of that size as fit. Smaller cards show less text. */
@@ -130,7 +137,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
   --card-min: 125px; --shelf-min: 88px; --grid-gap: 12px; --edge: 5px;
   --card-title: 12px; --card-text: 11px; --card-meta: 11px; --card-pad: 6px 6px 5px; --menu-size: 28px; --menu-inset: 4px; --tag-size: 11px; --ph-title: 12px;
 }
-#library.cols-4 .card .author, #library.cols-4 .card .series-line, #library.cols-4 .card:not(.group) .meta, #library.cols-4 .card .cover.placeholder .a { display: none; }
+#library.cols-4 .card .author, #library.cols-4 .card .series-line, #library.cols-4 .card .dup-flag, #library.cols-4 .card:not(.group) .meta, #library.cols-4 .card .cover.placeholder .a { display: none; }
 /* Keep a cover's title clear of the buttons on it */
 #library.cols-4 .card .cover.placeholder { justify-content: flex-start; padding: calc(var(--menu-size) + 2 * var(--menu-inset)) 5px 6px; }
 @media (max-width: 599px) {
@@ -164,6 +171,11 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .card .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
 .card .series-line { font-size: var(--card-text, 13px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .card .series-line a { position: relative; z-index: 1; font-weight: 600; }
+/* A book that looks like another in the library: the flag opens them side by side */
+.dup-flag { position: relative; z-index: 1; align-self: flex-start; padding: 0; border: 0; background: none; color: var(--fg); font-size: var(--card-text, 13px); font-weight: 700; text-align: left; text-decoration: underline dashed; text-underline-offset: 3px; }
+.dup-flag:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+.list-row .dup-flag { font-size: 12px; white-space: nowrap; }
+.dup-group .grid { padding-bottom: 18px; border-bottom: 2px solid var(--line); }
 /* Number in the series on a book's cover, number of books on a series' cover */
 .card .cover-tag, .shelf-book .cover-tag { position: absolute; top: var(--menu-inset, 6px); left: var(--menu-inset, 6px); padding: 2px calc(var(--tag-size, 14px) * .55); border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: var(--tag-size, 14px); }
 /* A series folded into one tile: the cover of the book you're on, with the edges of the others behind it */
@@ -265,7 +277,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .series-row { display: flex; gap: 6px; margin-bottom: 6px; }
 .field .series-row input { width: auto; min-width: 0; }
 .field .series-row input[name="series-name"] { flex: 1 1 auto; }
-.field .series-row input[name="series-no"] { flex: 0 0 64px; text-align: center; }
+.field .series-row input[name="series-no"] { flex: 0 0 80px; text-align: center; }
 .series-row .btn.icon { flex: none; }
 .lookup { margin: -4px 0 14px; }
 .lookup .hint a { font-weight: 600; }
@@ -299,6 +311,18 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
   .sheet.wide .match { grid-template-columns: 72px minmax(0, 1fr); }
   .sheet.wide .match .cover, .sheet.wide .use-cover .cover { width: 72px; }
 }
+/* Possible duplicates side by side: the book the dialog was opened for first, each with its buttons under it */
+.sheet.compare { width: min(92vw, 500px); }
+.copies { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 16px; }
+.copy { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px 12px; padding: 10px; border: 2px solid var(--line); border-radius: var(--radius); }
+.copy:first-child { border-color: var(--fg); }
+.copy .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
+.copy .cover.placeholder > * { display: none; }
+.copy .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.copy .title { font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.copy .about { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.copy .about.why { color: var(--fg); font-weight: 600; }
+.copy > .row { grid-column: 1 / -1; gap: 6px; }
 /* Cover dialog: the cover as the library shows it, beside the ways to change it */
 .cover-edit { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
 .cover-preview { flex: 0 0 110px; }

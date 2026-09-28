@@ -144,6 +144,33 @@ test('renaming merges series, removing dissolves one; both are for admins', asyn
   assert.deepEqual(r.data.series, { id: books.expanseId, name: 'the expanse SAGA' });
 });
 
+test('a book holding several, such as an omnibus, keeps a range of numbers', async () => {
+  const omnibus = await upload(jens, 'omnibus.epub', makeEpub({ title: 'Omnibus (Ringworld, #1-3)' }));
+  assert.equal(omnibus.title, 'Omnibus');
+  assert.deepEqual(omnibus.series.map((s) => [s.name, s.position, s.positionEnd]), [['Ringworld', 1, 3]]);
+  const detail = await jens(`/api/books/${omnibus.id}`);
+  assert.deepEqual(detail.data.manifest.series, [{ name: 'Ringworld', position: 1, positionEnd: 3 }]);
+
+  // Typed in the edit form, in any of the ways a range is written; one that runs backwards is refused.
+  const edit = (position) => jens(`/api/books/${omnibus.id}`, { method: 'PATCH', body: { series: [{ name: 'Ringworld', position }] } });
+  let r = await edit('4 – 6');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.data.book.series.map((s) => [s.position, s.positionEnd]), [[4, 6]]);
+  r = await edit('6-4');
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /range/);
+  r = await edit('2');
+  assert.deepEqual(r.data.book.series.map((s) => [s.position, s.positionEnd]), [[2, undefined]], 'a single number again');
+  await edit('1-3');
+
+  // Merging series keeps the range.
+  const other = await upload(jens, 'other.epub', makeEpub({ title: 'Box', metadata: '<meta property="belongs-to-collection" id="c">Ringworld omnibuses</meta><meta refines="#c" property="group-position">7-9</meta>' }));
+  assert.equal((await jens(`/api/series/${other.series[0].id}`, { method: 'PATCH', body: { name: 'Ringworld' } })).status, 200);
+  const { data } = await jens('/api/books');
+  const inRingworld = (id) => data.books.find((b) => b.id === id).series.find((s) => s.name === 'Ringworld');
+  assert.deepEqual([inRingworld(omnibus.id), inRingworld(other.id)].map((s) => [s.position, s.positionEnd]), [[1, 3], [7, 9]]);
+});
+
 test('a series without books is removed', async () => {
   const solo = await upload(jens, 'solo.epub', makeEpub({ title: 'Alone', metadata: calibre('Solo Series', '1') }));
   const id = solo.series[0].id;
