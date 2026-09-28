@@ -394,7 +394,9 @@ function stackCard(g) {
   const pct = groupPct(g);
   // While choosing books, a stack's tick sits at the foot of its top cover, clear of the number of books.
   const tick = selecting ? TICK : '';
+  // The number of books: a line above the cover in the soft look, a tag on the cover in the e-ink look (see the stylesheets).
   return `<div class="card group${n > 1 ? ' pile' : ''}${chosenClass(g.items.map((i) => i.book.id))}">
+    <div class="count">${plural(n, 'book', 'books')}</div>
     ${n > 1 ? `<div class="stack">${cover}${tick}</div>` : `${cover}${tick}`}<span class="cover-tag">${plural(n, 'book', 'books')}</span>
     ${seriesOpener(g, `${g.name}, ${plural(n, 'book', 'books')}`)}
     <div class="info">
