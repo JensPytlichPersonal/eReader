@@ -10,12 +10,12 @@ import { encodePng } from '../server/converters/png.js';
 import { makeEpub } from './helpers/make-epub.mjs';
 
 // Books as Hardcover's GraphQL API sends them, with the fields asked for.
-// Its own image is small; the edition Hardcover shows it with has a larger cover, as on the website.
+// Its own image is an older one; the edition Hardcover shows it with has another cover, as on the website.
 const leviathan = {
   id: 427, title: 'Leviathan Wakes', release_year: 2011,
-  image: { url: 'https://assets.hardcover.app/books/427/cover.jpg', width: 98, height: 150 },
-  cached_image: { url: 'https://assets.hardcover.app/editions/31/cover.jpg', width: 500, height: 765 },
-  default_cover_edition: { image: { url: 'https://assets.hardcover.app/editions/31/cover.jpg', width: 500, height: 765 } },
+  image: { url: 'https://assets.hardcover.app/books/427/cover.jpg' },
+  cached_image: { url: 'https://assets.hardcover.app/editions/31/cover.jpg' },
+  default_cover_edition: { image: { url: 'https://assets.hardcover.app/editions/31/cover.jpg' } },
   contributions: [{ contribution: null, author: { name: 'James S. A. Corey' } }, { contribution: 'Narrator', author: { name: 'Jefferson Mays' } }],
   book_series: [{ position: 1, featured: false, series: { name: 'The Expanse Universe' } }, { position: 1, featured: true, series: { name: 'The Expanse' } }],
 };
@@ -99,41 +99,17 @@ test('Hardcover failures say what to do', async () => {
   assert.equal(found.key, 'hardcover:427');
 });
 
-test('the cover Hardcover\'s website shows is used, even when the book\'s own image is larger', async () => {
+test('the cover Hardcover\'s website shows is used: its display edition\'s, then the cached copy, then the book\'s own image', async () => {
   const coverOf = async (book) => {
     const site = standIn(() => ({ search: { ids: [1] }, books: [{ id: 1, title: 'Book', ...book }], editions: [] }));
     const [found] = await createHardcover({ token: 'abc', fetch: site.fetch }).lookup({ title: 'Book' });
     return found.cover;
   };
-  const at = (name, width, height) => ({ url: `https://assets.hardcover.app/${name}.jpg`, width, height });
-  assert.equal(await coverOf({ image: at('own', 98, 150), default_cover_edition: { image: at('shown', 500, 765) } }), 'https://assets.hardcover.app/shown.jpg');
-  assert.equal(await coverOf({ image: at('own', 1000, 1530), default_cover_edition: { image: at('shown', 500, 765) } }), 'https://assets.hardcover.app/shown.jpg');
-  assert.equal(await coverOf({ image: { url: at('own').url }, cached_image: { url: at('cached').url }, default_cover_edition: { image: { url: at('shown').url } } }), 'https://assets.hardcover.app/shown.jpg');
-  assert.equal(await coverOf({ image: at('own', 98, 150), cached_image: JSON.stringify(at('cached', 500, 765)) }), 'https://assets.hardcover.app/cached.jpg');
-  assert.equal(await coverOf({ image: at('own', 98, 150), default_cover_edition: { image: { url: 'https://10.0.0.8/big.jpg', width: 900, height: 1400 } } }), 'https://assets.hardcover.app/own.jpg');
+  const at = (name) => ({ url: `https://assets.hardcover.app/${name}.jpg` });
+  assert.equal(await coverOf({ image: at('own'), cached_image: at('cached'), default_cover_edition: { image: at('shown') } }), 'https://assets.hardcover.app/shown.jpg');
+  assert.equal(await coverOf({ image: at('own'), cached_image: JSON.stringify(at('cached')) }), 'https://assets.hardcover.app/cached.jpg');
+  assert.equal(await coverOf({ image: at('own'), default_cover_edition: { image: { url: 'https://10.0.0.8/big.jpg' } } }), 'https://assets.hardcover.app/own.jpg');
   assert.equal(await coverOf({ image: null, cached_image: {}, default_cover_edition: null }), null);
-});
-
-test('a small Hardcover cover comes enlarged, the way Hardcover\'s website shows it', async () => {
-  const original = 'https://assets.hardcover.app/edition/30562820/a1aff912.jpeg';
-  const enlarged = (width, height) => `https://production-img.hardcover.app/enlarge?${new URLSearchParams({ url: original, width, height, type: 'jpeg' })}`;
-  const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(60, 7)]);
-  const shown = (width, height) => () => ({ books: [{ default_cover_edition: { image: { url: original, width, height } } }] });
-  const fetchCover = async (answer, pictures) => {
-    const site = standIn(answer, pictures);
-    const image = await createHardcover({ token: 'abc', fetch: site.fetch }).cover(1);
-    return { image, fetched: site.calls.filter((c) => c.picture).map((c) => c.picture) };
-  };
-  // 310 × 500, as Beyond the Dark Portal is stored: enlarged to 1200 pixels on the longer side.
-  assert.deepEqual(await fetchCover(shown(310, 500), { [enlarged(744, 1200)]: JPEG, [original]: PNG }), { image: JPEG, fetched: [enlarged(744, 1200)] });
-  // At most four times.
-  assert.deepEqual((await fetchCover(shown(98, 150), { [enlarged(392, 600)]: JPEG })).fetched, [enlarged(392, 600)]);
-  // The service is not part of the API: when it fails, or sends something other than a picture, the original is used.
-  assert.deepEqual(await fetchCover(shown(310, 500), { [original]: PNG }), { image: PNG, fetched: [enlarged(744, 1200), original] });
-  assert.deepEqual((await fetchCover(shown(310, 500), { [enlarged(744, 1200)]: Buffer.from('{"error":"not found"}'), [original]: PNG })).image, PNG);
-  // A large cover, or one of unknown size, is used as it is.
-  assert.deepEqual(await fetchCover(shown(1400, 2100), { [original]: PNG }), { image: PNG, fetched: [original] });
-  assert.deepEqual(await fetchCover(() => ({ books: [{ image: { url: original } }] }), { [original]: PNG }), { image: PNG, fetched: [original] });
 });
 
 test('Hardcover covers are fetched from the address Hardcover gives, if it is a public one', async () => {

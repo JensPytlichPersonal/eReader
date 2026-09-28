@@ -307,10 +307,10 @@ before restarting the service; without it systemd keeps the settings it had. The
 startup which catalogues it looks books up in, and so does `curl http://127.0.0.1:8080/api/health`,
 under `lookup`.
 
-A Hardcover cover is the one its website shows for the book. A small one is saved enlarged to 1200
-pixels on its longer side (at most four times its size) by the image service Hardcover's website uses,
-which makes it sharper as well as larger. That service is not part of Hardcover's API, so if it fails,
-the cover is saved as Hardcover stores it.
+A Hardcover cover is the one its website shows for the book, saved as Hardcover stores it. Hardcover
+sometimes has a book more than once, under different titles, each with its own cover. To use another
+one's cover, type its title and look it up, choose it and tick the cover, then put back the details it
+filled in before saving. Or save the picture from Hardcover's website and add it with *Change cover*.
 
 Keep the token on the server: anyone holding it can act as your Hardcover account within its
 permissions. If Hardcover stops answering, for example because the token has expired, the lookup still

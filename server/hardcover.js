@@ -3,22 +3,14 @@
 // enough), given to the server as HARDCOVER_TOKEN; without one the lookup asks Open Library alone.
 // Only the server talks to Hardcover, when someone looks a book up or saves a cover from it.
 import { withTitleSeries } from './converters/series.js';
-import { sniffImage } from './converters/bundle.js';
 import { LookupError, USER_AGENT, rankMatches } from './lookup.js';
 
 const API = 'https://api.hardcover.app/v1/graphql';
 const SITE = 'https://hardcover.app';
-// Hardcover's website shows covers through this service, which enlarges small ones and makes them
-// sharper. It is not part of the API, so a cover falls back to the picture as stored.
-const ENLARGE = 'https://production-img.hardcover.app/enlarge';
-// A smaller cover is enlarged to this many pixels on its longer side, as the cover editor scales
-// pictures to, and at most four times.
-const COVER_SIDE = 1200;
-const MOST_ENLARGED = 4;
 
 // A book's cover can be in three places: the edition Hardcover shows it with (the cover on its
 // website), a cached copy of that, and the book's own image, which can be an older one.
-const COVERS = 'image { url width height } cached_image default_cover_edition { image { url width height } }';
+const COVERS = 'image { url } cached_image default_cover_edition { image { url } }';
 // What a match needs of a book. Contributions include translators and illustrators; authors have
 // no role or "Author".
 const BOOK = `id title release_year ${COVERS} contributions { contribution author { name } } book_series { position featured series { name } }`;
@@ -57,9 +49,8 @@ function publicImageUrl(value) {
 }
 
 /**
- * The cover Hardcover shows a book with on its website: its display edition's, else a cached copy of
- * that, else the book's own image. Its size is 0 × 0 when Hardcover does not know it.
- * @returns {{url: string, width: number, height: number}|null}
+ * The address of the cover Hardcover shows a book with on its website: its display edition's, else a
+ * cached copy of that, else the book's own image.
  */
 function shownCover(book) {
   let cached = book.cached_image;
@@ -68,17 +59,9 @@ function shownCover(book) {
   }
   for (const image of [book.default_cover_edition?.image, cached, book.image]) {
     const url = publicImageUrl(image?.url);
-    if (url) return { url, width: Number(image.width) || 0, height: Number(image.height) || 0 };
+    if (url) return url;
   }
   return null;
-}
-
-/** Where to fetch a small cover enlarged, as Hardcover's website does; null when it is large enough or its size is not known. */
-function enlargedAddress({ url, width, height }) {
-  if (!width || !height) return null;
-  const scale = Math.min(MOST_ENLARGED, COVER_SIDE / Math.max(width, height));
-  if (scale <= 1) return null;
-  return `${ENLARGE}?${new URLSearchParams({ url, width: String(Math.round(width * scale)), height: String(Math.round(height * scale)), type: 'jpeg' })}`;
 }
 
 /** A Hardcover book as a match to offer. With `editionTitle`, the book was found by an edition's ISBN. */
@@ -94,7 +77,7 @@ function toMatch(book, { byIsbn = false, editionTitle } = {}) {
     .map((s) => ({ name: s.series.name, position: s.position }));
   // Titles such as "Caliban's War (The Expanse, #2)" are tidied the way uploaded books are.
   const details = withTitleSeries({ title: String((byIsbn && editionTitle) || book.title).trim(), series });
-  const cover = shownCover(book)?.url ?? null;
+  const cover = shownCover(book);
   return {
     key: `hardcover:${book.id}`,
     source: 'hardcover',
@@ -167,8 +150,15 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     return rankMatches(found, { title, author });
   }
 
-  /** The bytes at an address, or a LookupError saying why not. */
-  async function download(address) {
+  /**
+   * The picture of a book's cover, by the `coverId` of a match (the book's id): the one its website
+   * shows, as Hardcover stores it.
+   * @returns {Promise<Buffer>} the image as sent; the caller checks that it is one
+   */
+  async function cover(id) {
+    if (!Number.isInteger(id) || id <= 0) throw new TypeError(`Not a Hardcover book id: ${id}`);
+    const address = shownCover(list((await query(COVER, { id })).books)[0] ?? {});
+    if (!address) throw new LookupError('Hardcover has no cover for this book.');
     let res;
     let image;
     try {
@@ -179,23 +169,6 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     }
     if (!res.ok) throw new LookupError(`Hardcover did not send the cover (error ${res.status}). Try again in a moment.`);
     return image;
-  }
-
-  /**
-   * The picture of a book's cover, by the `coverId` of a match (the book's id): the one its website
-   * shows, enlarged the way the website does when it is small.
-   * @returns {Promise<Buffer>} the image as sent; the caller checks that it is one
-   */
-  async function cover(id) {
-    if (!Number.isInteger(id) || id <= 0) throw new TypeError(`Not a Hardcover book id: ${id}`);
-    const shown = shownCover(list((await query(COVER, { id })).books)[0] ?? {});
-    if (!shown) throw new LookupError('Hardcover has no cover for this book.');
-    const enlarged = enlargedAddress(shown);
-    if (enlarged) {
-      const image = await download(enlarged).catch(() => null);
-      if (['jpg', 'png', 'webp'].includes(sniffImage(image))) return image;
-    }
-    return download(shown.url);
   }
 
   /** Why the token cannot work, when that is plain from the start. */
