@@ -164,6 +164,27 @@ test('a book Hardcover lists under another title and authors is found by the tit
   assert.deepEqual(found.map((m) => m.key), ['hardcover:4001']);
 });
 
+// Hardcover takes a search that starts with "by" for books by an author, so "By Schism Rent Asunder"
+// finds books by Gordon Chism.
+const schism = { id: 446538, title: 'By Schism Rent Asunder', release_year: 2008, image: null, contributions: credit('David Weber'), book_series: [{ position: 2, featured: true, series: { name: 'Safehold' } }], editions: [] };
+const byChism = { id: 1561276, title: 'The Thinking Person\'s UFO Book', release_year: 2009, image: null, contributions: credit('Richard M. Dolan', 'Gordon Chism'), book_series: [], editions: [] };
+
+test('a title starting with "By" is searched for as a title, not as books by an author', async () => {
+  const site = standIn((operation, { q, ids }) => (operation === 'Search'
+    ? { search: { ids: /^by\s/i.test(q) ? [byChism.id] : [schism.id] } }
+    : { books: [schism, byChism].filter((b) => ids.includes(b.id)), editions: [] }));
+  const results = await createHardcover({ token: 'abc', fetch: site.fetch }).lookup({ title: 'By Schism Rent Asunder', author: 'David Weber' });
+  assert.deepEqual(site.calls.filter((c) => c.operation === 'Search').map((c) => c.variables.q), ['"By" Schism Rent Asunder David Weber', '"By" Schism Rent Asunder']);
+  assert.deepEqual(results.map((m) => [m.title, m.author, m.series]), [['By Schism Rent Asunder', 'David Weber', [{ name: 'Safehold', position: 2 }]]]);
+
+  // Elsewhere, or as part of a word, "by" is left as it is.
+  for (const title of ['Stand by Me', 'Bygones']) {
+    const other = standIn(() => ({ search: { ids: [] } }));
+    await createHardcover({ token: 'abc', fetch: other.fetch }).lookup({ title });
+    assert.deepEqual(other.calls.map((c) => c.variables.q), [title]);
+  }
+});
+
 test('the file\'s edition, found by its ISBN, comes with its own title, authors and cover', async () => {
   const stone = {
     id: 1, title: 'Harry Potter and the Philosopher\'s Stone', release_year: 1997, image: { id: 3, url: 'https://assets.hardcover.app/books/1/en.jpg' },

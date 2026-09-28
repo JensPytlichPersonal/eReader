@@ -31,6 +31,13 @@ const list = (v) => (Array.isArray(v) ? v : []);
 const isBook = (b) => Number.isInteger(b?.id) && b.id > 0 && typeof b.title === 'string' && b.title.trim() !== '';
 const year = (v) => (Number.isInteger(v) ? v : null);
 
+/**
+ * A search as Hardcover should read it. Hardcover takes one that starts with "by" for books by an
+ * author ("by Brandon Sanderson"), so "By Schism Rent Asunder" found books by Gordon Chism and Michele
+ * Scism. In quotes, "By" is a word to find like the others.
+ */
+const searchFor = (q) => q.replace(/^by(?=\s)/i, '"$&"');
+
 /** The ids of the books a search found, in order. An answer without them is reported, not taken as "nothing found". */
 function foundIds(search) {
   if (typeof search?.error === 'string' && search.error.trim()) throw new LookupError(`Hardcover could not search: ${search.error.trim().slice(0, 200)}`);
@@ -160,7 +167,7 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
   }
 
   /** The ids of the books a search finds. */
-  const search = async (q) => foundIds((await query(SEARCH, { q: q.slice(0, 300) })).search);
+  const search = async (q) => foundIds((await query(SEARCH, { q: searchFor(q).slice(0, 300) })).search);
   // A search that only adds to another: when it fails, the other's books are offered.
   const extraSearch = (q) => search(q).catch((err) => {
     if (err instanceof LookupError) return [];

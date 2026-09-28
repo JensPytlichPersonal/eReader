@@ -364,6 +364,10 @@ edition's title, authors and cover, but only when those are the authors typed, s
 same title stays out. A cover is the one Hardcover's website shows for the book or edition, saved as
 Hardcover stores it.
 
+Hardcover's search takes one that starts with "by" for books by an author, as in "by Brandon
+Sanderson". So a title that starts with the word, such as *By Schism Rent Asunder*, is searched for
+with "By" in quotes, which Hardcover looks for like the rest of the title.
+
 Keep the token on the server: anyone holding it can act as your Hardcover account within its
 permissions. If Hardcover stops answering, for example because the token has expired, the lookup still
 shows what Open Library found and says what went wrong with Hardcover.
