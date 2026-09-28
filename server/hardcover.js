@@ -4,7 +4,7 @@
 // Only the server talks to Hardcover: when someone looks a book up or saves a cover from it, and
 // for the books a series lacks (see missing.js).
 import { parsePosition, withTitleSeries } from './converters/series.js';
-import { LookupError, USER_AGENT, likeness, rankMatches, sameAuthor } from './lookup.js';
+import { LookupError, USER_AGENT, likeness, rankMatches, sameAuthor, sameTitle } from './lookup.js';
 
 const API = 'https://api.hardcover.app/v1/graphql';
 const SITE = 'https://hardcover.app';
@@ -52,6 +52,11 @@ const SERIES = `query Series($ids: [Int!]!) {
       position book { id title release_date ${AUTHORS} }
     }
   }
+}`;
+// The series the books a search found are in, to find a series through one of its books. A series
+// merged into another has that one's id as its canonical_id.
+const BOOKS_SERIES = `query BooksSeries($ids: [Int!]!) {
+  books(where: {id: {_in: $ids}}) { id title ${AUTHORS} book_series { position series { id name canonical_id } } }
 }`;
 
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -201,6 +206,18 @@ function toSeries(s, today) {
 }
 
 /**
+ * Whether a book a search found is the one looked for: the same title, tidied as a series' titles are,
+ * and one of the same authors when the author is known.
+ */
+function isTheBook(book, { title, author }) {
+  const series = list(book.book_series).filter((e) => typeof e?.series?.name === 'string').map((e) => ({ name: e.series.name, position: e.position }));
+  return sameTitle(withTitleSeries({ title: book.title.trim(), series }).title, title) && (!author || sameAuthor(authorsOf(book.contributions), author));
+}
+
+/** The id of a series a book is listed in; of one merged into another, that one's. */
+const seriesId = (s) => [s?.canonical_id, s?.id].find((id) => Number.isInteger(id) && id > 0) ?? null;
+
+/**
  * @param {object} options
  * @param {string} options.token from the account's API settings, with or without "Bearer " in front
  * @param {string} [options.url] where the API is (tests use a stand-in)
@@ -296,18 +313,41 @@ export function createHardcover({ token, url = API, timeout = 10000, fetch = glo
     return image;
   }
 
-  /**
-   * The series Hardcover has under a name, the closest first, each with its books in order. At most five.
-   * @returns {Promise<Array<{name: string, author: string, url: string, books: Array<{position: number, title: string, author: string, upcoming: boolean, url: string}>}>>}
-   */
-  async function series(name) {
-    const ids = foundIds((await query(FIND_SERIES, { q: String(name).slice(0, 300) })).search);
+  /** The series with these ids, in that order, each with its books in order. Merged duplicates are left out. */
+  async function seriesById(ids) {
     if (!ids.length) return [];
     const found = new Map(list((await query(SERIES, { ids })).series).filter(isSeries).map((s) => [s.id, s]));
     const today = new Date().toISOString().slice(0, 10);
     return ids.filter((id) => found.has(id)).map((id) => toSeries(found.get(id), today));
   }
 
+  /**
+   * The series Hardcover has under a name, the closest first, each with its books in order. At most five.
+   * @returns {Promise<Array<{name: string, author: string, url: string, books: Array<{position: number, title: string, author: string, upcoming: boolean, url: string}>}>>}
+   */
+  async function series(name) {
+    return seriesById(foundIds((await query(FIND_SERIES, { q: String(name).slice(0, 300) })).search));
+  }
+
+  /**
+   * The series Hardcover lists a book in, found by its title and author, as series() gives them. This
+   * finds a series under another name than the library's: Prince of Lies by James Lowder is #4 of
+   * what Hardcover calls "Forgotten Realms: Avatar". At most five.
+   * @param {{title: string, author?: string}} book
+   */
+  async function seriesOf({ title, author = '' }) {
+    const book = { title: String(title).trim(), author: String(author).trim() };
+    if (!book.title) return [];
+    const ids = await search(`${book.title} ${book.author}`.trim());
+    if (!ids.length) return [];
+    const found = new Map(list((await query(BOOKS_SERIES, { ids })).books).filter(isBook).map((b) => [b.id, b]));
+    // The series of the books that are this one, in the order the search found them.
+    const inSeries = ids.map((id) => found.get(id)).filter((b) => b && isTheBook(b, book))
+      .flatMap((b) => list(b.book_series).map((e) => seriesId(e?.series)))
+      .filter((id, i, all) => id && all.indexOf(id) === i);
+    return seriesById(inSeries.slice(0, 5));
+  }
+
   /** Why the token cannot work, when that is plain from the start. */
-  return { lookup, cover, series, problem: unusable };
+  return { lookup, cover, series, seriesOf, problem: unusable };
 }

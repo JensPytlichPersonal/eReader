@@ -303,6 +303,53 @@ test('Hardcover series are found by name, each with its books in order', async (
   await assert.rejects(createHardcover({ token: 'abc', fetch: standIn(() => ({ status: 401 })).fetch }).series('The Expanse'), /did not accept the token/);
 });
 
+test('Hardcover series are found through one of their books', async () => {
+  const lowder = credit('James Lowder');
+  const inSeries = (position, id, name, canonical = null) => ({ position, series: { id, name, canonical_id: canonical } });
+  const avatar = {
+    id: 5, name: 'Forgotten Realms: Avatar', author: { name: 'Richard Awlinson' },
+    book_series: [
+      { position: 1, book: { id: 51, title: 'Shadowdale', release_date: '1989-04-01', contributions: credit('Scott Ciencin') } },
+      { position: 4, book: { id: 54, title: 'Prince of Lies', release_date: '1993-08-01', contributions: lowder } },
+    ],
+  };
+  const realms = { id: 8, name: 'Forgotten Realms', author: null, book_series: [{ position: 40, book: { id: 60, title: 'Prince of Lies', release_date: null, contributions: lowder } }] };
+  const stranger = { id: 61, title: 'Prince of Lies', contributions: credit('Someone Else'), book_series: [inSeries(1, 9, 'Lies')] };
+  const site = standIn((operation) => ({
+    Search: { search: { ids: [54, 60, 61, 62] } },
+    BooksSeries: {
+      books: [
+        // The book, with the series in its title, in the series and in a duplicate merged into it.
+        { id: 54, title: 'Prince of Lies (Forgotten Realms: Avatar, #4)', contributions: lowder, book_series: [inSeries(4, 5, 'Forgotten Realms: Avatar'), inSeries(4, 7, 'Forgotten Realms: The Avatar Series,', 5)] },
+        // The book listed once more, in another series; one of that title by someone else; another book by the author.
+        { id: 60, title: 'Prince of Lies', contributions: lowder, book_series: [inSeries(40, 8, 'Forgotten Realms')] },
+        stranger,
+        { id: 62, title: 'Knight of the Black Rose', contributions: lowder, book_series: [inSeries(1, 10, 'Ravenloft')] },
+      ],
+    },
+    Series: { series: [realms, avatar] },
+  })[operation]);
+  const found = await createHardcover({ token: 'abc', fetch: site.fetch }).seriesOf({ title: 'Prince of Lies', author: 'James Lowder' });
+  assert.deepEqual(site.calls.map((c) => [c.operation, c.variables]), [
+    ['Search', { q: 'Prince of Lies James Lowder' }],
+    ['BooksSeries', { ids: [54, 60, 61, 62] }],
+    ['Series', { ids: [5, 8] }],
+  ]);
+  // In the order the search found the books, as series() gives them.
+  assert.deepEqual(found.map((s) => [s.name, s.url, s.books.map((b) => [b.position, b.title, b.author])]), [
+    ['Forgotten Realms: Avatar', 'https://hardcover.app/id/series/5', [[1, 'Shadowdale', 'Scott Ciencin'], [4, 'Prince of Lies', 'James Lowder']]],
+    ['Forgotten Realms', 'https://hardcover.app/id/series/8', [[40, 'Prince of Lies', 'James Lowder']]],
+  ]);
+
+  // Nothing found, or no book that is the one: nothing more is asked.
+  const none = standIn(() => ({ search: { ids: [] } }));
+  assert.deepEqual(await createHardcover({ token: 'abc', fetch: none.fetch }).seriesOf({ title: 'Nothing', author: 'Nobody' }), []);
+  assert.equal(none.calls.length, 1);
+  const other = standIn((operation) => (operation === 'Search' ? { search: { ids: [61] } } : { books: [stranger] }));
+  assert.deepEqual(await createHardcover({ token: 'abc', fetch: other.fetch }).seriesOf({ title: 'Prince of Lies', author: 'James Lowder' }), []);
+  assert.deepEqual(other.calls.map((c) => c.operation), ['Search', 'BooksSeries']);
+});
+
 // ---- both catalogues ----
 
 const match = (fields) => ({ series: [], cover: null, coverSource: null, coverId: null, covers: [], byIsbn: false, year: null, url: '', ...fields });

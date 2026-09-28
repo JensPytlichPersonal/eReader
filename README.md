@@ -300,9 +300,12 @@ the title and author, and opens the book on Hardcover. The series' page then sho
 including the books after the last one the library has, marking those not out yet; a shelf keeps to
 the gaps. Only a series' main books count, the ones with whole numbers, so a novella at 1.5 or a box
 set is never missing. Hardcover's series is taken only when it has the library's name for it and an
-author or title of its books, or two of their titles under any name; the name and author suffice for a
-translation, whose titles differ. When no series fits, and without a token, the outlines show only
-their number.
+author or title of its books, two of their titles under any name, or one of its books under the same
+number, title and author; the name and author suffice for a translation, whose titles differ. When
+nothing under the library's name fits, the series is looked for through one of its books, as Hardcover
+can call it something else: the library's *Avatar* is Hardcover's *Forgotten Realms: Avatar*, found
+through its #4, *Prince of Lies* by James Lowder. When no series fits, and without a token, the
+outlines show only their number.
 
 Where the series comes from:
 
@@ -363,8 +366,8 @@ offered twice, since the larger one can be the better cover.
 - Only the server talks to the catalogues, and only when someone presses the button or saves a cover
   from one: the title, author and ISBN go out. The covers in the list of matches load from the
   catalogues' own sites, as large as they would be saved. With a Hardcover token, a series' name also
-  goes to Hardcover when its page, or a shelf with a gap, is shown, to find the books it lacks (see
-  below).
+  goes to Hardcover when its page, or a shelf with a gap, is shown, to find the books it lacks, and
+  when the name finds no series that fits, the title and author of one of its books (see below).
 
 Like editing, looking up is for the uploader of a book or an admin.
 
@@ -398,8 +401,9 @@ Sanderson". So a title that starts with the word, such as *By Schism Rent Asunde
 with "By" in quotes, which Hardcover looks for like the rest of the title.
 
 The token also tells the library which books a series lacks (see
-[Series and collections](#series-and-collections)). The server asks Hardcover for the series by its name
-when someone opens the series' page, or sees its shelf with a gap in it. Hardcover allows 60 requests a
+[Series and collections](#series-and-collections)). When someone opens a series' page, or sees its
+shelf with a gap in it, the server asks Hardcover for the series by its name, and when no series of that
+name fits, for the series of its first book with a number and an author. Hardcover allows 60 requests a
 minute, so the server looks series up one at a time, a few seconds apart, and keeps what it found for a
 day. A book added to the library stops showing as missing at once; restarting the server forgets what
 it found.
