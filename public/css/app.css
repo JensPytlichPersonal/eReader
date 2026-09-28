@@ -154,6 +154,10 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
   --card-title: 12px; --card-text: 11px; --card-meta: 11px; --card-pad: 6px 6px 5px; --menu-size: 28px; --menu-inset: 4px; --tag-size: 11px; --ph-title: 12px;
 }
 #library.cols-4 .card .author, #library.cols-4 .card .series-line, #library.cols-4 .card .dup-flag, #library.cols-4 .card:not(.group) .meta, #library.cols-4 .card .cover.placeholder .a { display: none; }
+/* A series keeps its state ("Reading #2"), above its bar: the bar ends every small card, level with its neighbours' */
+#library.cols-4 .card.group .info > .title { order: -2; }
+#library.cols-4 .card.group .info > .meta { order: -1; margin-top: auto; }
+#library.cols-4 .card.group .info > .progress { order: 0; margin-top: 0; }
 /* Keep a cover's title clear of the buttons on it */
 #library.cols-4 .card .cover.placeholder { justify-content: flex-start; padding: calc(var(--menu-size) + 2 * var(--menu-inset)) 5px 6px; }
 @media (max-width: 599px) {
