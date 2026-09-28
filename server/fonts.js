@@ -20,9 +20,9 @@ function styleCss(name, style) {
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replaceAll('url(./files/', `url(/vendor/fonts/${name}/files/`) : '';
 }
 
-/** One stylesheet with the @font-face rules of every bundled font. */
+/** One stylesheet with the @font-face rules of every bundled font, and Literata's semibold for the soft skin's headings. */
 export function fontsCss() {
-  return PACKAGES.flatMap((name) => STYLES.map((style) => styleCss(name, style))).join('\n');
+  return [...PACKAGES.flatMap((name) => STYLES.map((style) => styleCss(name, style))), styleCss('literata', '600')].join('\n');
 }
 
 /**

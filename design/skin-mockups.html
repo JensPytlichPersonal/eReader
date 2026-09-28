@@ -1,0 +1,999 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>eReader skins</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================ Board (the page around the mockups) */
+:root { --board-bg: #E7E4DE; --board-fg: #2B2724; --board-muted: #6E6862; --board-line: #D3CEC5; --board-card: #F5F3EF; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--board-bg); color: var(--board-fg); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+.board { max-width: 1272px; margin: 0 auto; padding: 36px 28px 120px; }
+.board-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px 40px; flex-wrap: wrap; margin-bottom: 22px; }
+.board-head h1 { font-family: Literata, Georgia, serif; font-weight: 600; font-size: 36px; margin: 0 0 10px; letter-spacing: -.01em; }
+.board-head p { max-width: 64ch; margin: 0 0 8px; color: var(--board-muted); }
+.board-head p b { color: var(--board-fg); font-weight: 600; }
+.switch-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; font-size: 13px; color: var(--board-muted); }
+.seg-board { display: inline-flex; background: #D8D4CC; border-radius: 999px; padding: 3px; gap: 2px; }
+.seg-board button { border: 0; background: none; font: 600 13px/1 inherit; padding: 9px 14px; border-radius: 999px; color: var(--board-muted); cursor: pointer; }
+.seg-board button[aria-pressed="true"] { background: #FFFFFF; color: var(--board-fg); box-shadow: 0 1px 2px rgba(0,0,0,.10); }
+.board-toc { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 48px; font-size: 13px; }
+.board-toc a { color: var(--board-muted); text-decoration: none; padding: 4px 0; border-bottom: 1px solid transparent; }
+.board-toc a:hover { color: var(--board-fg); border-color: currentColor; }
+.chapter { margin: 0 0 84px; }
+.chapter > header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+.chapter .no { font: 600 12px/1 ui-monospace, Menlo, monospace; color: var(--board-muted); letter-spacing: .1em; }
+.chapter h2 { font-family: Literata, Georgia, serif; font-weight: 600; font-size: 26px; margin: 0; letter-spacing: -.01em; }
+.chapter .lead { color: var(--board-muted); max-width: 72ch; margin: 0 0 24px; }
+.caption { font-size: 13px; color: var(--board-muted); margin: 12px 6px 0; max-width: 60ch; }
+.frames { display: flex; flex-wrap: wrap; gap: 32px 28px; align-items: flex-start; }
+.note { background: var(--board-card); border: 1px solid var(--board-line); border-radius: 12px; padding: 18px 22px; max-width: 78ch; }
+.note h3 { margin: 0 0 8px; font: 600 15px/1.3 inherit; }
+.note ul { margin: 6px 0 0; padding-left: 20px; }
+.note li { margin: 4px 0; }
+.note code, .tbl code { font: 12.5px/1.4 ui-monospace, Menlo, Consolas, monospace; background: #E3DFD7; padding: 1px 5px; border-radius: 4px; }
+pre.code { background: #2B2724; color: #EDE7DD; border-radius: 12px; padding: 18px 20px; font: 12.5px/1.55 ui-monospace, Menlo, Consolas, monospace; overflow: auto; margin: 0; }
+pre.code .c { color: #A39A90; }
+.tbl { width: 100%; border-collapse: collapse; background: var(--board-card); border: 1px solid var(--board-line); border-radius: 12px; overflow: hidden; font-size: 14px; }
+.tbl th, .tbl td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--board-line); vertical-align: top; }
+.tbl th { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--board-muted); font-weight: 600; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl td:first-child { font-weight: 600; white-space: nowrap; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
+
+/* ============================================================ Device frames */
+.dev { position: relative; flex: none; }
+.dev .screen { position: relative; overflow: hidden; }
+.laptop { border-radius: 14px; background: #2A2724; padding: 8px; box-shadow: 0 40px 70px -40px rgba(40,30,20,.55), inset 0 1px 0 rgba(255,255,255,.25); }
+.laptop.w1180 { width: 1196px; } .laptop.w980 { width: 996px; }
+.laptop .chrome { height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 10px; color: #A09A93; font-size: 12px; }
+.laptop .chrome i { width: 11px; height: 11px; border-radius: 50%; background: #5B5651; display: inline-block; }
+.laptop .chrome .url { margin-left: auto; margin-right: auto; background: #3A3632; padding: 5px 14px; border-radius: 6px; min-width: 260px; text-align: center; }
+.laptop .screen { border-radius: 8px; }
+.phone { width: 375px; border-radius: 52px; background: #1E1C1A; padding: 10px; box-shadow: 0 40px 70px -40px rgba(40,30,20,.6), inset 0 1px 0 rgba(255,255,255,.2); }
+.phone .screen { border-radius: 42px; height: 812px; }
+.phone .island { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 120px; height: 34px; border-radius: 20px; background: #0D0C0B; z-index: 40; }
+.sbar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; font: 600 15px/1 -apple-system, system-ui, sans-serif; z-index: 39; pointer-events: none; }
+.phone .sbar { height: 54px; padding: 16px 32px 0; }
+.phone .home { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 134px; height: 5px; border-radius: 3px; background: currentColor; opacity: .5; z-index: 40; }
+.tablet { border-radius: 28px; background: #1E1C1A; padding: 16px; box-shadow: 0 40px 70px -40px rgba(40,30,20,.6), inset 0 1px 0 rgba(255,255,255,.2); }
+.tablet .screen { border-radius: 14px; }
+.tablet.land { width: 1132px; } .tablet.land .screen { height: 780px; }
+.tablet.port { width: 872px; } .tablet.port .screen { height: 1060px; }
+.tablet .sbar { height: 28px; padding: 6px 22px 0; font-size: 12.5px; }
+.sbar svg { width: 18px; height: 18px; vertical-align: -4px; }
+.fade::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 140px; background: linear-gradient(to bottom, transparent, var(--bg)); pointer-events: none; z-index: 20; }
+.phone .fade::after { height: 110px; }
+
+/* ============================================================ Book covers (fake, CSS only) */
+.cv { position: relative; overflow: hidden; display: flex; flex-direction: column; width: 100%; aspect-ratio: 2 / 3; background: linear-gradient(160deg, var(--c1), var(--c2)); color: var(--ink); font-family: Literata, Georgia, serif; container-type: inline-size; user-select: none; }
+.cv::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.18), rgba(255,255,255,.10) 3%, transparent 8%); pointer-events: none; }
+.cv-t { font-weight: 600; line-height: 1.08; letter-spacing: -.01em; font-size: 10.5cqw; position: relative; }
+.cv-a { font-family: -apple-system, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; opacity: .85; font-size: 5cqw; position: relative; }
+.cv.center { align-items: center; justify-content: center; text-align: center; padding: 12% 10%; gap: 9%; }
+.cv.center .cv-t { padding: 7% 0; border-top: 1px solid currentColor; border-bottom: 1px solid currentColor; }
+.cv.top { padding: 11% 9%; justify-content: space-between; align-items: flex-start; text-align: left; }
+.cv.top .cv-t { font-size: 12.5cqw; }
+.cv.band { justify-content: flex-end; }
+.cv.band .cv-t { background: var(--c2); color: var(--ink2, var(--c1)); padding: 7% 8%; font-size: 12cqw; text-transform: uppercase; letter-spacing: .1em; font-weight: 700; margin-bottom: 16%; }
+.cv.band .cv-a { position: absolute; top: 8%; left: 8%; }
+.cv.frame { padding: 14% 12%; text-align: center; align-items: center; }
+.cv.frame::after { content: ""; position: absolute; inset: 6%; border: 1px solid currentColor; opacity: .45; }
+.cv.frame .cv-t { margin-top: 34%; }
+.cv.frame .cv-a { margin-top: auto; }
+.cv.space { padding: 10% 9%; justify-content: flex-start; align-items: flex-start; gap: 5%; }
+.cv.space::after { content: ""; position: absolute; width: 64%; aspect-ratio: 1; border-radius: 50%; right: -20%; bottom: -14%; background: radial-gradient(circle at 36% 34%, rgba(255,255,255,.30), rgba(255,255,255,.05) 58%, transparent 60%); }
+.cv.sun { justify-content: flex-end; align-items: center; text-align: center; padding: 10%; gap: 6%; }
+.cv.sun::after { content: ""; position: absolute; width: 58%; aspect-ratio: 1; border-radius: 50%; left: 50%; top: 38%; transform: translate(-50%, -50%); background: radial-gradient(circle, rgba(255,242,205,.95), rgba(255,225,160,.35) 58%, transparent 70%); }
+.cv.missing-cv { background: none; border: 1.5px dashed currentColor; align-items: center; justify-content: center; text-align: center; padding: 12% 10%; gap: 8%; opacity: .8; }
+.cv.missing-cv .cv-t { font-size: 9.5cqw; }
+@container (max-width: 64px) { .cv-t, .cv-a { display: none; } }
+
+/* ============================================================ SOFT skin: the new look for laptops, phones and tablets */
+.soft {
+  --bg: #F4EFE6; --surface: #FBF8F2; --surface-2: #ECE5D8; --surface-3: #E1D9CA;
+  --fg: #2B2521; --muted: #6B6258; --line: #DCD3C5; --line-2: #CBC1B0;
+  --accent: #A65B3F; --accent-ink: #94503A; --accent-fg: #FFFFFF; --accent-soft: #F0DDD2;
+  --ok: #56704F; --danger: #A8433A;
+  --cover-shadow: 0 1px 2px rgba(60,40,20,.16), 0 10px 20px -12px rgba(60,40,20,.40);
+  --cover-hover: 0 2px 4px rgba(60,40,20,.16), 0 16px 28px -12px rgba(60,40,20,.45);
+  --pop-shadow: 0 18px 50px -14px rgba(50,35,20,.40), 0 0 0 1px rgba(60,40,20,.06);
+  --scrim: rgba(43,37,33,.30); --glass: rgba(251,248,242,.86); --tag-bg: rgba(43,37,33,.70); --tag-fg: #F7F2EA;
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --serif: Literata, Georgia, "Iowan Old Style", serif;
+  font: 15px/1.45 var(--ui); color: var(--fg); background: var(--bg);
+}
+.soft[data-theme="sepia"] {
+  --bg: #EFE3CF; --surface: #F7EEDD; --surface-2: #E5D7BF; --surface-3: #D8C8A9;
+  --fg: #3B2F24; --muted: #6E5E49; --line: #D6C6A8; --line-2: #C4B08A;
+  --accent: #9A5232; --accent-ink: #88472A; --accent-soft: #EAD3C2; --ok: #55704B; --danger: #9E3E33;
+  --glass: rgba(247,238,221,.86);
+}
+.soft[data-theme="dark"] {
+  --bg: #1C1A18; --surface: #252220; --surface-2: #2E2A27; --surface-3: #3A3531;
+  --fg: #E9E2D8; --muted: #A69C91; --line: #3B3632; --line-2: #4B453F;
+  --accent: #D18A6A; --accent-ink: #DA9B7E; --accent-fg: #1C1A18; --accent-soft: #3D2C24;
+  --ok: #8FAA8C; --danger: #E08A80;
+  --cover-shadow: 0 1px 2px rgba(0,0,0,.5), 0 12px 22px -12px rgba(0,0,0,.8);
+  --cover-hover: 0 2px 4px rgba(0,0,0,.5), 0 18px 30px -12px rgba(0,0,0,.85);
+  --pop-shadow: 0 20px 60px -14px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.06);
+  --scrim: rgba(0,0,0,.5); --glass: rgba(37,34,32,.84); --tag-bg: rgba(20,18,16,.72); --tag-fg: #F0EAE0;
+}
+.soft *, .soft *::before, .soft *::after { box-sizing: border-box; }
+.soft a { color: inherit; text-decoration: none; cursor: pointer; }
+.soft button, .soft input { font: inherit; color: inherit; }
+.soft button { cursor: pointer; }
+.soft .serif { font-family: var(--serif); }
+.soft .muted { color: var(--muted); }
+.soft svg { width: 18px; height: 18px; flex: none; }
+
+/* Buttons and fields */
+.soft .btn { display: inline-flex; align-items: center; justify-content: center; gap: .45em; min-height: 36px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); color: var(--fg); font-weight: 600; font-size: 14px; white-space: nowrap; transition: background .15s, border-color .15s, color .15s; }
+.soft .btn:hover { border-color: var(--muted); }
+.soft .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.soft .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.soft .btn.ghost:hover { background: var(--surface-2); color: var(--fg); }
+.soft .btn.danger { color: var(--danger); }
+.soft .btn.icon { width: 36px; padding: 0; }
+.soft .btn.small { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.soft .btn.wide { width: 100%; }
+.soft.touch .btn, .soft.touch .field-input { min-height: 44px; }
+.soft.touch .btn.icon { width: 44px; }
+.soft .field-input { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font-size: 14px; white-space: nowrap; }
+.soft .field-input.select { padding-right: 9px; }
+.soft .field-input.select svg { color: var(--muted); width: 16px; height: 16px; }
+.soft .field-input.search { flex: 1 1 160px; min-width: 0; color: var(--muted); }
+.soft .field-input.search svg { color: var(--muted); }
+.soft .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.soft .field label { font-weight: 600; font-size: 13px; }
+.soft .field .hint { font-size: 12.5px; color: var(--muted); }
+.soft .field-input.text { color: var(--fg); }
+.soft .field-input .ph { color: var(--muted); }
+
+/* Header, tabs, toolbar */
+.soft .app-header { display: flex; align-items: center; gap: 18px; padding: 16px 28px 10px; }
+.soft .brand { display: flex; align-items: center; gap: 10px; font: 600 21px/1 var(--serif); letter-spacing: -.01em; }
+.soft .brand svg { width: 22px; height: 22px; color: var(--accent); }
+.soft .app-header nav { display: flex; gap: 2px; margin-left: auto; }
+.soft .tabs { display: flex; gap: 6px; padding: 0 22px; margin: 0 6px; border-bottom: 1px solid var(--line); }
+.soft .tabs button { position: relative; border: 0; background: none; padding: 10px 8px 12px; margin-bottom: -1px; font: 600 15px/1.2 var(--ui); color: var(--muted); }
+.soft .tabs button .n { margin-left: 7px; font-weight: 600; font-size: 11.5px; color: var(--muted); background: var(--surface-2); padding: 2px 7px; border-radius: 999px; vertical-align: 1px; }
+.soft .tabs button[aria-pressed="true"] { color: var(--fg); }
+.soft .tabs button[aria-pressed="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+.soft .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 16px 28px 0; }
+.soft .drop-hint { margin: 0; padding: 10px 28px 0; font-size: 12.5px; color: var(--muted); }
+.soft .drop-hint a { color: var(--accent-ink); font-weight: 600; }
+.soft .page { padding: 4px 28px 40px; }
+
+/* Sections and headings */
+.soft .section-title { display: flex; align-items: baseline; gap: 10px; margin: 28px 0 14px; }
+.soft .section-title h2, .soft .section-title h3 { margin: 0; font: 600 21px/1.2 var(--serif); letter-spacing: -.005em; }
+.soft .section-title .muted { font-size: 13px; }
+.soft h1.big { margin: 10px 0 4px; font: 600 32px/1.15 var(--serif); letter-spacing: -.015em; }
+.soft .facts { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+.soft .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.soft .group-head { display: flex; align-items: baseline; gap: 12px; margin: 36px 0 14px; padding-top: 18px; border-top: 1px solid var(--line); }
+.soft .group-head h2 { margin: 0; font: 600 22px/1.2 var(--serif); }
+
+/* Cards */
+.soft .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-min, 168px), 1fr)); gap: 28px 20px; }
+.soft .grid.cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.soft .card { position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.soft .cover-wrap { position: relative; }
+.soft .cv { border-radius: 6px; box-shadow: var(--cover-shadow); transition: transform .18s ease, box-shadow .18s ease; }
+.soft .card:hover .cv, .soft .card.hover .cv { transform: translateY(-2px); box-shadow: var(--cover-hover); }
+.soft .card .info { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 0 2px; }
+.soft .card .title { font-weight: 600; font-size: 14px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.soft .card .author { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.soft .series-line { font-size: 12.5px; color: var(--accent-ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.soft .progress { height: 3px; border-radius: 3px; background: var(--surface-3); overflow: hidden; margin-top: 5px; }
+.soft .progress > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.soft .card .meta { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 3px; }
+.soft .badge { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); padding: 2px 6px; border-radius: 4px; }
+.soft .place { color: var(--accent-ink); font-weight: 600; }
+.soft .finished { color: var(--ok); font-weight: 600; }
+.soft .menu-btn { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--glass); color: var(--fg); box-shadow: 0 1px 4px rgba(0,0,0,.20); opacity: 0; transition: opacity .15s; display: grid; place-items: center; z-index: 3; }
+.soft .menu-btn svg { width: 18px; height: 18px; }
+.soft .card:hover .menu-btn, .soft .card.hover .menu-btn { opacity: 1; }
+.soft.touch .card .menu-btn { opacity: 1; top: auto; bottom: -3px; right: -4px; width: 28px; height: 28px; background: none; box-shadow: none; color: var(--muted); }
+.soft.touch .card .meta { padding-right: 22px; }
+.soft .cover-tag { position: absolute; left: 8px; top: 8px; padding: 3px 8px; border-radius: 999px; background: var(--tag-bg); color: var(--tag-fg); font-size: 11.5px; font-weight: 600; letter-spacing: .02em; z-index: 2; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+/* A series as one tile: the cover you are on, the others as sheets behind it */
+.soft .stack { padding: 8px 8px 0 0; }
+.soft .stack::before, .soft .stack::after { content: ""; position: absolute; border-radius: 5px; background: var(--surface-3); box-shadow: var(--cover-shadow); }
+.soft .stack::before { top: 0; right: 0; bottom: 8px; left: 8px; opacity: .75; }
+.soft .stack::after { top: 4px; right: 4px; bottom: 4px; left: 4px; }
+.soft .stack .cv { position: relative; z-index: 1; }
+.soft .stack .cover-tag { top: 16px; }
+/* Missing books: a dashed outline in their place */
+.soft .missing .cv { box-shadow: none; color: var(--muted); border-color: var(--line-2); }
+.soft .missing .title, .soft .missing .author { color: var(--muted); }
+.soft .missing .cover-tag { background: transparent; color: var(--muted); border: 1px dashed var(--line-2); backdrop-filter: none; }
+
+/* Shelves */
+.soft .shelf { margin: 30px 0 10px; }
+.soft .shelf-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 14px; }
+.soft .shelf-head h2 { margin: 0; font: 600 20px/1.2 var(--serif); }
+.soft .shelf-head h2 a::after { content: " \203A"; color: var(--muted); }
+.soft .shelf-head .muted { font-size: 13px; }
+.soft .shelf-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--shelf-min, 122px), 1fr)); gap: 18px 16px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+.soft .shelf-book { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.soft .shelf-book .title { font-weight: 600; font-size: 13px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.soft .shelf-book .state { font-size: 12px; color: var(--muted); }
+.soft .shelf-book .progress { margin-top: 0; }
+.soft .shelf-book.current .cv { outline: 2px solid var(--accent); outline-offset: 3px; }
+.soft .shelf-book .cover-wrap + .title { margin-top: 4px; }
+
+/* List rows */
+.soft .list { display: flex; flex-direction: column; }
+.soft .list-row { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 8px; border-radius: 10px; border-bottom: 1px solid var(--line); transition: background .15s; }
+.soft .list-row:hover { background: var(--surface); }
+.soft .list-row .cv { border-radius: 3px; box-shadow: 0 1px 2px rgba(60,40,20,.25); }
+.soft .list-row .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.soft .list-row .title { font-weight: 600; font-size: 14.5px; line-height: 1.3; }
+.soft .list-row .title .no { color: var(--muted); font-weight: 500; }
+.soft .list-row .about { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.soft .list-row .about a { color: var(--accent-ink); font-weight: 500; }
+.soft .list-row .meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); margin-top: 3px; }
+.soft .list-row .meta .progress { width: 72px; margin: 0; }
+.soft .list-row.current { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+.soft .list-row .menu-btn { position: static; opacity: 1; width: 32px; height: 32px; background: none; box-shadow: none; color: var(--muted); }
+.soft .list-row .chevron { color: var(--muted); padding: 0 8px; display: flex; }
+
+/* Phone layout: the title of the section instead of the brand, the controls behind one button */
+.soft .ph-header { display: flex; align-items: flex-end; justify-content: space-between; padding: 60px 20px 8px; }
+.soft .ph-header h1 { margin: 0; font: 600 30px/1.1 var(--serif); letter-spacing: -.015em; }
+.soft .ph-page { padding: 0 16px 40px; }
+.soft .ph-page .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 12px; }
+.soft .ph-page .card { gap: 8px; }
+.soft .ph-page .card .title { font-size: 12.5px; }
+.soft .ph-page .card .author { font-size: 11.5px; }
+.soft .ph-page .card .series-line { display: none; }
+.soft .ph-page .card .meta { font-size: 10.5px; }
+.soft .ph-page .card .meta .badge { display: none; }
+.soft .ph-page .card .meta > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.soft .ph-page .section-title { margin: 18px 0 12px; }
+.soft .ph-page .section-title h2 { font-size: 19px; }
+.soft .ph-page .cover-tag { font-size: 10.5px; padding: 2px 7px; left: 6px; top: 6px; }
+.soft .ph-page .stack .cover-tag { top: 14px; }
+
+/* Reader */
+.soft .rd { position: absolute; inset: 0; overflow: hidden; }
+.soft .rd .text { position: absolute; inset: 0; padding: var(--rd-pad, 44px 52px 40px); font: 400 var(--rd-size, 18px)/1.55 var(--serif); text-align: justify; -webkit-hyphens: auto; hyphens: auto; column-count: var(--rd-cols, 2); column-gap: 60px; column-fill: auto; overflow: hidden; }
+.soft .rd .text p { margin: 0 0 .35em; orphans: 2; widows: 2; }
+.soft .rd .text p + p { text-indent: 1.2em; margin-top: 0; }
+.soft .rd .text h1 { font: 600 1.5em/1.2 var(--serif); text-align: left; margin: 0 0 .7em; -webkit-hyphens: none; hyphens: none; }
+.soft .rd .text h1 small { display: block; font: 600 .5em/1.4 var(--ui); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-bottom: .6em; }
+.soft .statusline { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 52px var(--rd-status-bottom, 14px); display: flex; justify-content: space-between; gap: 12px; font: 12px/1 var(--ui); color: var(--muted); letter-spacing: .01em; }
+.soft .statusline span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.soft .rd .bar { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 4px; padding: 8px 12px; background: var(--surface); background: var(--glass); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); z-index: 10; font-family: var(--ui); }
+.soft .rd .topbar { top: 0; border-bottom: 1px solid var(--line); padding-top: calc(8px + var(--rd-safe-top, 0px)); }
+.soft .rd .topbar .title { flex: 1; font: 600 15px/1.2 var(--serif); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 6px; }
+.soft .rd .bottombar { bottom: 0; flex-direction: column; align-items: stretch; gap: 6px; border-top: 1px solid var(--line); padding: 12px 20px calc(12px + var(--rd-safe-bottom, 0px)); }
+.soft .slider { position: relative; height: 24px; display: flex; align-items: center; }
+.soft .slider .track { width: 100%; height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+.soft .slider .fill { height: 100%; background: var(--accent); border-radius: 4px; }
+.soft .slider .thumb { position: absolute; top: 50%; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); transform: translate(-50%, -50%); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.soft .rd .pos { flex: 1; font-size: 13px; color: var(--muted); text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.soft .scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 12; }
+
+/* Panels: a side panel on wide screens, a bottom sheet on phones */
+.soft .panel { position: absolute; top: 12px; right: 12px; bottom: 12px; width: 372px; background: var(--surface); border-radius: 18px; box-shadow: var(--pop-shadow); display: flex; flex-direction: column; overflow: hidden; z-index: 15; font-family: var(--ui); text-align: left; }
+.soft .panel header, .soft .sheet-bottom header { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 10px 20px; font: 600 18px/1.2 var(--serif); }
+.soft .panel .body, .soft .sheet-bottom .body { overflow: hidden; flex: 1; padding: 0 12px 20px; }
+.soft .toc { list-style: none; margin: 0; padding: 0; }
+.soft .toc button { display: block; width: 100%; text-align: left; padding: 10px 10px; border: 0; background: none; color: var(--fg); font-size: 14.5px; line-height: 1.3; border-radius: 8px; }
+.soft .toc button.current { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.soft .toc .lvl1 button { padding-left: 26px; font-size: 14px; }
+.soft .toc .vol { font: 600 11.5px/1 var(--ui); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 16px 10px 8px; }
+.soft .sheet-bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 86%; background: var(--surface); border-radius: 24px 24px 0 0; box-shadow: var(--pop-shadow); display: flex; flex-direction: column; overflow: hidden; z-index: 15; font-family: var(--ui); text-align: left; }
+.soft .handle { width: 36px; height: 5px; border-radius: 3px; background: var(--line-2); margin: 8px auto 0; flex: none; }
+.soft .sheet-bottom .body { padding: 0 18px 20px; }
+
+/* Settings controls */
+.soft .group { margin: 4px 0 18px; }
+.soft .lbl { display: block; font: 600 11.5px/1 var(--ui); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 9px; }
+.soft .seg { display: flex; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 2px; }
+.soft .seg button { flex: 1; border: 0; background: none; padding: 8px 6px; border-radius: 8px; font: 600 13px/1.2 var(--ui); color: var(--muted); white-space: nowrap; }
+.soft .seg button.on { background: var(--surface); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.14); }
+.soft[data-theme="dark"] .seg button.on { background: var(--surface-3); }
+.soft .stepper { display: flex; align-items: center; gap: 12px; }
+.soft .stepper button { width: 44px; height: 36px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); font-size: 18px; font-weight: 600; display: grid; place-items: center; }
+.soft .stepper output { min-width: 60px; text-align: center; font-weight: 600; font-size: 15px; }
+.soft .stepper .sample { font-family: var(--serif); color: var(--muted); font-size: 13px; }
+.soft .switch { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; font-weight: 500; font-size: 14px; }
+.soft .switch i { width: 42px; height: 26px; border-radius: 13px; background: var(--surface-3); position: relative; flex: none; transition: background .15s; }
+.soft .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.soft .switch.on i { background: var(--accent); }
+.soft .switch.on i::after { transform: translateX(16px); }
+.soft .themes { display: flex; gap: 8px; }
+.soft .themes button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 9px 4px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font: 500 12px/1 var(--ui); color: var(--muted); }
+.soft .themes button i { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0,0,0,.14); }
+.soft .themes button.on { border-color: var(--accent); color: var(--fg); box-shadow: 0 0 0 1px var(--accent); }
+.soft .themes .sw-light { background: #F4EFE6; } .soft .themes .sw-sepia { background: #EFE3CF; } .soft .themes .sw-dark { background: #1C1A18; }
+.soft .themes .sw-auto { background: linear-gradient(90deg, #F4EFE6 50%, #1C1A18 50%); }
+
+/* Dialogs */
+.soft .dialog { width: 420px; background: var(--surface); border-radius: 18px; box-shadow: var(--pop-shadow); padding: 22px 22px 12px; font-family: var(--ui); }
+.soft .dialog h2 { margin: 0 0 4px; font: 600 21px/1.25 var(--serif); }
+.soft .dialog .about { color: var(--muted); font-size: 13px; margin: 0 0 6px; line-height: 1.45; }
+.soft .dialog .part { font-size: 13.5px; margin: 0 0 14px; }
+.soft .dialog .part a { color: var(--accent-ink); font-weight: 600; }
+.soft .menu { display: flex; flex-direction: column; margin: 0 -10px; }
+.soft .menu .btn { justify-content: flex-start; border-radius: 10px; border: 0; background: none; min-height: 42px; padding: 0 12px; font-weight: 500; font-size: 14.5px; gap: 12px; }
+.soft .menu .btn svg { color: var(--muted); width: 18px; height: 18px; }
+.soft .menu .btn:hover { background: var(--surface-2); }
+.soft .menu .btn.danger { color: var(--danger); }
+.soft .menu .btn.danger svg { color: var(--danger); }
+.soft .menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 12px; }
+.soft .card-form { width: 400px; background: var(--surface); border-radius: 18px; box-shadow: var(--pop-shadow); padding: 26px 26px 22px; font-family: var(--ui); }
+.soft .card-form h1 { margin: 0 0 18px; font: 600 26px/1.2 var(--serif); }
+.soft .card-form .field-input { min-height: 42px; }
+.soft .panel.standalone { position: relative; top: auto; right: auto; bottom: auto; height: 1020px; width: 372px; }
+.soft .panel.standalone .body { padding-bottom: 0; }
+
+/* Palette panels */
+.soft.palette { border-radius: 18px; padding: 22px 22px 20px; box-shadow: 0 1px 0 rgba(0,0,0,.05), 0 20px 40px -30px rgba(40,30,20,.5); }
+.soft.palette h3 { margin: 0 0 2px; font: 600 20px/1.2 var(--serif); }
+.soft.palette .sub { margin: 0 0 16px; font-size: 13px; color: var(--muted); }
+.soft .swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px 8px; margin-bottom: 18px; }
+.soft .sw { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--muted); }
+.soft .sw i { display: block; height: 34px; border-radius: 8px; border: 1px solid rgba(0,0,0,.08); }
+.soft .sw b { font-weight: 600; color: var(--fg); display: block; font-size: 11.5px; }
+.soft .sw code { font: 10.5px ui-monospace, Menlo, monospace; }
+.soft .type-sample { display: flex; flex-direction: column; gap: 10px; }
+.soft .type-sample .h { font: 600 22px/1.2 var(--serif); }
+.soft .type-sample .b { font-size: 14px; }
+.soft .type-sample .b .muted { font-size: 13px; }
+
+/* ============================================================ EINK skin: today's CSS, for the side-by-side (same DOM) */
+.eink { --bg: #FFFFFF; --fg: #000000; --muted: #000000; --line: #000000; --panel: #FFFFFF; --accent: #000000; --accent-fg: #FFFFFF; --radius: 6px;
+  font: 16px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--fg); background: var(--bg); }
+.eink *, .eink *::before, .eink *::after { box-sizing: border-box; }
+.eink a { color: inherit; text-decoration: none; }
+.eink button { font: inherit; color: inherit; cursor: pointer; }
+.eink svg { width: 20px; height: 20px; flex: none; }
+.eink .btn { display: inline-flex; align-items: center; justify-content: center; gap: .4em; min-height: 44px; padding: 0 16px; border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 600; white-space: nowrap; }
+.eink .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.eink .btn.small, .eink .btn.ghost { min-height: 36px; padding: 0 12px; font-size: 14px; }
+.eink .btn.icon { min-width: 44px; width: auto; padding: 0 10px; font-weight: 800; }
+.eink .app-header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 2px solid var(--line); }
+.eink .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 20px; letter-spacing: .5px; }
+.eink .brand svg { width: 22px; height: 22px; }
+.eink .app-header nav { display: flex; gap: 8px; margin-left: auto; }
+.eink .tabs { display: flex; border-bottom: 2px solid var(--line); margin: 16px 16px 14px; }
+.eink .tabs button { min-height: 44px; padding: 0 14px; margin-bottom: -2px; border: 0; border-bottom: 4px solid transparent; background: none; color: var(--muted); font-weight: 700; }
+.eink .tabs button[aria-pressed="true"] { border-bottom-color: var(--fg); }
+.eink .tabs .n { margin-left: 6px; font-weight: 500; }
+.eink .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 0 16px 16px; }
+.eink .field-input { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); white-space: nowrap; }
+.eink .field-input.search { flex: 1 1 160px; color: var(--muted); }
+.eink .page { padding: 0 16px 16px; }
+.eink .grid { display: grid; gap: 16px; }
+.eink .grid.cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.eink .card { position: relative; display: flex; flex-direction: column; border: 2px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); }
+.eink .cover-wrap { position: relative; border-bottom: 2px solid var(--line); }
+.eink .cv { border-radius: 0; }
+.eink .card .info { padding: 10px 10px 8px; display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.eink .card .title { font-weight: 700; font-size: 14px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.eink .card .author { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.eink .series-line { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.eink .progress { height: 8px; border: 1px solid var(--fg); border-radius: 4px; overflow: hidden; background: var(--bg); margin-top: 2px; }
+.eink .progress > i { display: block; height: 100%; background: var(--fg); }
+.eink .card .meta { display: flex; justify-content: space-between; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); margin-top: auto; }
+.eink .badge { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+.eink .place, .eink .finished { font-weight: 700; color: var(--fg); }
+.eink .menu-btn { position: absolute; top: 6px; right: 6px; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); display: grid; place-items: center; z-index: 3; }
+.eink .menu-btn svg { width: 22px; height: 22px; }
+.eink .cover-tag { position: absolute; top: 6px; left: 6px; padding: 2px 8px; border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 14px; z-index: 2; }
+.eink .stack { padding: 8px 8px 0 0; }
+.eink .stack::before, .eink .stack::after { content: ""; position: absolute; border: 2px solid var(--muted); border-radius: 3px; background: var(--panel); }
+.eink .stack::before { top: 0; right: 0; bottom: 8px; left: 8px; }
+.eink .stack::after { top: 4px; right: 4px; bottom: 4px; left: 4px; }
+.eink .stack .cv { position: relative; z-index: 1; border: 2px solid var(--muted); border-bottom: 0; border-radius: 3px 3px 0 0; }
+.eink .stack .cover-tag { top: 14px; }
+.eink .list { display: flex; flex-direction: column; border-top: 2px solid var(--line); margin-top: 16px; }
+.eink .list-row { position: relative; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 4px; border-bottom: 2px solid var(--line); }
+.eink .list-row .cv { border: 2px solid var(--line); border-radius: 3px; }
+.eink .list-row .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.eink .list-row .title { font-weight: 700; font-size: 15px; line-height: 1.25; }
+.eink .list-row .about { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.eink .list-row .about a { font-weight: 600; }
+.eink .list-row .meta { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.eink .list-row .meta .progress { width: 64px; margin: 0; }
+.eink .list-row .menu-btn { position: static; }
+.eink .rd-bars { margin-top: 16px; border: 2px solid var(--fg); }
+.eink .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg); }
+.eink .topbar { border-bottom: 2px solid var(--fg); }
+.eink .topbar .title { flex: 1; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.eink .bottombar { flex-direction: column; align-items: stretch; gap: 6px; padding-bottom: 10px; }
+.eink .slider { position: relative; height: 44px; display: flex; align-items: center; }
+.eink .slider .track { width: 100%; height: 4px; background: #9a9a9a; border-radius: 2px; }
+.eink .slider .fill { height: 100%; background: var(--fg); }
+.eink .slider .thumb { position: absolute; top: 50%; width: 22px; height: 22px; border-radius: 50%; background: var(--fg); transform: translate(-50%, -50%); }
+.eink .rd .row, .eink .bottombar .row { display: flex; align-items: center; gap: 10px; }
+.eink .pos { flex: 1; font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.soft .rd-bars { margin-top: 20px; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+.soft .rd-bars .bar { position: static; }
+.soft .rd-bars .topbar { padding-top: 8px; }
+.soft .rd-bars .bottombar { border-top: 1px solid var(--line); }
+.compare-panel { width: 100%; min-height: 200px; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 40px -30px rgba(40,30,20,.5); }
+.compare-panel.eink { border: 1px solid #c8c4bd; }
+</style>
+</head>
+<body>
+<div class="board">
+<header class="board-head">
+  <div>
+    <h1>eReader, two skins</h1>
+    <p>Same pages, same DOM, two stylesheets. <b>E-ink</b> is today's look, kept as it is: pure black on white, 2 px borders, no shadows, no motion, 44 px targets. <b>Soft</b> is a new skin for laptops, phones and tablets: warm muted colours, hairlines and shadows instead of borders, Literata for headings so the library feels like the books in it.</p>
+    <p>Everything below is static HTML and CSS. The reading text is Literata, the UI is the system font, as in the app today. Covers are drawn in CSS to stand in for real ones.</p>
+  </div>
+  <div class="switch-wrap">
+    <span>Preview every Soft frame in</span>
+    <div class="seg-board" id="theme-switch">
+      <button aria-pressed="true" data-v="auto">As designed</button>
+      <button aria-pressed="false" data-v="light">Light</button>
+      <button aria-pressed="false" data-v="sepia">Sepia</button>
+      <button aria-pressed="false" data-v="dark">Dark</button>
+    </div>
+  </div>
+</header>
+<nav class="board-toc">
+  <a href="#palette">01 Palette and type</a><a href="#library">02 Library on a laptop</a><a href="#phones">03 Phones</a><a href="#tablet">04 Reader on a tablet</a><a href="#shelves">05 Shelves, sepia</a><a href="#series">06 A series</a><a href="#pieces">07 Dialogs and panels</a><a href="#compare">08 Side by side with e-ink</a><a href="#how">09 How the switch works</a>
+</nav>
+
+<!-- ============================================================ 01 Palette -->
+<section class="chapter" id="palette">
+  <header><span class="no">01</span><h2>Palette and type</h2></header>
+  <p class="lead">Three themes, as today (Light, Sepia, Dark), each warm. The light theme is linen rather than white, the dark theme charcoal rather than black. One accent, a muted clay, does all the pointing: the active tab, progress, the primary button, "Reading #2". Sage marks finished books. All text pairs meet WCAG AA.</p>
+  <div class="frames">
+    <div class="soft palette" data-theme="light" data-fixed style="width: 380px">
+      <h3>Light</h3><p class="sub">Linen. The default on a laptop, a phone in daylight.</p>
+      <div class="swatches" data-swatches></div>
+      <div class="type-sample" data-typesample></div>
+    </div>
+    <div class="soft palette" data-theme="sepia" data-fixed style="width: 380px">
+      <h3>Sepia</h3><p class="sub">Parchment. Deeper and yellower, for evening reading.</p>
+      <div class="swatches" data-swatches></div>
+      <div class="type-sample" data-typesample></div>
+    </div>
+    <div class="soft palette" data-theme="dark" data-fixed style="width: 380px">
+      <h3>Dark</h3><p class="sub">Ember. Warm charcoal, never pure black, so covers still glow.</p>
+      <div class="swatches" data-swatches></div>
+      <div class="type-sample" data-typesample></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 02 Library desktop -->
+<section class="chapter" id="library">
+  <header><span class="no">02</span><h2>The library on a laptop</h2></header>
+  <p class="lead">Books tab, cards, series as stacks, sorted by recently read. Covers carry the design: no card borders, a soft shadow, the title and author under each. The options button appears when the pointer is over a book (shown on Dune). A series is a small pile with the cover you are on in front and "Reading #2" in the accent.</p>
+  <div class="frames">
+    <div class="dev laptop w1180">
+      <div class="chrome"><i></i><i></i><i></i><span class="url">books.pytlich.dk</span></div>
+      <div class="screen soft fade" data-theme="light" style="height: 1130px">
+        <header class="app-header">
+          <a class="brand"><i data-icon="book"></i>eReader</a>
+          <nav><a class="btn ghost small">Users</a><a class="btn ghost small">Settings</a><a class="btn ghost small">Sign out</a></nav>
+        </header>
+        <div class="tabs"><button aria-pressed="true">Books<span class="n">18</span></button><button aria-pressed="false">Series &amp; collections<span class="n">4</span></button></div>
+        <div class="toolbar">
+          <div class="field-input search"><i data-icon="search"></i><span>Search title, author, series or genre</span></div>
+          <div class="field-input select">All books <i data-icon="chev"></i></div>
+          <div class="field-input select">Recently read <i data-icon="chev"></i></div>
+          <div class="field-input select">No grouping <i data-icon="chev"></i></div>
+          <div class="field-input select">Series as stacks <i data-icon="chev"></i></div>
+          <div class="field-input select">Cards <i data-icon="chev"></i></div>
+          <button class="btn">Select</button>
+          <button class="btn primary"><i data-icon="up"></i>Upload books</button>
+        </div>
+        <p class="drop-hint">Drop EPUB, MOBI, PDF, Markdown or text files, or folders of them, anywhere on this page to add them. <a>Upload a folder</a></p>
+        <main class="page">
+          <div class="section-title"><h2>Continue reading</h2></div>
+          <div class="grid" data-tiles="caliban,dune!,sapiens,kvinden,pride,piranesi"></div>
+          <div class="section-title"><h2>All books</h2><span class="muted">18</span></div>
+          <div class="grid" data-tiles="S:expanse,S:afdelingq,got,goodomens,hp,S:avatar,lefthand,S:kingkiller,hailmary,klara,dune,pride"></div>
+        </main>
+      </div>
+    </div>
+  </div>
+  <p class="caption">1180 px wide. The dashed drop box becomes one quiet line under the toolbar; the whole page still takes a drop. Tabs carry their counts as small pills.</p>
+</section>
+
+<!-- ============================================================ 03 Phones -->
+<section class="chapter" id="phones">
+  <header><span class="no">03</span><h2>Phones</h2></header>
+  <p class="lead">Left: the library in the dark theme, cards three across, the controls behind the one button top right as today. Middle: a page of a book, nothing but the text and the status line. Right: the Aa panel as a bottom sheet, with switches and segmented controls in place of bordered buttons.</p>
+  <div class="frames">
+    <div class="dev phone">
+      <div class="island"></div>
+      <div class="screen soft touch fade" data-theme="dark">
+        <div class="sbar"><span>9:41</span><span><i data-icon="signal"></i></span></div>
+        <header class="ph-header"><h1>Books</h1><button class="btn ghost icon"><i data-icon="sliders"></i></button></header>
+        <main class="ph-page">
+          <div class="section-title"><h2>Continue reading</h2></div>
+          <div class="grid" data-tiles="caliban,dune,sapiens"></div>
+          <div class="section-title"><h2>All books</h2><span class="muted">18</span></div>
+          <div class="grid" data-tiles="S:expanse,S:afdelingq,got,goodomens,hp,S:avatar,lefthand,S:kingkiller,hailmary"></div>
+        </main>
+        <div class="home"></div>
+      </div>
+    </div>
+    <div class="dev phone">
+      <div class="island"></div>
+      <div class="screen soft touch" data-theme="light">
+        <div class="sbar"><span>9:41</span><span><i data-icon="signal"></i></span></div>
+        <div class="rd" style="--rd-cols: 1; --rd-pad: 74px 24px 40px; --rd-size: 18px; --rd-status-bottom: 26px">
+          <div class="text" data-text></div>
+          <div class="statusline" style="padding-left: 24px; padding-right: 24px"><span>Chapter 1</span><span>12% · 3/9</span></div>
+        </div>
+        <div class="home"></div>
+      </div>
+    </div>
+    <div class="dev phone">
+      <div class="island"></div>
+      <div class="screen soft touch" data-theme="dark">
+        <div class="sbar"><span>9:41</span><span><i data-icon="signal"></i></span></div>
+        <div class="rd" style="--rd-cols: 1; --rd-pad: 74px 24px 40px; --rd-size: 18px; --rd-status-bottom: 26px">
+          <div class="text" data-text></div>
+          <div class="statusline" style="padding-left: 24px; padding-right: 24px"><span>Chapter 1</span><span>12% · 3/9</span></div>
+          <div class="scrim"></div>
+          <div class="sheet-bottom">
+            <div class="handle"></div>
+            <header><span>Display</span><button class="btn ghost small">Done</button></header>
+            <div class="body" data-display-settings="phone"></div>
+          </div>
+        </div>
+        <div class="home"></div>
+      </div>
+    </div>
+  </div>
+  <p class="caption">375 x 812. Tap targets stay at 44 px on touch screens; only the pointer-driven laptop gets the 36 px controls.</p>
+</section>
+
+<!-- ============================================================ 04 Tablet reader -->
+<section class="chapter" id="tablet">
+  <header><span class="no">04</span><h2>The reader on a tablet</h2></header>
+  <p class="lead">Two columns of Literata, exactly as the reader lays them out today. A tap in the middle shows the bars: translucent, blurred, a hairline each. The Contents panel slides in from the right as a rounded sheet over a light scrim, the current chapter in the accent.</p>
+  <div class="frames">
+    <div class="dev tablet land">
+      <div class="screen soft touch" data-theme="light">
+        <div class="sbar"><span>9:41&nbsp;&nbsp;Mon 28 Sep</span><span><i data-icon="signal"></i></span></div>
+        <div class="rd" style="--rd-pad: 84px 56px 48px; --rd-size: 18px; --rd-safe-top: 22px">
+          <div class="text" data-text></div>
+          <div class="statusline" style="padding-left: 56px; padding-right: 56px"><span>Chapter 1</span><span>12% · 3/9</span></div>
+          <header class="bar topbar">
+            <a class="btn ghost icon"><i data-icon="back"></i></a>
+            <div class="title">Pride and Prejudice</div>
+            <button class="btn ghost icon"><i data-icon="bookmark"></i></button>
+            <button class="btn ghost icon"><i data-icon="list"></i></button>
+            <button class="btn ghost icon" style="font: 700 15px/1 var(--ui)">Aa</button>
+          </header>
+          <footer class="bar bottombar">
+            <div class="slider"><div class="track"><div class="fill" style="width: 12%"></div></div><div class="thumb" style="left: 12%"></div></div>
+            <div class="row"><button class="btn ghost icon"><i data-icon="left"></i></button><div class="pos">12% · Chapter 1 · page 3 of 9 in this section</div><button class="btn ghost icon"><i data-icon="right"></i></button></div>
+          </footer>
+          <div class="scrim"></div>
+          <aside class="panel">
+            <header><span>Contents</span><button class="btn ghost small">Close</button></header>
+            <div class="body">
+              <ul class="toc">
+                <li class="vol">Volume I</li>
+                <li class="lvl1"><button class="current">Chapter 1</button></li>
+                <li class="lvl1"><button>Chapter 2</button></li>
+                <li class="lvl1"><button>Chapter 3</button></li>
+                <li class="lvl1"><button>Chapter 4</button></li>
+                <li class="lvl1"><button>Chapter 5</button></li>
+                <li class="lvl1"><button>Chapter 6</button></li>
+                <li class="lvl1"><button>Chapter 7</button></li>
+                <li class="lvl1"><button>Chapter 8</button></li>
+                <li class="lvl1"><button>Chapter 9</button></li>
+                <li class="lvl1"><button>Chapter 10</button></li>
+                <li class="lvl1"><button>Chapter 11</button></li>
+                <li class="lvl1"><button>Chapter 12</button></li>
+                <li class="vol">Volume II</li>
+                <li class="lvl1"><button>Chapter 1</button></li>
+                <li class="lvl1"><button>Chapter 2</button></li>
+                <li class="lvl1"><button>Chapter 3</button></li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="caption">1100 x 780, landscape. Font, size, weight, margins and spacing stay per-device settings; the skin only changes the chrome around the text.</p>
+</section>
+
+<!-- ============================================================ 05 Shelves -->
+<section class="chapter" id="shelves">
+  <header><span class="no">05</span><h2>Series as shelves, in sepia</h2></header>
+  <p class="lead">A tablet held upright, the Books tab with series as shelves. Each series is a row with every book in order, a missing one as a dashed outline with its title from Hardcover, and the book you are on ringed in the accent. The books outside a series follow as cards.</p>
+  <div class="frames">
+    <div class="dev tablet port">
+      <div class="screen soft touch fade" data-theme="sepia" style="--card-min: 125px; --shelf-min: 88px">
+        <div class="sbar"><span>9:41&nbsp;&nbsp;Mon 28 Sep</span><span><i data-icon="signal"></i></span></div>
+        <div style="height: 22px"></div>
+        <header class="app-header">
+          <a class="brand"><i data-icon="book"></i>eReader</a>
+          <nav><a class="btn ghost small">Settings</a><a class="btn ghost small">Sign out</a></nav>
+        </header>
+        <div class="tabs"><button aria-pressed="true">Books<span class="n">18</span></button><button aria-pressed="false">Series &amp; collections<span class="n">4</span></button></div>
+        <div class="toolbar">
+          <div class="field-input search"><i data-icon="search"></i><span>Search title, author, series or genre</span></div>
+          <div class="field-input select">All books <i data-icon="chev"></i></div>
+          <div class="field-input select">Title <i data-icon="chev"></i></div>
+          <div class="field-input select">No grouping <i data-icon="chev"></i></div>
+          <div class="field-input select">Series as shelves <i data-icon="chev"></i></div>
+          <div class="field-input select">Small cards <i data-icon="chev"></i></div>
+          <button class="btn">Select</button>
+          <button class="btn primary"><i data-icon="up"></i>Upload books</button>
+        </div>
+        <main class="page" style="padding-top: 0">
+          <div data-shelf="expanse"></div>
+          <div data-shelf="afdelingq"></div>
+          <div class="section-title"><h2>Other books</h2><span class="muted">10</span></div>
+          <div class="grid" data-tiles="dune,got,goodomens,hp,lefthand,piranesi,sapiens,hailmary,klara,pride"></div>
+        </main>
+      </div>
+    </div>
+  </div>
+  <p class="caption">834 px wide, the Small cards view. Above 600 px the header keeps the brand and the links, and the toolbar wraps as it does today.</p>
+</section>
+
+<!-- ============================================================ 06 Series page -->
+<section class="chapter" id="series">
+  <header><span class="no">06</span><h2>A series</h2></header>
+  <p class="lead">Opening a stack. The name in Literata, the facts under it, one primary button that continues where you are. Cards carry their number in the series; books the library lacks are dashed outlines that open the book on Hardcover, and the series runs on to the books after the last one you own.</p>
+  <div class="frames">
+    <div class="dev laptop w980">
+      <div class="chrome"><i></i><i></i><i></i><span class="url">books.pytlich.dk/?series=3</span></div>
+      <div class="screen soft" data-theme="light" style="height: 640px">
+        <header class="app-header">
+          <a class="brand"><i data-icon="book"></i>eReader</a>
+          <nav><a class="btn ghost small">Users</a><a class="btn ghost small">Settings</a><a class="btn ghost small">Sign out</a></nav>
+        </header>
+        <div class="tabs"><button aria-pressed="false">Books<span class="n">18</span></button><button aria-pressed="true">Series &amp; collections<span class="n">4</span></button></div>
+        <main class="page" style="padding-top: 22px">
+          <a class="btn ghost small" style="margin-left: -12px"><i data-icon="back"></i>All series and collections</a>
+          <h1 class="big">The Expanse</h1>
+          <p class="facts">Series · 3 books · James S. A. Corey · Science fiction · 1 finished · 2 not in the library</p>
+          <div class="row" style="margin-bottom: 30px"><a class="btn primary">Continue #2 Caliban's War</a><button class="btn">Set genre</button><button class="btn">Rename or remove</button></div>
+          <div class="grid" data-tiles="leviathan#1,caliban#2,abaddon#3,cibola#4,nemesis#5"></div>
+        </main>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 07 Pieces -->
+<section class="chapter" id="pieces">
+  <header><span class="no">07</span><h2>Dialogs and panels</h2></header>
+  <p class="lead">The book menu as a floating card with an icon per action and the destructive one last, in its own colour. The Aa panel in the dark theme, complete. Sign-in, standing in for every form in the app: Settings, Users, Edit details.</p>
+  <div class="frames" style="align-items: flex-start">
+    <div class="soft" data-theme="light" style="background: none">
+      <div class="dialog" data-book-menu></div>
+    </div>
+    <div class="soft" data-theme="dark" style="background: none">
+      <aside class="panel standalone">
+        <header><span>Display</span><button class="btn ghost small">Close</button></header>
+        <div class="body" data-display-settings="full"></div>
+      </aside>
+    </div>
+    <div class="soft" data-theme="sepia" style="background: none">
+      <div class="card-form">
+        <h1>Sign in</h1>
+        <div class="field"><label>Username</label><div class="field-input text">jens</div></div>
+        <div class="field"><label>Password</label><div class="field-input text">••••••••••</div></div>
+        <div class="field"><label>This device's name</label><div class="field-input text"><span class="ph">e.g. Boox, iPhone, Laptop</span></div><span class="hint">Shown when syncing your reading position between devices.</span></div>
+        <div class="row" style="margin-top: 6px"><button class="btn primary">Sign in</button></div>
+      </div>
+    </div>
+  </div>
+  <p class="caption">Icons are a small inline SVG set, 1.8 px strokes; nothing loads from outside. The e-ink skin keeps its text-only buttons.</p>
+</section>
+
+<!-- ============================================================ 08 Compare -->
+<section class="chapter" id="compare">
+  <header><span class="no">08</span><h2>Side by side with e-ink</h2></header>
+  <p class="lead">The very same HTML rendered twice. Left, today's stylesheet as an e-ink reader sees it with high contrast on. Right, the Soft skin. This is the whole idea: the markup and the scripts do not change, only which set of tokens and rules is loaded.</p>
+  <div class="two">
+    <div>
+      <div class="compare-panel eink" data-compare></div>
+      <p class="caption">E-ink: 2 px black lines, bordered buttons, 8 px progress, a 44 px slider. Nothing translucent, nothing that fades.</p>
+    </div>
+    <div>
+      <div class="compare-panel soft" data-theme="light" data-compare></div>
+      <p class="caption">Soft: hairlines, tinted pills, 3 px progress, shadows for depth. Hover reveals the options button; on e-ink it is always there.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 09 How -->
+<section class="chapter" id="how">
+  <header><span class="no">09</span><h2>How the switch works</h2></header>
+  <p class="lead">Each page already runs a small boot script that reads the settings from localStorage and sets <code>data-theme</code> and <code>data-eink</code> on the root before the stylesheet applies, so there is never a flash. The skin rides on the same mechanism.</p>
+  <div class="two">
+    <div>
+      <div class="note">
+        <h3>Which skin loads</h3>
+        <ul>
+          <li><b>A saved choice wins.</b> The "High contrast (e-ink)" checkbox becomes a "Look" setting with two values, E-ink and Soft, in the Aa panel and on the Settings page, stored per device like the theme.</li>
+          <li><b>First visit:</b> E-ink when the browser says it is one (Boox, Onyx, Kobo, Kindle, Tolino, PocketBook, reMarkable, Bigme, Hisense in the user agent), or when the device name typed at sign-in does. Otherwise Soft.</li>
+          <li><b>Existing devices</b> that have the e-ink checkbox on keep the look they have. A Boox set up before this arrives changes nothing.</li>
+          <li><b>Themes</b> stay Light, Sepia, Dark and System in both skins. Under E-ink they mean what they mean today.</li>
+        </ul>
+      </div>
+      <div style="height: 20px"></div>
+      <pre class="code"><span class="c">// public/*.html boot script: one more line, before app.css loads</span>
+var eink = /Boox|Onyx|Kobo|Kindle|Tolino|PocketBook|reMarkable|Bigme|Hisense/i;
+var skin = s.skin || (s.eink ? 'eink' : eink.test(navigator.userAgent) ? 'eink' : 'soft');
+document.documentElement.dataset.skin = skin;
+
+<span class="c">/* app.css: the differences that are just numbers become tokens ... */</span>
+:root[data-skin="eink"] { --bw: 2px; --radius: 6px; --shadow: none; --ease: 0s; }
+:root[data-skin="soft"] { --bw: 1px; --radius: 12px; --shadow: var(--cover-shadow); --ease: .15s; }
+.card { border: var(--bw) solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+
+<span class="c">/* ... and the few that are not sit in one block at the end */</span>
+:root[data-skin="soft"] .card { border: 0; }
+:root[data-skin="soft"] .card .menu-btn { opacity: 0; }
+:root[data-skin="soft"] .card:hover .menu-btn { opacity: 1; }</pre>
+    </div>
+    <div>
+      <table class="tbl">
+        <tr><th></th><th>E-ink (today)</th><th>Soft</th></tr>
+        <tr><td>Lines</td><td>2 px, black</td><td>1 px hairline in a warm grey</td></tr>
+        <tr><td>Cards</td><td>Bordered box, cover inside</td><td>No box; the cover with a shadow, text below</td></tr>
+        <tr><td>Corners</td><td>6 px</td><td>12 px on cards and sheets, pills for buttons</td></tr>
+        <tr><td>Colour</td><td>Black and white; grey lines with high contrast off</td><td>Linen, parchment, ember; clay accent; sage for finished</td></tr>
+        <tr><td>Type</td><td>System font, bold weights</td><td>System font for UI, Literata for headings and titles</td></tr>
+        <tr><td>Targets</td><td>44 px everywhere</td><td>44 px on touch, 36 px with a pointer</td></tr>
+        <tr><td>Motion</td><td>None</td><td>150 ms fades and lifts; none with reduced motion</td></tr>
+        <tr><td>Overlays</td><td>Opaque, bordered</td><td>Translucent, blurred bars; scrim under panels</td></tr>
+        <tr><td>Options button</td><td>Always visible, bordered circle</td><td>On hover with a pointer, bottom right of the card on touch</td></tr>
+        <tr><td>Reader text</td><td colspan="2">Unchanged: the same fonts, sizes, weights, margins and pagination in both</td></tr>
+      </table>
+      <div style="height: 20px"></div>
+      <div class="note">
+        <h3>Scope of the change</h3>
+        <ul>
+          <li><b>CSS only</b> for everything shown, except the two boot-script lines above and the Look setting (a few lines in settings.js and the two settings forms).</li>
+          <li><b>No template changes</b> are needed. Three small ones would help and are optional: the icons in the book menu, the drop hint as one line, and the Finished label in sage.</li>
+          <li><b>Structure</b> for later, not part of the skin: a bottom tab bar on phones, and a larger "continue reading" tile for the current book.</li>
+          <li><b>Tests</b> are unaffected; the server does not know about skins.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<script>
+/* ---------------- Icons: a small inline set, 1.8 px strokes */
+const ic = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}${extra}</svg>`;
+const I = {
+  search: ic('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
+  chev: ic('<path d="m6 9 6 6 6-6"/>'),
+  back: ic('<path d="M15 18l-6-6 6-6"/>'),
+  left: ic('<path d="m15 6-6 6 6 6"/>'),
+  right: ic('<path d="m9 6 6 6-6 6"/>'),
+  bookmark: ic('<path d="M6 4h12v17l-6-4-6 4z"/>'),
+  list: ic('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  more: ic('<circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none"/>'),
+  sliders: ic('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>'),
+  book: ic('<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5V5.5"/><path d="M9 8h7M9 11.5h5"/>'),
+  up: ic('<path d="M12 19V6M5.5 12.5 12 6l6.5 6.5"/>'),
+  open: ic('<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5V5.5"/>'),
+  reset: ic('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
+  people: ic('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M17.5 14a6.5 6.5 0 0 1 4 6"/>'),
+  download: ic('<path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 20h16"/>'),
+  edit: ic('<path d="M4 20h4l11-11-4-4L4 16z"/><path d="m13 7 4 4"/>'),
+  image: ic('<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 18 5-5 3 3 3-3 3 3"/>'),
+  refresh: ic('<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'),
+  trash: ic('<path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13"/>'),
+  x: ic('<path d="M6 6l12 12M18 6 6 18"/>'),
+  signal: '<svg viewBox="0 0 60 18" fill="currentColor" aria-hidden="true" style="width:58px;height:18px"><rect x="0" y="10" width="3" height="6" rx="1"/><rect x="5" y="7.5" width="3" height="8.5" rx="1"/><rect x="10" y="5" width="3" height="11" rx="1"/><rect x="15" y="2" width="3" height="14" rx="1"/><path d="M28 6.5a8.5 8.5 0 0 1 9.2 0l-1.3 1.6a6.5 6.5 0 0 0-6.6 0zM30 9.4a5 5 0 0 1 5.2 0l-1.3 1.7a3 3 0 0 0-2.6 0zM32.6 13.4l1.4-1.6-1.4-1.7-1.4 1.7z"/><rect x="42" y="3" width="15" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".5"/><rect x="43.5" y="4.5" width="11" height="9" rx="2"/><path d="M58 7v4a2 2 0 0 0 0-4z" opacity=".5"/></svg>',
+};
+
+/* ---------------- Sample library. Titles from the README where it has them. */
+const B = {
+  leviathan: { t: 'Leviathan Wakes', a: 'James S. A. Corey', series: 'The Expanse', no: 1, st: 'finished', when: '3 Aug', fmt: 'epub', cover: { s: 'space', c1: '#1E3541', c2: '#0B161C', ink: '#E6EEF1' } },
+  caliban:   { t: "Caliban's War", a: 'James S. A. Corey', series: 'The Expanse', no: 2, st: 'reading', pct: 43, when: 'Read today', fmt: 'epub', cover: { s: 'space', c1: '#7A3E2A', c2: '#3A1A12', ink: '#F3E6DC' } },
+  abaddon:   { t: "Abaddon's Gate", a: 'James S. A. Corey', no: 3, missing: true, hc: true },
+  cibola:    { t: 'Cibola Burn', a: 'James S. A. Corey', series: 'The Expanse', no: 4, st: 'unread', when: '14 Aug', fmt: 'epub', cover: { s: 'space', c1: '#3E5A4E', c2: '#1B2B25', ink: '#E7EFE9' } },
+  nemesis:   { t: 'Nemesis Games', a: 'James S. A. Corey', no: 5, missing: true, hc: true },
+  babylon:   { t: "Babylon's Ashes", a: 'James S. A. Corey', no: 6, missing: true, hc: true },
+  dune:      { t: 'Dune', a: 'Frank Herbert', st: 'reading', pct: 62, when: 'Read yesterday', fmt: 'epub', cover: { s: 'band', c1: '#D8B27A', c2: '#5E351A', ink: '#2A1A0E', ink2: '#EBD3A4' } },
+  kvinden:   { t: 'Kvinden i buret', a: 'Jussi Adler-Olsen', series: 'Afdeling Q', no: 1, st: 'reading', pct: 18, when: 'Read 26 Sep', fmt: 'epub', cover: { s: 'top', c1: '#2F3A4A', c2: '#161C25', ink: '#E4E8EE' } },
+  fasan:     { t: 'Fasandræberne', a: 'Jussi Adler-Olsen', series: 'Afdeling Q', no: 2, st: 'unread', when: '2 Sep', fmt: 'epub', cover: { s: 'top', c1: '#4A3A2F', c2: '#22180F', ink: '#EDE3D6' } },
+  got:       { t: 'A Game of Thrones', a: 'George R. R. Martin', series: 'A Song of Ice and Fire', no: 1, st: 'unread', when: '2 Sep', fmt: 'mobi', cover: { s: 'frame', c1: '#2C2C2E', c2: '#121213', ink: '#D8D2C6' } },
+  goodomens: { t: 'Good Omens', a: 'Terry Pratchett, Neil Gaiman', st: 'finished', when: '19 Jul', fmt: 'epub', cover: { s: 'center', c1: '#F1E9D6', c2: '#DFD0AE', ink: '#1E1A16' } },
+  hp:        { t: 'Harry Potter og De Vises Sten', a: 'J.K. Rowling', st: 'finished', when: '2 Jun', fmt: 'epub', cover: { s: 'center', c1: '#4F3357', c2: '#2A1A30', ink: '#EEDFA8' } },
+  shadowdale:{ t: 'Shadowdale', a: 'Scott Ciencin', series: 'Forgotten Realms: Avatar', no: 1, st: 'unread', when: '12 Sep', fmt: 'mobi', cover: { s: 'frame', c1: '#2F4A3A', c2: '#142219', ink: '#E5D9A8' } },
+  tantras:   { t: 'Tantras', a: 'Scott Ciencin', no: 2, missing: true, hc: true },
+  waterdeep: { t: 'Waterdeep', a: 'Troy Denning', series: 'Forgotten Realms: Avatar', no: 3, st: 'unread', when: '12 Sep', fmt: 'mobi', cover: { s: 'frame', c1: '#3A4A5A', c2: '#1A222B', ink: '#DCE3E8' } },
+  prince:    { t: 'Prince of Lies', a: 'James Lowder', series: 'Forgotten Realms: Avatar', no: 4, st: 'unread', when: '12 Sep', fmt: 'mobi', cover: { s: 'frame', c1: '#4A2F2F', c2: '#231414', ink: '#E8D7C2' } },
+  lefthand:  { t: 'The Left Hand of Darkness', a: 'Ursula K. Le Guin', st: 'unread', when: '30 Aug', fmt: 'epub', cover: { s: 'top', c1: '#C9D3D8', c2: '#8FA2AC', ink: '#1F2A30' } },
+  piranesi:  { t: 'Piranesi', a: 'Susanna Clarke', st: 'reading', pct: 7, when: 'Read 20 Sep', fmt: 'epub', cover: { s: 'center', c1: '#B99A5E', c2: '#7A6236', ink: '#1F1A10' } },
+  wind:      { t: 'The Name of the Wind', a: 'Patrick Rothfuss', series: 'The Kingkiller Chronicle', no: 1, st: 'finished', when: '11 May', fmt: 'epub', cover: { s: 'band', c1: '#8C5A2B', c2: '#3E2611', ink: '#F1E3CC', ink2: '#F1E3CC' } },
+  fear:      { t: "The Wise Man's Fear", a: 'Patrick Rothfuss', series: 'The Kingkiller Chronicle', no: 2, st: 'unread', when: '11 May', fmt: 'epub', cover: { s: 'band', c1: '#4B6B7A', c2: '#1C2E38', ink: '#E6EEF1', ink2: '#E6EEF1' } },
+  sapiens:   { t: 'Sapiens', a: 'Yuval Noah Harari', st: 'reading', pct: 81, when: 'Read 25 Sep', fmt: 'pdf', cover: { s: 'center', c1: '#F4F1EA', c2: '#E4DED0', ink: '#17130F' } },
+  hailmary:  { t: 'Project Hail Mary', a: 'Andy Weir', st: 'unread', when: '18 Aug', fmt: 'epub', cover: { s: 'space', c1: '#1B2440', c2: '#0B1020', ink: '#F2E9D6' } },
+  klara:     { t: 'Klara and the Sun', a: 'Kazuo Ishiguro', st: 'unread', when: '5 Aug', fmt: 'epub', cover: { s: 'sun', c1: '#E9B04A', c2: '#C2662E', ink: '#2B1A0C' } },
+  pride:     { t: 'Pride and Prejudice', a: 'Jane Austen', st: 'reading', pct: 12, when: 'Read today', fmt: 'epub', cover: { s: 'center', c1: '#DCCBB6', c2: '#B79C7C', ink: '#2F241A' } },
+};
+const S = {
+  expanse:   { name: 'The Expanse', author: 'James S. A. Corey', books: ['leviathan', 'caliban', 'abaddon', 'cibola'], top: 'caliban', place: 'Reading #2', pct: 48 },
+  afdelingq: { name: 'Afdeling Q', author: 'Jussi Adler-Olsen', books: ['kvinden', 'fasan'], top: 'kvinden', place: 'Reading #1', pct: 9 },
+  avatar:    { name: 'Forgotten Realms: Avatar', author: 'Scott Ciencin and others', books: ['shadowdale', 'tantras', 'waterdeep', 'prince'], top: 'shadowdale', place: 'Not started', pct: 0 },
+  kingkiller:{ name: 'The Kingkiller Chronicle', author: 'Patrick Rothfuss', books: ['wind', 'fear'], top: 'fear', place: 'Next: #2', pct: 50 },
+};
+
+/* ---------------- Renderers. The DOM mirrors library.js; both skins style it. */
+function cover(b) {
+  if (b.missing) return `<div class="cv missing-cv"><span class="cv-t">${b.t}</span><span class="cv-a">${b.a || ''}</span></div>`;
+  const c = b.cover;
+  return `<div class="cv ${c.s}" style="--c1:${c.c1};--c2:${c.c2};--ink:${c.ink}${c.ink2 ? ';--ink2:' + c.ink2 : ''}"><span class="cv-t">${b.t}</span><span class="cv-a">${b.a}</span></div>`;
+}
+const whenText = (b) => b.st === 'unread' ? `Added ${b.when}` : b.st === 'finished' ? `<span class="finished">Finished</span> ${b.when}` : `${b.pct}% · ${b.when}`;
+const menuBtn = () => `<button class="menu-btn" aria-label="Options">${I.more}</button>`;
+function card(id, o = {}) {
+  const b = B[id];
+  const tag = o.no != null ? `<span class="cover-tag">#${o.no}</span>` : '';
+  if (b.missing) return `<div class="card missing"><div class="cover-wrap">${cover(b)}${tag}</div><div class="info"><div class="title">${b.t}</div><div class="author">${b.a || ''}</div><div class="meta"><span>Not in the library</span>${b.hc ? '<span class="badge">Hardcover</span>' : ''}</div></div></div>`;
+  const series = b.series && !o.inSeries ? `<div class="series-line"><a>${b.series}${b.no ? ' #' + b.no : ''}</a></div>` : '';
+  const prog = b.st === 'reading' ? `<div class="progress"><i style="width:${b.pct}%"></i></div>` : '';
+  return `<div class="card${o.hover ? ' hover' : ''}"><div class="cover-wrap">${cover(b)}${tag}</div>
+    <div class="info"><div class="title">${b.t}</div><div class="author">${b.a}</div>${series}${prog}<div class="meta"><span>${whenText(b)}</span><span class="badge">${b.fmt}</span></div></div>${menuBtn()}</div>`;
+}
+function stack(sid) {
+  const g = S[sid], n = g.books.length;
+  const prog = g.pct ? `<div class="progress"><i style="width:${g.pct}%"></i></div>` : '';
+  return `<div class="card group pile"><div class="cover-wrap stack">${cover(B[g.top])}<span class="cover-tag">${n} books</span></div>
+    <div class="info"><div class="title">${g.name}</div><div class="author">${g.author}</div>${prog}<div class="meta"><span class="place">${g.place}</span></div></div></div>`;
+}
+function row(id, o = {}) {
+  const b = B[id];
+  const about = [b.a, b.series && !o.inSeries ? `<a>${b.series}${b.no ? ' #' + b.no : ''}</a>` : ''].filter(Boolean).join(' · ');
+  const prog = b.st === 'reading' ? `<div class="progress"><i style="width:${b.pct}%"></i></div>` : '';
+  return `<div class="list-row${o.current ? ' current' : ''}"><div class="thumb">${cover(b)}</div>
+    <div class="body"><div class="title">${o.no != null ? `<span class="no">#${o.no}</span> ` : ''}${b.t}</div><div class="about">${about}</div><div class="meta">${prog}<span>${whenText(b)}</span><span class="badge">${b.fmt}</span></div></div>${menuBtn()}</div>`;
+}
+function shelf(sid) {
+  const g = S[sid];
+  const facts = [g.author, `${g.books.length - g.books.filter((id) => B[id].missing).length} books`, g.place].filter(Boolean).join(' · ');
+  const items = g.books.map((id, i) => {
+    const b = B[id], cur = id === g.top && g.pct > 0;
+    if (b.missing) return `<div class="shelf-book missing"><div class="cover-wrap">${cover(b)}<span class="cover-tag">#${i + 1}</span></div><div class="title">${b.t}</div><div class="state">Not in the library</div></div>`;
+    const state = { finished: 'Finished', reading: `${b.pct}% read`, unread: 'Not started' }[b.st];
+    const prog = b.st === 'reading' ? `<div class="progress"><i style="width:${b.pct}%"></i></div>` : '';
+    return `<div class="shelf-book${cur ? ' current' : ''}"><div class="cover-wrap">${cover(b)}<span class="cover-tag">#${i + 1}</span></div><div class="title">${b.t}</div>${prog}<div class="state">${state}</div></div>`;
+  }).join('');
+  return `<section class="shelf"><div class="shelf-head"><h2><a>${g.name}</a></h2><span class="muted">${facts}</span></div><div class="shelf-row">${items}</div></section>`;
+}
+const tile = (tok) => {
+  tok = tok.trim();
+  if (tok.startsWith('S:')) return stack(tok.slice(2));
+  const hover = tok.endsWith('!'); if (hover) tok = tok.slice(0, -1);
+  const [id, no] = tok.split('#');
+  return card(id, { no, inSeries: no != null, hover });
+};
+document.querySelectorAll('[data-tiles]').forEach((el) => { el.innerHTML = el.dataset.tiles.split(',').map(tile).join(''); });
+document.querySelectorAll('[data-shelf]').forEach((el) => { el.outerHTML = shelf(el.dataset.shelf); });
+
+/* ---------------- The book menu */
+document.querySelectorAll('[data-book-menu]').forEach((el) => {
+  const item = (icon, label, cls = '') => `<button class="btn ${cls}">${I[icon]}${label}</button>`;
+  el.innerHTML = `<h2>Caliban's War</h2>
+    <p class="about">James S. A. Corey<br>Science fiction · EPUB · 1.2 MB · added by Jens 14 Aug</p>
+    <p class="part">Part of <a>The Expanse #2</a></p>
+    <div class="menu">
+      ${item('open', 'Open')}${item('reset', 'Reset my reading position')}${item('people', 'Who is reading this')}${item('download', 'Download original file')}
+      <hr>${item('edit', 'Edit details and series')}${item('image', 'Change cover')}${item('refresh', 'Convert again')}
+      <hr>${item('trash', 'Delete from library', 'danger')}
+    </div>`;
+});
+
+/* ---------------- Display settings (the Aa panel) */
+function displaySettings(kind) {
+  const seg = (opts, on) => `<div class="seg">${opts.map((o) => `<button${o === on ? ' class="on"' : ''}>${o}</button>`).join('')}</div>`;
+  const sw = (label, on) => `<label class="switch${on ? ' on' : ''}"><span>${label}</span><i></i></label>`;
+  const themes = `<div class="themes">${[['light', 'Light'], ['sepia', 'Sepia'], ['dark', 'Dark'], ['auto', 'System']].map(([v, l]) => `<button${v === (kind === 'phone' ? 'dark' : 'auto') ? ' class="on"' : ''}><i class="sw-${v}"></i>${l}</button>`).join('')}</div>`;
+  const look = `<div class="group"><span class="lbl">Look</span>${seg(['Soft', 'E-ink'], 'Soft')}</div>`;
+  const font = `<div class="group"><span class="lbl">Font <span style="text-transform:none;letter-spacing:0;font-weight:500">· on all your devices</span></span><div class="field-input select" style="justify-content:space-between"><span style="font-family:var(--serif);font-size:15px">Literata</span>${I.chev}</div></div>`;
+  const size = `<div class="group"><span class="lbl">Text size</span><div class="stepper"><button>&minus;</button><output>18 px</output><button>+</button><span class="sample">The quick brown fox</span></div></div>`;
+  const head = `<div class="group"><span class="lbl">Theme</span>${themes}</div>${look}${font}${size}
+    <div class="group"><span class="lbl">Text weight</span>${seg(['Normal', 'Medium', 'Semibold', 'Bold'], 'Normal')}</div>
+    <div class="group"><span class="lbl">Line spacing</span>${seg(['Tight', 'Normal', 'Loose', 'Wide'], 'Normal')}</div>`;
+  if (kind === 'phone') return head + `<div class="group"><span class="lbl">Margins</span>${seg(['Narrow', 'Normal', 'Wide'], 'Normal')}</div>`;
+  return head + `<div class="group"><span class="lbl">Margins</span>${seg(['Narrow', 'Normal', 'Wide'], 'Normal')}</div>
+    <div class="group"><span class="lbl">Alignment</span>${seg(['Justified', 'Left'], 'Justified')}${sw('Hyphenation', true)}</div>
+    <div class="group"><span class="lbl">Page turning</span>${sw('Swipe to turn pages', true)}${sw('Tap left/right edge to turn pages', true)}</div>
+    <div class="group"><span class="lbl">This device's name</span><div class="field-input text">Laptop</div></div>
+    <div class="group"><span class="lbl">Book</span><div class="row"><button class="btn small">Download original</button><button class="btn small">Who else is reading</button><button class="btn small">Reload</button></div></div>`;
+}
+document.querySelectorAll('[data-display-settings]').forEach((el) => { el.innerHTML = displaySettings(el.dataset.displaySettings); });
+
+/* ---------------- Reading text: Pride and Prejudice, chapter 1 (public domain) */
+const TEXT = `<h1><small>Volume I</small>Chapter 1</h1>
+<p>It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.</p>
+<p>However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered as the rightful property of some one or other of their daughters.</p>
+<p>“My dear Mr. Bennet,” said his lady to him one day, “have you heard that Netherfield Park is let at last?”</p>
+<p>Mr. Bennet replied that he had not.</p>
+<p>“But it is,” returned she; “for Mrs. Long has just been here, and she told me all about it.”</p>
+<p>Mr. Bennet made no answer.</p>
+<p>“Do not you want to know who has taken it?” cried his wife impatiently.</p>
+<p>“You want to tell me, and I have no objection to hearing it.”</p>
+<p>This was invitation enough.</p>
+<p>“Why, my dear, you must know, Mrs. Long says that Netherfield is taken by a young man of large fortune from the north of England; that he came down on Monday in a chaise and four to see the place, and was so much delighted with it that he agreed with Mr. Morris immediately; that he is to take possession before Michaelmas, and some of his servants are to be in the house by the end of next week.”</p>
+<p>“What is his name?”</p>
+<p>“Bingley.”</p>
+<p>“Is he married or single?”</p>
+<p>“Oh! single, my dear, to be sure! A single man of large fortune; four or five thousand a year. What a fine thing for our girls!”</p>
+<p>“How so? how can it affect them?”</p>
+<p>“My dear Mr. Bennet,” replied his wife, “how can you be so tiresome! You must know that I am thinking of his marrying one of them.”</p>
+<p>“Is that his design in settling here?”</p>
+<p>“Design! nonsense, how can you talk so! But it is very likely that he may fall in love with one of them, and therefore you must visit him as soon as he comes.”</p>
+<p>“I see no occasion for that. You and the girls may go, or you may send them by themselves, which perhaps will be still better, for as you are as handsome as any of them, Mr. Bingley might like you the best of the party.”</p>
+<p>“My dear, you flatter me. I certainly have had my share of beauty, but I do not pretend to be anything extraordinary now. When a woman has five grown-up daughters, she ought to give over thinking of her own beauty.”</p>
+<p>“In such cases, a woman has not often much beauty to think of.”</p>
+<p>“But, my dear, you must indeed go and see Mr. Bingley when he comes into the neighbourhood.”</p>
+<p>“It is more than I engage for, I assure you.”</p>
+<p>“But consider your daughters. Only think what an establishment it would be for one of them. Sir William and Lady Lucas are determined to go, merely on that account, for in general, you know, they visit no newcomers. Indeed you must go, for it will be impossible for us to visit him if you do not.”</p>
+<p>“You are over-scrupulous, surely. I dare say Mr. Bingley will be very glad to see you; and I will send a few lines by you to assure him of my hearty consent to his marrying whichever he chooses of the girls; though I must throw in a good word for my little Lizzy.”</p>
+<p>“I desire you will do no such thing. Lizzy is not a bit better than the others; and I am sure she is not half so handsome as Jane, nor half so good-humoured as Lydia. But you are always giving her the preference.”</p>
+<p>“They have none of them much to recommend them,” replied he; “they are all silly and ignorant like other girls; but Lizzy has something more of quickness than her sisters.”</p>`;
+document.querySelectorAll('[data-text]').forEach((el) => { el.innerHTML = TEXT; });
+
+/* ---------------- The side-by-side: one markup, two skins */
+document.querySelectorAll('[data-compare]').forEach((el) => {
+  el.innerHTML = `<header class="app-header"><a class="brand">${I.book}eReader</a><nav><a class="btn ghost small">Settings</a><a class="btn ghost small">Sign out</a></nav></header>
+    <div class="tabs"><button aria-pressed="true">Books<span class="n">18</span></button><button aria-pressed="false">Series &amp; collections<span class="n">4</span></button></div>
+    <div class="toolbar"><div class="field-input search">${I.search}<span>Search</span></div><div class="field-input select">Recently read ${I.chev}</div><button class="btn primary">Upload books</button></div>
+    <div class="page">
+      <div class="grid cols3">${card('caliban', { hover: true })}${stack('expanse')}${card('dune')}</div>
+      <div class="list">${row('kvinden', { current: true })}${row('got')}</div>
+      <div class="rd-bars">
+        <header class="bar topbar"><a class="btn ghost icon">${I.back}</a><div class="title">Caliban's War</div><button class="btn ghost icon">${I.bookmark}</button><button class="btn ghost icon">${I.list}</button><button class="btn ghost icon" style="font-weight:700">Aa</button></header>
+        <footer class="bar bottombar"><div class="slider"><div class="track"><div class="fill" style="width:43%"></div></div><div class="thumb" style="left:43%"></div></div>
+          <div class="row"><button class="btn ghost icon">${I.left}</button><div class="pos">43% · Chapter 12 · page 4 of 11 in this section</div><button class="btn ghost icon">${I.right}</button></div></footer>
+      </div>
+    </div>`;
+});
+
+/* ---------------- Palette swatches read straight from the CSS, so they cannot drift */
+const SW = [['Background', '--bg'], ['Surface', '--surface'], ['Surface 2', '--surface-2'], ['Text', '--fg'], ['Muted', '--muted'], ['Hairline', '--line'], ['Accent', '--accent'], ['Accent, text', '--accent-ink'], ['Accent, soft', '--accent-soft'], ['Finished', '--ok'], ['Danger', '--danger']];
+document.querySelectorAll('[data-swatches]').forEach((el) => {
+  const cs = getComputedStyle(el.closest('.soft'));
+  el.innerHTML = SW.map(([n, v]) => { const c = cs.getPropertyValue(v).trim(); return `<div class="sw"><i style="background:${c}"></i><b>${n}</b><code>${c}</code></div>`; }).join('');
+});
+document.querySelectorAll('[data-typesample]').forEach((el) => {
+  el.innerHTML = `<div class="h">Series &amp; collections</div>
+    <div class="b">Body text in the system font, 15 px. <span class="muted">Muted for authors, dates and hints.</span> <span class="place">Reading #2</span> · <span class="finished">Finished</span> <span class="badge">epub</span></div>
+    <div class="progress" style="margin:2px 0 4px"><i style="width:43%"></i></div>
+    <div class="row"><button class="btn primary">Continue</button><button class="btn">Set genre</button><button class="btn ghost">Sign out</button><div class="field-input select">Recently read ${I.chev}</div></div>`;
+});
+
+/* ---------------- Icon placeholders in the static markup */
+document.querySelectorAll('[data-icon]').forEach((el) => { el.outerHTML = I[el.dataset.icon] || ''; });
+
+/* ---------------- Preview every Soft frame in one theme */
+const frames = [...document.querySelectorAll('.soft[data-theme]:not([data-fixed])')];
+frames.forEach((f) => { f.dataset.default = f.dataset.theme; });
+document.getElementById('theme-switch').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  for (const x of b.parentElement.children) x.setAttribute('aria-pressed', String(x === b));
+  frames.forEach((f) => { f.dataset.theme = b.dataset.v === 'auto' ? f.dataset.default : b.dataset.v; });
+});
+</script>
+</body>
+</html>

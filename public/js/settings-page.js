@@ -1,21 +1,33 @@
 import { api, requireUser, guessDeviceName } from './api.js';
-import { loadSettings, saveSettings, applyTheme, fontOptions, adoptAccountFont, saveAccountFont } from './settings.js';
+import { loadSettings, saveSettings, applyTheme, resolveSkin, fontOptions, adoptAccountFont, saveAccountFont } from './settings.js';
 
 const s = loadSettings();
 const device = document.getElementById('device');
 const theme = document.getElementById('theme');
+const skin = document.getElementById('skin');
 const eink = document.getElementById('eink');
 device.value = s.device || guessDeviceName();
 theme.value = s.theme;
+// The look in use, which is this device's own until one is picked (see resolveSkin()). Only picking one
+// here stores it: the other fields leave 'auto' alone, so a new Boox device name still counts.
+skin.value = resolveSkin(s);
+let chosenSkin = s.skin;
 eink.checked = !!s.eink;
+// High contrast belongs to the e-ink look, so it only shows with it.
+const showEink = () => eink.closest('.field').classList.toggle('hidden', skin.value !== 'eink');
+showEink();
 function persist() {
-  const next = { ...loadSettings(), device: device.value.trim(), theme: theme.value, eink: eink.checked };
+  const next = { ...loadSettings(), device: device.value.trim(), theme: theme.value, skin: chosenSkin, eink: eink.checked };
   saveSettings(next);
   applyTheme(next);
+  skin.value = resolveSkin(next);
+  showEink();
 }
 device.addEventListener('change', persist);
 theme.addEventListener('change', persist);
-eink.addEventListener('change', persist);
+skin.addEventListener('change', () => { chosenSkin = skin.value; persist(); });
+// Turning high contrast off must not swap the whole look, so under 'auto' the look shown is kept.
+eink.addEventListener('change', () => { if (chosenSkin === 'auto') chosenSkin = skin.value; persist(); });
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(loadSettings()));
 
 // The font belongs to the account, so it is the same on every device.

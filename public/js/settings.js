@@ -73,6 +73,7 @@ export function fontReady(s) {
 
 export const DEFAULTS = {
   theme: 'auto',        // light | sepia | dark | auto (follows the device)
+  skin: 'auto',         // auto | soft | eink. auto: e-ink when high contrast is on or the device looks like an e-ink reader, else soft
   eink: false,
   font: 'literata',     // bundled with the app, so a new device looks like the others
   fontSize: 18,
@@ -132,10 +133,27 @@ export function effectiveTheme(s) {
   return s.theme;
 }
 
+/** E-ink readers, as their browser's user agent or the device name typed at sign-in ("Boox") names them. */
+export const EINK_DEVICE = /boox|onyx|kobo|kindle|tolino|pocketbook|remarkable|bigme|hisense|meebook|e-?ink/i;
+
+/**
+ * The look of the app on this device: 'soft' (css/soft.css, for phones, tablets and laptops) or 'eink'
+ * (black on white, thick lines, no motion). A look picked in the settings wins; until then an e-ink
+ * reader, or a device with high contrast on, gets 'eink' and any other 'soft'. The script in the <head>
+ * of every page repeats this, so a page never shows in the wrong look first: keep the two in step.
+ */
+export function resolveSkin(s) {
+  if (s.skin === 'soft' || s.skin === 'eink') return s.skin;
+  return s.eink || EINK_DEVICE.test(`${navigator.userAgent} ${s.device || ''}`) ? 'eink' : 'soft';
+}
+
 export function applyTheme(s) {
   const root = document.documentElement;
   root.dataset.theme = effectiveTheme(s);
-  if (s.eink) root.dataset.eink = '1'; else delete root.dataset.eink;
+  const skin = resolveSkin(s);
+  root.dataset.skin = skin;
+  // The high-contrast palette is part of the e-ink look; the soft look has none.
+  if (skin === 'eink' && s.eink) root.dataset.eink = '1'; else delete root.dataset.eink;
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = getComputedStyle(document.body).backgroundColor || '#fff';
 }
