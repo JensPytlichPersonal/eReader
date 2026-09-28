@@ -28,6 +28,14 @@ export function likeness(a, b) {
   return same ? same / (x.size + y.size - same) : 0;
 }
 
+// Titles this alike name the same book.
+const SAME_TITLE = 0.8;
+
+/** Whether two titles name the same book: "Dune" and "Dune Messiah" do not. */
+export function sameTitle(a, b) {
+  return likeness(a, b) >= SAME_TITLE;
+}
+
 /** Whether two authors share a name: "Adler-Olsen, Jussi" and "Jussi Adler-Olsen". Initials do not count. */
 export function sameAuthor(a, b) {
   const x = words(a);

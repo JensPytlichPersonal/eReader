@@ -17,6 +17,12 @@ const expanse = {
 };
 // Another series of almost the same name, by someone else.
 const namesake = { name: 'Expanse', author: 'Someone Else', url: 'https://hardcover.app/id/series/27', books: [entry(1, 'Far Away', { author: 'Someone Else' })] };
+// A series Hardcover calls something else than the library, which calls it "Avatar".
+const avatar = {
+  name: 'Forgotten Realms: Avatar', author: 'Richard Awlinson', url: 'https://hardcover.app/id/series/5',
+  books: [entry(1, 'Shadowdale', { author: 'Scott Ciencin' }), entry(2, 'Tantras', { author: 'Scott Ciencin' }), entry(3, 'Waterdeep', { author: 'Troy Denning' }),
+    entry(4, 'Prince of Lies', { author: 'James Lowder' }), entry(5, 'Crucible: The Trial of Cyric the Mad', { author: 'Troy Denning' })],
+};
 const quiet = { error() {} };
 
 test('the series Hardcover has under a name is taken only when it is the library\'s', () => {
@@ -33,6 +39,17 @@ test('the series Hardcover has under a name is taken only when it is the library
   // The name alone is not enough: another author's series, or books that could be anyone's.
   assert.equal(pick('The Expanse', [{ title: 'Leviathan vågner', author: 'Jens Hansen', position: 1 }]), null);
   assert.equal(pick('The Expanse', [{ title: 'Leviathan vågner', author: '', position: 1 }]), null);
+
+  // One of its books under its number, title and author, whatever the series is called.
+  const lowder = (position, author = 'James Lowder') => ({ title: 'Prince of Lies', author, position });
+  const pickAvatar = (books) => pickSeries([namesake, avatar], { name: 'Avatar', books })?.url ?? null;
+  assert.equal(pickAvatar([lowder(4)]), avatar.url);
+  // Under another number, or without the author, the title is not enough.
+  assert.equal(pickAvatar([lowder(3)]), null);
+  assert.equal(pickAvatar([lowder(4, '')]), null);
+  assert.equal(pickAvatar([lowder(4, 'Someone Else')]), null);
+  // A series without books is not the library's, even with its name and author.
+  assert.equal(pickSeries([{ ...expanse, books: [] }], { name: 'The Expanse', books: [corey('Leviathan Wakes', 1)] }), null);
 });
 
 test('the books the library lacks are the main ones with a number and a title it has not', () => {
@@ -85,7 +102,7 @@ test('the library shows gaps in the numbers, and what Hardcover lists in their p
 test('Hardcover is asked once a day for a series, one lookup at a time', async () => {
   const asked = [];
   let reply = async () => [expanse];
-  const catalogue = { series: async (name) => { asked.push({ name, at: Date.now() }); return reply(name); } };
+  const catalogue = { series: async (name) => { asked.push({ name, at: Date.now() }); return reply(name); }, seriesOf: async () => [] };
   const books = [{ title: 'Leviathan Wakes', author: 'James S. A. Corey', position: 1 }];
 
   let missing = createMissingBooks({ catalogue, interval: 0, log: quiet });
@@ -115,12 +132,56 @@ test('Hardcover is asked once a day for a series, one lookup at a time', async (
   await missing.forSeries({ name: 'The Expanse', books });
   assert.equal(asked.length, 4, 'asked again once nothing is kept');
 
-  // Lookups of different series are spaced out.
-  missing = createMissingBooks({ catalogue, interval: 150, log: quiet });
+  // Lookups of different series are spaced out, by the two requests a lookup by name makes.
+  missing = createMissingBooks({ catalogue, interval: 75, log: quiet });
   asked.length = 0;
   await Promise.all(['A', 'B'].map((name) => missing.forSeries({ name, books })));
   assert.equal(asked.length, 2);
   assert.ok(asked[1].at - asked[0].at >= 140, `the second lookup waited (${asked[1].at - asked[0].at} ms)`);
+});
+
+test('a series Hardcover calls something else is found through one of its books', async () => {
+  const asked = [];
+  const catalogue = {
+    series: async (name) => { asked.push({ what: name, at: Date.now() }); return name === avatar.name ? [avatar] : [namesake]; },
+    seriesOf: async ({ title, author }) => { asked.push({ what: `${title} by ${author}`, at: Date.now() }); return title === 'Prince of Lies' ? [namesake, avatar] : []; },
+  };
+  // The book looked for is the first with a number and an author: not the omnibus, nor a book without one.
+  const books = [
+    { title: 'Skygger over Dalen', author: '', position: 1, positionEnd: null },
+    { title: 'The Avatar Trilogy', author: 'Richard Awlinson', position: 1, positionEnd: 3 },
+    { title: 'Prince of Lies', author: 'James Lowder', position: 4, positionEnd: null },
+  ];
+  let missing = createMissingBooks({ catalogue, interval: 0, log: quiet });
+  const found = await missing.forSeries({ name: 'Avatar', books });
+  assert.deepEqual(asked.map((a) => a.what), ['Avatar', 'Prince of Lies by James Lowder']);
+  assert.deepEqual(found.series, { name: 'Forgotten Realms: Avatar', url: avatar.url });
+  assert.deepEqual(found.missing.map((m) => [m.position, m.title]), [[5, 'Crucible: The Trial of Cyric the Mad']]);
+  // What the book found is kept like what the name found.
+  await missing.forSeries({ name: 'Avatar', books: books.slice(2) });
+  assert.equal(asked.length, 2);
+
+  // Under Hardcover's name the book is not looked for; without a book to look for, only the name is.
+  asked.length = 0;
+  assert.equal((await missing.forSeries({ name: 'Forgotten Realms: Avatar', books })).series.url, avatar.url);
+  assert.deepEqual(await missing.forSeries({ name: 'Elsewhere', books: books.slice(0, 2) }), { series: null, missing: [] });
+  assert.deepEqual(asked.map((a) => a.what), ['Forgotten Realms: Avatar', 'Elsewhere']);
+
+  // A lookup through a book makes three requests, so the next one waits for three.
+  missing = createMissingBooks({ catalogue, interval: 50, log: quiet });
+  asked.length = 0;
+  await missing.forSeries({ name: 'Avatar', books });
+  await missing.forSeries({ name: 'Forgotten Realms: Avatar', books });
+  const waits = asked.slice(1).map((a, i) => a.at - asked[i].at);
+  assert.ok(waits[0] >= 95 && waits[1] >= 145, `waited for two requests, then three (${waits.join(' ms, ')} ms)`);
+
+  // A book that cannot be looked up now is not tried again for a while either.
+  const busy = { series: async () => [], seriesOf: async () => { asked.push({ what: 'busy' }); throw new LookupError('Hardcover is busy.'); } };
+  missing = createMissingBooks({ catalogue: busy, interval: 0, log: quiet });
+  asked.length = 0;
+  await assert.rejects(missing.forSeries({ name: 'Avatar', books }), /busy/);
+  await assert.rejects(missing.forSeries({ name: 'Avatar', books }), /busy/);
+  assert.equal(asked.length, 1);
 });
 
 // ---- the API ----
@@ -130,7 +191,7 @@ const asked = [];
 let reply = async () => [namesake, expanse];
 before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ereader-missing-'));
-  const catalogue = { series: async (name) => { asked.push(name); return reply(name); } };
+  const catalogue = { series: async (name) => { asked.push(name); return reply(name); }, seriesOf: async () => [] };
   const created = createApp({ dataDir, quiet: true, sessionDays: 1, hardcover: null, missingBooks: createMissingBooks({ catalogue, interval: 0, keep: 0, retry: 0, log: quiet }) });
   server = created.app.listen(0);
   await new Promise((r) => server.once('listening', r));
