@@ -2,7 +2,7 @@
 // (section, character offset) so it is stable across devices, fonts and screen sizes, and
 // keeps that position in sync with the server.
 import { api, toast, escapeHtml, guessDeviceName, registerServiceWorker, formatDate } from './api.js';
-import { loadSettings, saveSettings, applyTheme, applyTypography, fontOptions, fontReady, adoptAccountFont, saveAccountFont, effectiveTheme } from './settings.js';
+import { loadSettings, saveSettings, applyTheme, resolveSkin, applyTypography, fontOptions, fontReady, adoptAccountFont, saveAccountFont, effectiveTheme } from './settings.js';
 import { PdfPageView } from './pdf-view.js';
 
 registerServiceWorker();
@@ -673,6 +673,8 @@ function updateStatus() {
     els.pos.textContent = `${pct}% · ${title} · page ${state.page + 1} of ${state.pageCount} in this section`;
   }
   els.slider.value = String(Math.round((state.percent ?? 0) * 1000));
+  // The soft look fills the slider's track up to the thumb.
+  els.slider.style.setProperty('--pct', `${(state.percent ?? 0) * 100}%`);
   document.title = `${m.title} - eReader`;
 }
 
@@ -895,7 +897,26 @@ function check(id, key, onChange) {
 function bindSettings() {
   const typo = () => { applyTheme(settings); relayout(); };
   seg('theme-seg', 'theme', typo);
-  check('opt-eink', 'eink', typo);
+  // The look in use, which is this device's own until one is picked here (see resolveSkin()). High
+  // contrast belongs to the e-ink look, so it only shows with it.
+  const skinSeg = $('skin-seg');
+  const einkOption = $('opt-eink').closest('label');
+  const syncSkin = () => {
+    const skin = resolveSkin(settings);
+    skinSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === skin));
+    einkOption.classList.toggle('hidden', skin !== 'eink');
+  };
+  skinSeg.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    settings.skin = b.dataset.v;
+    saveSettings(settings);
+    syncSkin();
+    typo();
+  });
+  syncSkin();
+  // Turning high contrast off must not swap the whole look, so under 'auto' the e-ink look is kept.
+  check('opt-eink', 'eink', () => { if (settings.skin === 'auto') { settings.skin = 'eink'; saveSettings(settings); } syncSkin(); typo(); });
   seg('weight-seg', 'weight', async () => { await fontReady(settings); typo(); });
   seg('lh-seg', 'lineHeight', typo);
   seg('margin-seg', 'margin', typo);
@@ -1038,6 +1059,7 @@ function bindInput() {
   els.slider.addEventListener('input', () => {
     const pos = positionFromPercent(parseInt(els.slider.value, 10) / 1000);
     els.pos.textContent = `${Math.round(parseInt(els.slider.value, 10) / 10)}% · ${sections()[pos.section]?.title || ''}`;
+    els.slider.style.setProperty('--pct', `${parseInt(els.slider.value, 10) / 10}%`);
   });
 
   window.addEventListener('resize', debounce(relayout, 150));

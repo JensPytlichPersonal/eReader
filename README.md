@@ -24,7 +24,10 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   too. Text size, text weight, line spacing, margins, alignment, hyphenation, the theme (light, sepia,
   dark, or following the device, which is the default) and a high-contrast e-ink switch are stored on
   each device separately, so your Boox can be light and large while your phone is dark and small,
-  both in the same font.
+  both in the same font. The app has two looks, also chosen per device: *Soft* for phones, tablets and
+  laptops (warm and muted) and *E-ink* for e-ink readers (black on white, thick lines, no motion). It
+  picks E-ink on a Boox, Kobo or similar and when high contrast is on, Soft everywhere else, and the
+  *Look* setting in the **Aa** panel or under Settings changes it.
 - **Heavier text for e-ink.** E-ink screens draw thin strokes as light grey, so the text weight
   (normal, medium, semibold or bold) makes letters darker. Literata, Merriweather, Libre Baskerville
   and Bitter switch to their own heavier faces, bold text included, up to the heaviest each font has.
@@ -179,7 +182,8 @@ of `public/js/api.js`.
 
 **Boox Go 6 (and other e-ink Android devices).** Open the address in the built-in browser or Chrome,
 sign in once (sessions last a year), then use the browser's "Add to home screen" so it opens full
-screen. In the reader's **Aa** panel pick *Light* and turn on *High contrast (e-ink)*; if the letters
+screen. The app opens in its *E-ink* look there; if it did not, *Look* under **Aa** in the reader
+switches it. In the same panel pick *Light* and turn on *High contrast (e-ink)*; if the letters
 still look thin, choose a heavier *Text weight* (*Medium* or *Semibold*). Tap the right
 third of the screen for the next page, the left third for the previous page, the middle for the menu.
 Swiping can be turned off there if your device registers accidental swipes.
