@@ -462,8 +462,13 @@ shows what Open Library found and says what went wrong with Hardcover.
 ## Covers
 
 EPUB and MOBI books usually bring their cover along. PDFs rarely have one, and Markdown and text files
-never do, so the library shows the title and author instead. To add a cover, or to replace a wrong one,
-choose *Add a cover* or *Change cover* in a book's menu (the uploader or an admin can):
+never do, so the library shows the title and author instead.
+
+A cover is shown whole, at its own proportions: a taller or shorter one stands on the same line as its
+neighbours instead of being cut to a common shape.
+
+To add a cover, or to replace a wrong one, choose *Add a cover* or *Change cover* in a book's menu (the
+uploader or an admin can):
 
 | Choice | What it does |
 | --- | --- |
