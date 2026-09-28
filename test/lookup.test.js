@@ -10,6 +10,7 @@ import { readIsbn } from '../server/converters/isbn.js';
 import { readMetadata } from '../server/converters/index.js';
 import { encodePng } from '../server/converters/png.js';
 import { makeEpub } from './helpers/make-epub.mjs';
+import { makePdf } from './helpers/make-pdf.mjs';
 import { makeMobi, fixtureMobiHtml } from './helpers/make-mobi.mjs';
 
 // Search results as Open Library sends them (fields trimmed to the ones asked for).
@@ -235,6 +236,18 @@ test('looking a book up from the edit form', async () => {
   r = await lookup(jens, cw.id, { title: "Caliban's War" });
   assert.equal(r.status, 502);
   assert.match(r.data.error, /Open Library could not search just now/);
+});
+
+test('an ISBN from an OPF file that came with a PDF is looked up too', async () => {
+  const opf = Buffer.from('<package xmlns="http://www.idpf.org/2007/opf" version="2.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">'
+    + '<dc:title>Leviathan Wakes</dc:title><dc:identifier opf:scheme="ISBN">9780316129084</dc:identifier></metadata></package>');
+  const r = await jens('/api/books', { method: 'POST', body: Buffer.concat([opf, makePdf([['The first page.']])]), headers: { 'x-file-name': 'lw.pdf', 'x-opf-size': String(opf.length) } });
+  assert.equal(r.status, 202);
+  for (let i = 0; i < 200 && (await jens(`/api/books/${r.data.book.id}`)).data.book.status === 'processing'; i++) await new Promise((res) => setTimeout(res, 25));
+  answer = () => ({ docs: [leviathan] });
+  site.calls.length = 0;
+  assert.equal((await lookup(jens, r.data.book.id, { title: '' })).status, 200);
+  assert.deepEqual(site.calls.map((c) => c.params.q), ['isbn:9780316129084']);
 });
 
 test('a cover found on Open Library becomes the book\'s cover', async () => {

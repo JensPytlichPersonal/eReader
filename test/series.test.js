@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { makeEpub } from './helpers/make-epub.mjs';
 import { makeMobi, fixtureMobiHtml } from './helpers/make-mobi.mjs';
 import { makePdf } from './helpers/make-pdf.mjs';
-import { seriesFromTitle, withTitleSeries, parsePosition, seriesKey, seriesFromXmp, cleanSeriesName } from '../server/converters/series.js';
+import { seriesFromTitle, withTitleSeries, parsePosition, parsePlace, uniqueSeries, seriesKey, seriesFromXmp, cleanSeriesName } from '../server/converters/series.js';
 import { convert, readMetadata } from '../server/converters/index.js';
 import { convertEpub } from '../server/converters/epub.js';
 import { convertMarkdown } from '../server/converters/markdown.js';
@@ -54,6 +54,35 @@ test('series names, keys and positions', () => {
   assert.equal(seriesKey('ØRNEN'), seriesKey('ørnen'));
   assert.notEqual(seriesKey('Expanse'), seriesKey('The Expanse'));
   assert.deepEqual(['3', ' 03 ', '2,5', '2.50', 4, '', null, 'abc', '1e3', -1, '-2', 100000].map(parsePosition), [3, 3, 2.5, 2.5, 4, null, null, null, null, null, null, null]);
+});
+
+test('a book holding several, such as an omnibus, has a range of numbers', () => {
+  assert.deepEqual(['1-3', '1–3', ' 1 - 3 ', '2,5-4', '3-3', 4, '3-1', '1-', '-3', 'one-three', ''].map(parsePlace), [
+    { position: 1, positionEnd: 3 }, { position: 1, positionEnd: 3 }, { position: 1, positionEnd: 3 }, { position: 2.5, positionEnd: 4 },
+    { position: 3 }, { position: 4 }, null, null, null, null, null,
+  ]);
+  const cases = [
+    ['The Expanse Omnibus (The Expanse, #1-3)', 'The Expanse Omnibus'],
+    ['Box Set (The Expanse, Books 1–3)', 'Box Set'],
+    ['Trilogy (Books 1-3 of The Expanse)', 'Trilogy'],
+    ['Omnibus: The Expanse: Books 1 - 3', 'Omnibus'],
+    ['The Expanse #1-3 - Omnibus', 'Omnibus'],
+  ];
+  for (const [title, rest] of cases) assert.deepEqual(seriesFromTitle(title), { title: rest, name: 'The Expanse', position: 1, positionEnd: 3 }, title);
+  assert.deepEqual(seriesFromTitle('Afdeling Q 1-3 (Afdeling Q, bind 1-3)'), { title: 'Afdeling Q 1-3', name: 'Afdeling Q', position: 1, positionEnd: 3 });
+  // Before the title, a range has no spaces: this is book 5, "1066 and All That". Plain numbers stay titles.
+  assert.deepEqual(seriesFromTitle('Discworld #5 - 1066 and All That'), { title: '1066 and All That', name: 'Discworld', position: 5 });
+  for (const title of ['Selected Poems (1950-1980)', 'Kids (Ages 9 - 12)', 'Omnibus (The Expanse, #3-1)']) assert.equal(seriesFromTitle(title), null, title);
+  // A range stays a range through the details: from the title, or as positionEnd beside the position.
+  assert.deepEqual(withTitleSeries({ title: 'Omnibus (Expanse, #1-3)', series: [{ name: 'The Expanse', position: null }] }),
+    { title: 'Omnibus', series: [{ name: 'The Expanse', position: 1, positionEnd: 3 }] });
+  assert.deepEqual(uniqueSeries([{ name: 'A', position: 1, positionEnd: 3 }, { name: 'B', position: '2-4' }, { name: 'C', position: 5, positionEnd: 2 }, { name: 'D', position: null, positionEnd: 2 }]),
+    [{ name: 'A', position: 1, positionEnd: 3 }, { name: 'B', position: 2, positionEnd: 4 }, { name: 'C', position: 5 }, { name: 'D', position: null }]);
+});
+
+test('epub 3: an omnibus as a range in its collection', async () => {
+  const book = await convert(makeEpub({ title: 'The Expanse Omnibus', metadata: '<meta property="belongs-to-collection" id="c">The Expanse</meta><meta refines="#c" property="group-position">1-3</meta>' }), { filename: 'omnibus.epub' });
+  assert.deepEqual(book.meta.series, [{ name: 'The Expanse', position: 1, positionEnd: 3 }]);
 });
 
 test('a title naming the recorded series loses that part', () => {

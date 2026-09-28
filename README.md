@@ -204,7 +204,15 @@ Wide windows show two columns; switch to one column in the display settings if y
 *Upload books* picks one or more files. On a computer, *Upload a folder* (in the drop area) picks a
 whole folder, and files or folders can be dropped on the page. A folder brings every book in it and in
 its subfolders, in the order of their paths. Hidden files (such as `.DS_Store`) and files in other
-formats (covers, `.opf` files) are left out, and the upload says how many there were of each kind.
+formats are left out, and the upload says how many there were of each kind.
+
+An `.opf` file and a cover picture beside a book go up with it, as calibre keeps them: named like the
+book (`Dune.opf` and `Dune.jpg`, as calibre's *Save to disk* writes them), or `metadata.opf` and
+`cover.jpg` in a folder holding one book, in one or more formats (as in a calibre library). The title,
+author, series, language and ISBN in the `.opf` file win over those inside the book, which fill in what
+it leaves out, and it is kept with the book, so *Convert again* uses it too; details edited by hand
+still win over both. The picture becomes the book's cover like one picked by hand, so *Change cover*
+can still go back to the book's own. The upload says how many books came with each.
 
 Books go up one at a time while the server converts the ones already there. A line above the library
 shows how far the upload has come, with a *Stop* button; keep the page open until it is done (the
@@ -265,7 +273,9 @@ is converted again.
 A series is a group of books with numbers (1, 2, 2.5 …); a collection is a group without an order,
 such as a book club. A book can be in several. Opening a series lists its books in order and offers
 *Continue*, *Next up* or *Start with* for the book to read next. The *Series & collections* tab lists
-every group.
+every group. A book holding several, such as an omnibus, has a range of numbers (#1–3): type `1-3` as
+its number, or let its title or EPUB metadata give it. It is listed by its first number, after a book
+with that number of its own.
 
 The Books view shows each series in one of three ways, chosen in the toolbar and remembered per device:
 
@@ -287,7 +297,7 @@ Where the series comes from:
 | EPUB metadata | calibre's series and series index, EPUB 3 collections (`belongs-to-collection` with `group-position`; sets become collections), EPUB 3 collection titles |
 | PDF metadata | calibre's series in the XMP metadata |
 | Markdown front matter | `series: The Expanse` with `series_index: 3` (or `volume: 3`); `collection:` works too |
-| The title | "Leviathan Wakes (The Expanse Book 1)", "Caliban's War (The Expanse, #2)", "A Game of Thrones: A Song of Ice and Fire: Book One", "Kvinden i buret (Afdeling Q, bind 1)", "The Expanse 03 - Abaddon's Gate". This is the only place MOBI and text files carry a series. Only explicit forms count (a `#`, or a word such as Book, Volume, Part, Bind or Band before the number), so a title like "Windows 10" is left alone. The series part is removed from the title. |
+| The title | "Leviathan Wakes (The Expanse Book 1)", "Caliban's War (The Expanse, #2)", "A Game of Thrones: A Song of Ice and Fire: Book One", "Kvinden i buret (Afdeling Q, bind 1)", "The Expanse 03 - Abaddon's Gate", and for an omnibus "Box Set (The Expanse, #1-3)" or "(The Expanse, Books 1–3)". This is the only place MOBI and text files carry a series. Only explicit forms count (a `#`, or a word such as Book, Volume, Part, Bind or Band before the number), so a title like "Windows 10" is left alone. The series part is removed from the title. |
 
 Series names are matched regardless of case, spacing and quote style, so books from different
 sources end up together. To add books to a series or collection by hand, or to fix one, choose

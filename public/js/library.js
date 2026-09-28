@@ -109,7 +109,9 @@ function status(b) {
 }
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const seriesLabel = (s) => (s.position != null ? `${s.name} #${s.position}` : s.name);
+// A book's number in a series: "3", or a range such as "1–3" for a book holding several (an omnibus). null for none.
+const numberIn = (s) => (s.position == null ? null : s.positionEnd != null ? `${s.position}–${s.positionEnd}` : String(s.position));
+const seriesLabel = (s) => (s.position != null ? `${s.name} #${numberIn(s)}` : s.name);
 const seriesLink = (s) => `<a href="/?series=${s.id}" data-series="${s.id}">${escapeHtml(seriesLabel(s))}</a>`;
 
 // Books and series sort alike: a series by its most recently read and newest book, its name and main author.
@@ -153,7 +155,7 @@ const coverHtml = (b) => (b.hasCover && (b.status === 'ready' || b.coverSource =
 // A book that looks like another in the library says so, and the flag opens them side by side.
 const dupFlag = (b) => (flagged(b) ? `<button type="button" class="dup-flag" data-dups="${b.id}">Possible duplicate</button>` : '');
 
-/** A book card. In a series view (`ctx.seriesId`) the cover shows the book's number in that series. */
+/** A book card. In a series view (`ctx.seriesId`) the cover shows the book's number in that series (`ctx.position`, as numberIn() gives it). */
 function card(b, ctx = {}) {
   if (display === 'list') return bookRow(b, ctx);
   const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
@@ -213,11 +215,13 @@ function groupSeries() {
   for (const b of books) {
     for (const s of b.series) {
       if (!groups.has(s.id)) groups.set(s.id, { id: s.id, name: s.name, items: [] });
-      groups.get(s.id).items.push({ book: b, position: s.position });
+      groups.get(s.id).items.push({ book: b, position: s.position, positionEnd: s.positionEnd });
     }
   }
   for (const g of groups.values()) {
-    g.items.sort((x, y) => (x.position ?? Infinity) - (y.position ?? Infinity) || x.book.title.localeCompare(y.book.title));
+    // An omnibus goes by its first number, after a single book with that number: #1, #1–3, #2.
+    const end = (i) => i.positionEnd ?? i.position ?? Infinity;
+    g.items.sort((x, y) => (x.position ?? Infinity) - (y.position ?? Infinity) || end(x) - end(y) || x.book.title.localeCompare(y.book.title));
     const states = g.items.map((i) => status(i.book));
     g.numbered = g.items.some((i) => i.position != null);
     g.finished = states.filter((st) => st === 'finished').length;
@@ -238,7 +242,7 @@ function seriesPlace(g) {
   const reading = g.items.filter((i) => st(i) === 'reading').sort((a, b) => b.book.progress.updatedAt - a.book.progress.updatedAt)[0];
   const done = g.items.map(st).lastIndexOf('finished');
   const unread = g.items.slice(done + 1).find((i) => st(i) === 'unread') || g.items.find((i) => st(i) === 'unread');
-  const no = (i) => (i.position != null ? `#${i.position}` : '');
+  const no = (i) => (i.position != null ? `#${numberIn(i)}` : '');
   if (reading) return { item: reading, verb: 'Continue', text: `Reading ${no(reading)}`.trim() };
   if (unread && done >= 0) return { item: unread, verb: 'Next up:', text: no(unread) ? `Next: ${no(unread)}` : 'Next up' };
   if (unread) return { item: unread, verb: 'Start with', text: 'Not started' };
@@ -288,12 +292,12 @@ function groupRow(g) {
 function shelf(g) {
   const place = seriesPlace(g);
   const facts = [g.author, plural(g.items.length, 'book', 'books'), place.text].filter(Boolean).map(escapeHtml).join(' · ');
-  const shelfBook = ({ book: b, position }, current) => {
+  const shelfBook = ({ book: b, ...place }, current) => {
     const st = status(b);
     const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
     const state = { finished: '&#10003; Finished', reading: `${pct}% read`, unread: 'Not started', processing: 'Preparing…', error: 'Could not convert' }[st];
     return `<div class="shelf-book${current ? ' current' : ''}">
-      ${coverHtml(b)}${position != null ? `<span class="cover-tag">#${position}</span>` : ''}
+      ${coverHtml(b)}${place.position != null ? `<span class="cover-tag">#${numberIn(place)}</span>` : ''}
       ${b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : ''}
       <div class="title">${escapeHtml(b.title)}</div>
       ${st === 'reading' ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : ''}
@@ -302,7 +306,7 @@ function shelf(g) {
   };
   const current = (i) => i === place.item && g.state !== 'unread';
   const books = display === 'list'
-    ? tiles(g.items.map((i) => bookRow(i.book, { seriesId: g.id, position: i.position, current: current(i) })).join(''))
+    ? tiles(g.items.map((i) => bookRow(i.book, { seriesId: g.id, position: numberIn(i), current: current(i) })).join(''))
     : `<div class="shelf-row">${g.items.map((i) => shelfBook(i, current(i))).join('')}</div>`;
   return `<section class="shelf">
     <div class="shelf-head"><h2><a href="/?series=${g.id}" data-series="${g.id}">${escapeHtml(g.name)}</a></h2><span class="muted">${facts}</span></div>
@@ -342,7 +346,7 @@ function renderSeries(id) {
     return;
   }
   const place = seriesPlace(g);
-  const next = place.item && `${place.verb} ${place.item.position != null ? `#${place.item.position} ` : ''}${place.item.book.title}`;
+  const next = place.item && `${place.verb} ${place.item.position != null ? `#${numberIn(place.item)} ` : ''}${place.item.book.title}`;
   const facts = [g.numbered ? 'Series' : 'Collection', plural(g.items.length, 'book', 'books'), g.author, g.finished ? `${g.finished} finished` : ''];
   els.library.innerHTML = `<div class="series-head">
       <button class="btn small" data-back>&#8592; All series and collections</button>
@@ -353,7 +357,7 @@ function renderSeries(id) {
         ${me.isAdmin ? `<button class="btn" data-edit-series="${g.id}">Rename or remove</button>` : ''}
       </div>
     </div>
-    ${tiles(g.items.map((i) => card(i.book, { seriesId: g.id, position: i.position })).join(''))}`;
+    ${tiles(g.items.map((i) => card(i.book, { seriesId: g.id, position: numberIn(i) })).join(''))}`;
 }
 
 const heading = (text, count) => `<div class="section-title"><h2 style="margin:0">${text}</h2><span class="muted">${count}</span></div>`;
@@ -482,31 +486,65 @@ function render() {
 
 // ---- uploads ----
 // Books go up one at a time, in order, and files added meanwhile join the queue. A folder brings the books
-// in it and in its subfolders; hidden files and files in other formats stay behind. One line sums up the
-// batch as it goes, with a line under it for each file that could not be added or was in the library already.
+// in it and in its subfolders, each with the OPF file and cover picture that go with it; hidden files and
+// files in other formats stay behind. One line sums up the batch as it goes, with a line under it for each
+// file that could not be added or was in the library already.
 
 // The formats the server takes, by extension, as the library lists them; until it has loaded, those the picker offers.
 let supported = new Set(els.file.accept.split(',').filter((a) => a.startsWith('.')).map((a) => a.slice(1)));
-const queue = []; // { file, path } waiting to go up
+const queue = []; // { file, path, opf, cover } waiting to go up, the last two the files that go with it or null
 let batch = null; // what the files added since the uploads line was last closed came to
 let sending = null; // the file going up now: { path, abort }
 
-/** The books among the files in a folder, in the order of their paths, and how many other files there were of each extension. */
+// Pictures that can be the cover of a book beside them.
+const COVER_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+const extOf = (name) => /\.([^.]+)$/.exec(name)?.[1].toLowerCase() ?? '';
+const baseOf = (name) => name.replace(/\.[^.]*$/, '').toLowerCase();
+
+/**
+ * The books among files, in the order of their paths, each with the OPF file and cover picture that go
+ * with it, and how many other files there were of each extension. What goes with a book is named like it
+ * ("Dune.opf", "Dune.jpg", as calibre saves books to disk), or, in a folder holding one book (in one or
+ * more formats, as in a calibre library), is metadata.opf and cover.jpg.
+ */
 function booksAmong(files) {
-  const found = [];
-  const skipped = new Map();
+  const folders = new Map();
   for (const f of files) {
     if (f.path.split('/').some((part) => part.startsWith('.'))) continue; // hidden, such as .DS_Store
-    const ext = /\.([^.]+)$/.exec(f.file.name)?.[1].toLowerCase() ?? '';
-    if (supported.has(ext)) found.push(f);
-    else skipped.set(ext, (skipped.get(ext) || 0) + 1);
+    const folder = f.path.slice(0, f.path.lastIndexOf('/') + 1);
+    if (!folders.has(folder)) folders.set(folder, []);
+    folders.get(folder).push(f);
+  }
+  const found = [];
+  const skipped = new Map();
+  for (const inFolder of folders.values()) {
+    const byName = new Map(inFolder.map((f) => [f.file.name.toLowerCase(), f]));
+    const books = new Set(inFolder.filter((f) => supported.has(extOf(f.file.name))));
+    const oneBook = new Set([...books].map((f) => baseOf(f.file.name))).size === 1;
+    const used = new Set();
+    const first = (names) => {
+      const f = names.map((n) => byName.get(n)).find((x) => x && !books.has(x));
+      if (f) used.add(f);
+      return f?.file ?? null;
+    };
+    for (const b of books) {
+      const base = baseOf(b.file.name);
+      const opf = first([`${base}.opf`, ...(oneBook ? ['metadata.opf'] : [])]);
+      const cover = first([...COVER_EXTS.map((e) => `${base}.${e}`), ...(oneBook ? COVER_EXTS.map((e) => `cover.${e}`) : [])]);
+      found.push({ ...b, opf, cover });
+    }
+    for (const f of inFolder) {
+      if (books.has(f) || used.has(f)) continue;
+      const ext = extOf(f.file.name);
+      skipped.set(ext, (skipped.get(ext) || 0) + 1);
+    }
   }
   found.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
   return { found, skipped };
 }
 
 function startBatch() {
-  batch = { total: 0, handled: 0, added: 0, already: 0, failed: 0, skipped: new Map(), looking: null, lastPath: '', ended: null };
+  batch = { total: 0, handled: 0, added: 0, withOpf: 0, withCover: 0, already: 0, failed: 0, skipped: new Map(), looking: null, lastPath: '', ended: null };
   els.uploads.innerHTML = `<div class="item summary"><span data-summary></span><button type="button" class="btn small" data-act="stop">Stop</button></div>
     <div class="upload-lines"><div data-failed></div><div data-already></div></div>`;
 }
@@ -525,6 +563,8 @@ function showBatch() {
     : b.total === 1 ? `Added ${b.lastPath}`
     : b.added === b.total ? `Added ${plural(b.added, 'book', 'books')}` : `Added ${b.added} of ${b.total} books`;
   const notes = [
+    b.withOpf && `${b.withOpf} with an .opf file`,
+    b.withCover && `${b.withCover} with a cover picture`,
     b.already && `${b.already} already in the library`,
     b.failed && `${b.failed} could not be added`,
     others && `${plural(others, 'other file', 'other files')} left out (${kinds.slice(0, 4).join(', ')}${kinds.length > 4 ? ' …' : ''})`,
@@ -547,7 +587,7 @@ function addLine(kind, path, message) {
   els.uploads.querySelector(`[data-${kind}]`).appendChild(item);
 }
 
-/** Queues files to go up: [{ file, path }], with `skipped` the files of other kinds found beside them in a folder. */
+/** Queues books to go up, as booksAmong() finds them, with `skipped` the other files found beside them. */
 function upload(files, skipped = new Map()) {
   if (!batch || (batch.ended && !sending)) startBatch();
   batch.total += files.length;
@@ -559,15 +599,24 @@ function upload(files, skipped = new Map()) {
 
 async function sendQueue() {
   while (queue.length) {
-    const { file, path } = queue.shift();
+    const { file, path, opf, cover } = queue.shift();
     const abort = new AbortController();
     sending = { path, abort };
     batch.lastPath = path;
     showBatch();
     try {
       if (!file.size) throw new ApiError(400, { error: 'The file is empty' });
-      await api('/api/books', { method: 'POST', raw: true, body: file, signal: abort.signal, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
+      // What goes with the book goes ahead of it in the body, its size saying where it ends. A cover is
+      // scaled down first like one picked by hand; one the browser cannot read stays behind.
+      const picture = cover && await coverImage(cover).catch(() => null);
+      const headers = { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) };
+      if (opf) headers['X-Opf-Size'] = String(opf.size);
+      if (picture) headers['X-Cover-Size'] = String(picture.size);
+      const body = opf || picture ? new Blob([opf, picture, file].filter(Boolean)) : file;
+      const answer = await api('/api/books', { method: 'POST', raw: true, body, signal: abort.signal, headers });
       batch.added++;
+      if (answer.used?.opf) batch.withOpf++;
+      if (answer.used?.cover) batch.withCover++;
     } catch (err) {
       if (abort.signal.aborted) continue; // stopped: the queue is empty, unless files were added since
       if (err.status === 409 && err.body?.book) {
@@ -589,9 +638,9 @@ async function sendQueue() {
   if (batch.looking != null) return; // a folder still being read adds its books to this batch
   batch.ended ||= 'done';
   showBatch();
-  // A batch that went as planned folds away by itself; one with anything to read stays until it is closed.
+  // A single book that went in as planned folds away by itself; a batch stays, to be read, until it is closed.
   const ended = batch;
-  if (ended.ended === 'done' && ended.total && ended.added === ended.total && !ended.skipped.size) setTimeout(() => { if (batch === ended) closeBatch(); }, 4000);
+  if (ended.ended === 'done' && ended.total === 1 && ended.added === 1 && !ended.skipped.size) setTimeout(() => { if (batch === ended) closeBatch(); }, 4000);
   clearTimeout(reloadTimer);
   reloadTimer = null;
   load();
@@ -631,25 +680,29 @@ async function readFolder(dir, found) {
   }
 }
 
-/** Uploads what was dropped: loose files as they are, and the books in folders and their subfolders. */
+/** Uploads the books among files: [{ file, path }]. */
+function uploadFiles(files) {
+  const { found, skipped } = booksAmong(files);
+  upload(found, skipped);
+}
+
+/** Uploads what was dropped: loose files, and the books in folders and their subfolders. */
 async function uploadDropped(entries) {
   if (!batch || (batch.ended && !sending)) startBatch();
   batch.looking = 0;
   showBatch();
-  const loose = [];
-  const inFolders = [];
+  const files = [];
   for (const entry of entries) {
-    if (entry.isDirectory) await readFolder(entry, inFolders);
+    if (entry.isDirectory) await readFolder(entry, files);
     else {
-      await fileOf(entry).then((file) => loose.push({ file, path: entry.name }), (err) => {
+      await fileOf(entry).then((file) => files.push({ file, path: entry.name }), (err) => {
         batch.failed++;
         addLine('failed', entry.name, `The file could not be read (${err.message})`);
       });
     }
   }
   batch.looking = null;
-  const { found, skipped } = booksAmong(inFolders);
-  upload([...loose, ...found], skipped);
+  uploadFiles(files);
 }
 
 // While books go up, the library reloads every few seconds rather than after each one.
@@ -660,14 +713,14 @@ function reloadSoon() {
 }
 
 els.upload.addEventListener('click', () => { setMenu(false); els.file.click(); });
-els.file.addEventListener('change', () => { upload([...els.file.files].map((file) => ({ file, path: file.name }))); els.file.value = ''; });
+els.file.addEventListener('change', () => { uploadFiles([...els.file.files].map((file) => ({ file, path: file.name }))); els.file.value = ''; });
 // A folder is picked where the browser can, with a mouse: on a phone the picker only picks files.
 if ('webkitdirectory' in els.folderInput && matchMedia('(pointer: fine)').matches) els.uploadFolder.classList.remove('hidden');
 els.uploadFolder.addEventListener('click', () => els.folderInput.click());
 els.folderInput.addEventListener('change', () => {
-  const { found, skipped } = booksAmong([...els.folderInput.files].map((file) => ({ file, path: file.webkitRelativePath || file.name })));
+  const files = [...els.folderInput.files].map((file) => ({ file, path: file.webkitRelativePath || file.name }));
   els.folderInput.value = '';
-  upload(found, skipped);
+  uploadFiles(files);
 });
 els.uploads.addEventListener('click', (e) => {
   const act = e.target.closest('[data-act]')?.dataset.act;
@@ -687,7 +740,7 @@ document.addEventListener('drop', (e) => {
   // A folder's files are read through its entry, which has to be taken while the drop lasts.
   const entries = [...e.dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
   if (entries.some((entry) => entry.isDirectory)) uploadDropped(entries);
-  else upload([...files].map((file) => ({ file, path: file.name })));
+  else uploadFiles([...files].map((file) => ({ file, path: file.name })));
 });
 document.addEventListener('paste', (e) => {
   if (!coverOpen()) return;
@@ -816,7 +869,7 @@ function compareCopies(b) {
 
 const seriesRow = (s = { name: '', position: null }) => `<div class="series-row">
     <input type="text" name="series-name" list="series-names" value="${escapeHtml(s.name)}" placeholder="Series or collection" aria-label="Series or collection" maxlength="200" autocomplete="off">
-    <input type="text" name="series-no" inputmode="decimal" value="${s.position ?? ''}" placeholder="No." aria-label="Number in the series" maxlength="8" autocomplete="off">
+    <input type="text" name="series-no" value="${numberIn(s) ?? ''}" placeholder="No." aria-label="Number in the series" maxlength="20" autocomplete="off">
     <button type="button" class="btn icon" data-remove-row aria-label="Remove">&times;</button>
   </div>`;
 
@@ -875,7 +928,7 @@ function editDetails(b) {
         <legend>Series and collections</legend>
         <div class="series-rows">${(b.series.length ? b.series : [undefined]).map((s) => seriesRow(s)).join('')}</div>
         <button type="button" class="btn small" data-add-row>Add to another</button>
-        <p class="muted hint">The number puts a series in order (1, 2, 2.5 …). Leave it empty for a collection without an order.</p>
+        <p class="muted hint">The number puts a series in order (1, 2, 2.5 …); a book holding several, such as an omnibus, takes a range (1-3). Leave it empty for a collection without an order.</p>
       </fieldset>
       <p class="error hidden" data-error></p>
       <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button></div>
@@ -961,7 +1014,7 @@ function editDetails(b) {
       const nameOf = (row) => row.querySelector('[name="series-name"]');
       const row = all.find((r) => nameKey(nameOf(r).value) === nameKey(s.name)) || all.find((r) => !nameOf(r).value.trim()) || addRow();
       if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
-      if (s.position != null) row.querySelector('[name="series-no"]').value = s.position;
+      if (s.position != null) row.querySelector('[name="series-no"]').value = numberIn(s);
     }
     if (!coverOnly) coverFrom = m.cover && m.coverId ? m : null;
     showPicked();
@@ -993,9 +1046,9 @@ function editDetails(b) {
     const series = [...rows.querySelectorAll('.series-row')]
       .map((r) => ({ name: r.querySelector('[name="series-name"]').value.trim(), position: r.querySelector('[name="series-no"]').value.trim() || null }))
       .filter((s) => s.name);
-    const bad = series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?$/.test(s.position));
+    const bad = series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?(\s*[-–—]\s*\d{1,5}([.,]\d+)?)?$/.test(s.position));
     if (!title) return fail('The book needs a title.');
-    if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5.`);
+    if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5, or a range for a book holding several, such as 1-3.`);
     const saveBtn = form.querySelector('[type="submit"]');
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving…';

@@ -197,10 +197,13 @@ test('a database from an older version gets the new columns', () => {
     status TEXT NOT NULL DEFAULT 'processing', error TEXT, total_chars INTEGER NOT NULL DEFAULT 0, section_count INTEGER NOT NULL DEFAULT 0,
     page_count INTEGER NOT NULL DEFAULT 0, has_cover INTEGER NOT NULL DEFAULT 0)`);
   first.exec("INSERT INTO books (id, title, format, original_name, added_at, status) VALUES ('0123456789abcdef', 'Kept', 'epub', 'kept.epub', 1, 'ready')");
+  first.exec('CREATE TABLE book_series (book_id TEXT NOT NULL, series_id INTEGER NOT NULL, position REAL, PRIMARY KEY (book_id, series_id))');
+  first.exec("INSERT INTO book_series (book_id, series_id, position) VALUES ('0123456789abcdef', 1, 2)");
   first.close();
   const older = openDatabase(file);
   const book = older.prepare('SELECT * FROM books').get();
   assert.deepEqual([book.title, book.sha256, book.isbns, book.metadata_version], ['Kept', '', '', 0]);
   assert.deepEqual(older.prepare("SELECT name FROM sqlite_master WHERE name IN ('books_sha256', 'distinct_books') ORDER BY name").all().map((r) => r.name), ['books_sha256', 'distinct_books']);
+  assert.deepEqual({ ...older.prepare('SELECT position, position_end FROM book_series').get() }, { position: 2, position_end: null });
   older.close();
 });

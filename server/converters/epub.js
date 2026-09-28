@@ -38,8 +38,8 @@ function openPackage(zip) {
   return { opf: parseXml(zip.readText(opfPath)), opfPath };
 }
 
-/** Title, author, language, series and ISBNs from the package's <metadata>. */
-function packageMetadata(opf, filename) {
+/** Title, author, language, series and ISBNs from a package's <metadata>, '' where it names none. */
+function packageDetails(opf) {
   const metadata = findFirstLocal(opf, 'metadata') || opf;
   const { title, series } = opfTitleAndSeries(metadata);
   const creators = findAllLocal(metadata, 'creator').map(text).filter(Boolean);
@@ -47,7 +47,24 @@ function packageMetadata(opf, filename) {
   // The e-book's own ISBN first, then the printed book's (dc:source).
   const isbns = uniqueIsbns([...findAllLocal(metadata, 'identifier'), ...findAllLocal(metadata, 'source')]
     .map((el) => ({ value: text(el), isbn: /^isbn$/i.test(attr(el, 'scheme') || '') })));
-  return { title: title || titleFromFilename(filename), author: creators.join(', '), language, format: 'epub', series, isbns };
+  return { title, author: creators.join(', '), language, series, isbns };
+}
+
+/** Title, author, language, series and ISBNs from the package's <metadata>. */
+function packageMetadata(opf, filename) {
+  const details = packageDetails(opf);
+  return { ...details, title: details.title || titleFromFilename(filename), format: 'epub' };
+}
+
+/**
+ * The details in an OPF file of its own, such as the one calibre keeps beside each book: title, author,
+ * language, series and ISBNs, '' where it names none. null when it is not an OPF file or names nothing.
+ */
+export function readOpfDetails(data) {
+  const opf = parseXml(String(data));
+  if (!findFirstLocal(opf, 'metadata')) return null;
+  const details = packageDetails(opf);
+  return details.title || details.author || details.series.length || details.isbns.length ? details : null;
 }
 
 /** Reads only the book's details, without converting it. */

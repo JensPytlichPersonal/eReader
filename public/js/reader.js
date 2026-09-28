@@ -940,7 +940,8 @@ function bindSettings() {
     alert(readers.length ? readers.map((r) => `${r.displayName || r.username}: ${Math.round(r.percent * 100)}% (${formatDate(r.updatedAt)})`).join('\n') : 'Nobody else has started this book.');
   });
   const b = state.book;
-  const inSeries = (b.series || []).map((s) => `<a href="/?series=${s.id}">${escapeHtml(s.position != null ? `${s.name} #${s.position}` : s.name)}</a>`);
+  const number = (s) => (s.positionEnd != null ? `${s.position}–${s.positionEnd}` : s.position);
+  const inSeries = (b.series || []).map((s) => `<a href="/?series=${s.id}">${escapeHtml(s.position != null ? `${s.name} #${number(s)}` : s.name)}</a>`);
   // Opened offline, the book's details file has no size or uploader.
   const facts = [b.format.toUpperCase(), b.size && `${(b.size / 1048576).toFixed(1)} MB`, `${sections().length} sections`, 'addedBy' in b && `added by ${b.addedBy || 'unknown'}`];
   $('book-info').innerHTML = [...inSeries, escapeHtml(facts.filter(Boolean).join(' · '))].join(' · ');
