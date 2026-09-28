@@ -36,6 +36,9 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   on; opening it lists the books in reading order with a button that continues where you are. Series
   are picked up from the books themselves, and any books can be grouped by hand. A book missing from
   a series shows as a dashed outline in its place, with its title from Hardcover.
+- **Grouped by author or genre.** The *Group by* menu shows the library in a section per author or per
+  genre. A book's genre is set in its details, or for many books at once: *Select* picks books, or a
+  series with all its books, and *Set genre* gives them one.
 - **Details from Open Library and Hardcover.** When a book's title, author, series or cover is missing
   or wrong, look it up online from its details and pick the matching book to fill them in.
 - **Covers.** EPUB and MOBI books bring their own. Where one is missing (most PDFs) or wrong, pick an
@@ -325,6 +328,35 @@ its books in the library.
 Books already in the library when series support arrived are checked once in the background when the
 server starts. Their series are read from the original files, without converting the books again.
 
+## Genres and grouping
+
+The *Group by* menu shows the library in a section per author or per genre, and is remembered per
+device. Authors go by surname ("Frank Herbert" under H) and genres alphabetically, each with the books
+that have none last; the Sort menu orders the books within a section. A series shown as a stack or a
+shelf stays whole, under the author and the genre most of its books have. The *Series & collections*
+tab groups its series and collections the same way.
+
+Authors are compared loosely, as for duplicates, so "Herbert, Frank" is "Frank Herbert". A book by
+several authors is under each of them. Files and catalogues name several as "Terry Pratchett, Neil
+Gaiman", or with "&", "and" or ";" between them; a comma parts two authors only when both parts are
+whole names, so "Herbert, Frank" and "Le Guin, Ursula K." stay one author each. *Author* in the Sort
+menu goes by surname too, with the books without an author last.
+
+A book has one genre, such as Fantasy or Crime, or none. Files bring none, so it is set by hand: under
+*Edit details and series* for one book, or for many at once:
+
+1. Press *Select* in the toolbar. Tapping a book now selects it, and tapping a series' stack selects
+   all of its books, as does a series or collection in the *Series & collections* tab. With *Group by*
+   on, *Select all* in a section's heading takes the whole section, such as *No genre*.
+2. Press *Set genre* in the bar at the bottom, choose one of the library's genres or type a new one, and
+   save. *Done* stops selecting.
+
+A series' page has *Set genre* for all of its books. A genre typed another way joins the library's,
+so "fantasy" joins "Fantasy". A new book in a series takes the genre most of the series' books have (a
+collection without numbers passes on none), and converting a book again keeps its genre. As with the
+other details, the uploader of a book or an admin can set its genre; among the books selected, those
+someone else added stay as they are. Searching finds books by genre too.
+
 ## Looking up details online
 
 *Edit details and series* has a **Look up online** button. It searches
@@ -450,9 +482,9 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, and `missing.js`, which finds the books a series lacks
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, and `genres.js`, which keeps the books' genres
 - `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
-- `public/` the web app: library (`js/library.js`, which places the books a series lacks with `js/missing.js`), reader (`js/reader.js`), settings, users, service worker
+- `public/` the web app: library (`js/library.js`, which places the books a series lacks with `js/missing.js` and sorts books into sections by author or genre with `js/groups.js`), reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)
 
 ## License

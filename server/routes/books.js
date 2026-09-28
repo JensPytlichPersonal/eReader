@@ -14,6 +14,8 @@ import { fingerprint } from '../duplicates.js';
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
 const COVER_TYPES = ['jpg', 'png', 'gif', 'webp'];
 const MAX_COVER_BYTES = 10 * 1024 * 1024;
+// The most books changed at once (the whole library, chosen in the app).
+const MAX_BATCH = 10000;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -41,7 +43,7 @@ export function parseSeriesInput(input) {
   return { series };
 }
 
-export function bookRoutes(db, auth, config, processor, series, lookups, duplicates) {
+export function bookRoutes(db, auth, config, processor, { series, genres }, lookups, duplicates) {
   const r = Router();
   const stmts = {
     list: db.prepare(`SELECT b.*, u.username AS added_by_name,
@@ -73,7 +75,7 @@ export function bookRoutes(db, auth, config, processor, series, lookups, duplica
   // `inSeries`: the series and collections the book is in, [{ id, name, position, positionEnd? }].
   const shapeBook = (b, inSeries = series.forBook(b.id)) => ({
     id: b.id, title: b.title, author: b.author, language: b.language, format: b.format, originalName: b.original_name, size: b.size,
-    series: inSeries,
+    series: inSeries, genre: b.genre || '',
     addedBy: b.added_by_name || null, addedById: b.added_by, addedAt: b.added_at, status: b.status, error: b.error,
     totalChars: b.total_chars, sectionCount: b.section_count, pageCount: b.page_count, convertedAt: b.converted_at || 0,
     // `hasCover`: the library shows a cover image; `coverVersion` changes whenever that image may have.
@@ -173,24 +175,45 @@ export function bookRoutes(db, auth, config, processor, series, lookups, duplica
     res.json({ book: shapeBook(b), manifest, progress: shapeProgress(stmts.progress.get(req.user.id, b.id)), bookmarks: stmts.bookmarks.all(req.user.id, b.id) });
   });
 
-  // Edit the details: title, author and the series and collections the book is in. Edited
+  // Changes several books at once, such as the books chosen in the library or a whole series:
+  // { ids, genre }, genre '' for none. Only the uploader of each of them or an admin can, else nothing
+  // changes. Books no longer in the library are passed over; `updated` says how many were changed.
+  r.patch('/', (req, res) => {
+    const { ids, genre } = req.body || {};
+    if (!Array.isArray(ids) || !ids.length || ids.length > MAX_BATCH || !ids.every((id) => typeof id === 'string')) {
+      return res.status(400).json({ error: 'ids must be a list of book ids' });
+    }
+    if (typeof genre !== 'string') return res.status(400).json({ error: 'genre must be text' });
+    const found = [...new Set(ids)].map((id) => stmts.get.get(id)).filter(Boolean);
+    const others = req.user.isAdmin ? 0 : found.filter((b) => b.added_by !== req.user.id).length;
+    if (others) {
+      const which = others === 1 ? 'one of these books was' : `${others} of these books were`;
+      return res.status(403).json({ error: `Only the uploader or an admin can change the genre of a book, and ${which} added by someone else` });
+    }
+    res.json({ genre: genres.set(found.map((b) => b.id), genre), updated: found.length });
+  });
+
+  // Edit the details: title, author, genre and the series and collections the book is in. Edited
   // details are kept when the book is converted again.
   r.patch('/:id', (req, res) => {
     const b = stmts.get.get(req.params.id);
     if (!b) return res.status(404).json({ error: 'No such book' });
     if (!req.user.isAdmin && b.added_by !== req.user.id) return res.status(403).json({ error: 'Only the uploader or an admin can edit this book' });
-    const { title, author, series: seriesInput } = req.body || {};
+    const { title, author, series: seriesInput, genre } = req.body || {};
+    if (genre !== undefined && typeof genre !== 'string') return res.status(400).json({ error: 'genre must be text' });
     let parsed = null;
     if (seriesInput !== undefined) {
       parsed = parseSeriesInput(seriesInput);
       if (parsed.error) return res.status(400).json({ error: parsed.error });
     }
-    if (title !== undefined || author !== undefined || parsed) {
-      transaction(db, () => {
+    transaction(db, () => {
+      if (title !== undefined || author !== undefined || parsed) {
         stmts.updateMeta.run((title ?? b.title).toString().trim().slice(0, 500) || b.title, (author ?? b.author).toString().trim().slice(0, 500), now(), b.id);
         if (parsed) series.setForBook(b.id, parsed.series);
-      });
-    }
+      }
+      // No file has a genre, so converting again keeps it without counting it as edited.
+      if (genre !== undefined) genres.set([b.id], genre);
+    });
     res.json({ book: shapeBook(stmts.get.get(b.id)) });
   });
 

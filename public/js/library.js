@@ -1,6 +1,7 @@
 import { api, ApiError, requireUser, escapeHtml, formatDate, toast, registerServiceWorker } from './api.js';
 import { loadSettings, applyTheme, adoptAccountFont } from './settings.js';
 import { gaps, inOrder, missingBooks } from './missing.js';
+import { authorKey, authorNames, authorOrder, genreKey, mostCommon, sections } from './groups.js';
 
 registerServiceWorker();
 applyTheme(loadSettings());
@@ -13,8 +14,11 @@ const els = {
   search: document.getElementById('search'),
   filter: document.getElementById('filter'),
   sort: document.getElementById('sort'),
+  group: document.getElementById('group'),
   layout: document.getElementById('layout'),
   display: document.getElementById('display'),
+  select: document.getElementById('btn-select'),
+  selectBar: document.getElementById('select-bar'),
   menu: document.getElementById('btn-menu'),
   sectionName: document.getElementById('section-name'),
   activeFilters: document.getElementById('active-filters'),
@@ -44,8 +48,14 @@ els.layout.value = layout;
 // The View menu: a list, or cards in three sizes (2, 3 or 4 across on a phone).
 let display = ['list', 'cards-2', 'cards-3', 'cards-4'].includes(prefs.display) ? prefs.display : 'cards-3';
 els.display.value = display;
+// The Group by menu: every book together, or in sections by author or by genre.
+let groupBy = ['author', 'genre'].includes(prefs.group) ? prefs.group : 'none';
+els.group.value = groupBy;
+// Choosing books to change together, such as to give them a genre: the ids of the books chosen.
+let selecting = false;
+const selected = new Set();
 
-function savePrefs() { localStorage.setItem('ereader.library', JSON.stringify({ sort: els.sort.value, filter: els.filter.value, view, layout, display })); }
+function savePrefs() { localStorage.setItem('ereader.library', JSON.stringify({ sort: els.sort.value, filter: els.filter.value, view, layout, display, group: groupBy })); }
 
 // On a phone the card sizes are columns across the screen; wider screens fit more cards of each size.
 const phone = matchMedia('(max-width: 599px)');
@@ -74,6 +84,8 @@ async function load() {
   offline = false;
   books = data.books;
   supported = new Set(data.supported);
+  const ids = new Set(books.map((b) => b.id));
+  for (const id of selected) if (!ids.has(id)) selected.delete(id); // deleted meanwhile
   try { if (me) localStorage.setItem(SAVED, JSON.stringify({ me, books })); } catch { /* storage full */ }
   render();
   const processing = books.some((b) => b.status === 'processing');
@@ -115,22 +127,24 @@ const numberIn = (s) => (s.position == null ? null : s.positionEnd != null ? `${
 const seriesLabel = (s) => (s.position != null ? `${s.name} #${numberIn(s)}` : s.name);
 const seriesLink = (s) => `<a href="/?series=${s.id}" data-series="${s.id}">${escapeHtml(seriesLabel(s))}</a>`;
 
-// Books and series sort alike: a series by its most recently read and newest book, its name and main author.
+// Books and series sort alike: a series by its most recently read and newest book, its name and lead author.
+// Authors go by surname (see authorOrder() in groups.js).
 const sortKeys = (x) => (x.items
-  ? { read: x.lastRead, added: x.lastAdded, title: x.name, author: x.author }
-  : { read: x.progress?.updatedAt || 0, added: x.addedAt, title: x.title, author: x.author });
+  ? { read: x.lastRead, added: x.lastAdded, title: x.name, author: authorOrder(x.lead) }
+  : { read: x.progress?.updatedAt || 0, added: x.addedAt, title: x.title, author: authorOrder(x.author) });
 
 function sorter() {
   const by = {
     recent: (a, b) => b.read - a.read || b.added - a.added,
     added: (a, b) => b.added - a.added,
     title: (a, b) => a.title.localeCompare(b.title),
-    author: (a, b) => (a.author || '~').localeCompare(b.author || '~') || a.title.localeCompare(b.title),
+    // Books without an author last.
+    author: (a, b) => !a.author - !b.author || a.author.localeCompare(b.author) || a.title.localeCompare(b.title),
   }[els.sort.value];
   return (a, b) => by(sortKeys(a), sortKeys(b));
 }
 
-const matchesSearch = (b, q) => `${b.title} ${b.author} ${b.series.map((s) => s.name).join(' ')}`.toLowerCase().includes(q);
+const matchesSearch = (b, q) => `${b.title} ${b.author} ${b.series.map((s) => s.name).join(' ')} ${b.genre || ''}`.toLowerCase().includes(q);
 // Books that look like another book in the library (see duplicates.js on the server).
 const flagged = (b) => b.duplicates?.length > 0;
 
@@ -156,6 +170,36 @@ const coverHtml = (b) => (b.hasCover && (b.status === 'ready' || b.coverSource =
 // A book that looks like another in the library says so, and the flag opens them side by side.
 const dupFlag = (b) => (flagged(b) ? `<button type="button" class="dup-flag" data-dups="${b.id}">Possible duplicate</button>` : '');
 
+// ---- choosing books (Select) ----
+
+/** Whether all, some or none of these books are chosen, as aria-pressed says it: 'true', 'mixed' or 'false'. */
+function chosen(ids) {
+  const n = ids.filter((id) => selected.has(id)).length;
+  return n && n === ids.length ? 'true' : n ? 'mixed' : 'false';
+}
+const CHOSEN = { true: ' selected', mixed: ' part-selected', false: '' };
+/** The class of a card or row while choosing books: chosen, or with some of its books chosen (a series). */
+const chosenClass = (ids) => (selecting ? CHOSEN[chosen(ids)] : '');
+const TICK = '<span class="check" aria-hidden="true"></span>';
+
+/** What covers a book's card, row or place on a shelf: a link that opens it, or while choosing books, a button that chooses it. */
+function opener(b) {
+  if (selecting) return `<button type="button" class="link pick" data-pick="${b.id}" aria-pressed="${selected.has(b.id)}" aria-label="${escapeHtml(b.title)}"></button>${TICK}`;
+  return b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : '';
+}
+
+/** While choosing books, a button in a heading that chooses every book under it, or leaves them all when they are chosen (see showSelection()). */
+const pickAll = () => (selecting ? '<button type="button" class="btn small" data-pick-section>Select all</button>' : '');
+
+/**
+ * What covers a series or collection shown as one: a link that opens it, or while choosing books, a
+ * button that chooses all its books. Its tick goes where there is room for it (see stackCard()).
+ */
+function seriesOpener(g, label) {
+  if (!selecting) return `<a class="link" href="/?series=${g.id}" data-series="${g.id}" aria-label="${escapeHtml(label)}"></a>`;
+  return `<button type="button" class="link pick" data-pick-series="${g.id}" aria-pressed="${chosen(g.items.map((i) => i.book.id))}" aria-label="${escapeHtml(label)}"></button>`;
+}
+
 /** A book card. In a series view (`ctx.seriesId`) the cover shows the book's number in that series (`ctx.position`, as numberIn() gives it). */
 function card(b, ctx = {}) {
   if (display === 'list') return bookRow(b, ctx);
@@ -163,12 +207,12 @@ function card(b, ctx = {}) {
   const cover = coverHtml(b);
   const number = ctx.position != null ? `<span class="cover-tag">#${ctx.position}</span>` : '';
   const st = b.status === 'processing' ? '<div class="status">Preparing…</div>' : b.status === 'error' ? `<div class="status err" title="${escapeHtml(b.error || '')}">Could not convert</div>` : '';
-  const link = b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : '';
+  const link = opener(b);
   const others = b.series.filter((s) => s.id !== ctx.seriesId);
   const seriesHtml = others.length ? `<div class="series-line">${others.map(seriesLink).join(', ')}</div>` : '';
   const progressHtml = b.progress ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : '';
   const when = b.progress ? `Read ${formatDate(b.progress.updatedAt)}` : `Added ${formatDate(b.addedAt)}`;
-  return `<div class="card${faded(b) ? ' unavailable' : ''}" data-id="${b.id}">
+  return `<div class="card${faded(b) ? ' unavailable' : ''}${chosenClass([b.id])}" data-id="${b.id}">
     ${cover}${number}${st}${link}
     <div class="info">
       <div class="title">${escapeHtml(b.title)}</div>
@@ -188,9 +232,9 @@ function bookRow(b, ctx = {}) {
   const about = [escapeHtml(b.author || ''), ...b.series.filter((s) => s.id !== ctx.seriesId).map(seriesLink)].filter(Boolean).join(' · ');
   const state = b.status === 'processing' ? 'Preparing…' : b.status === 'error' ? 'Could not convert'
     : b.progress ? `${pct}% · Read ${formatDate(b.progress.updatedAt)}` : `Added ${formatDate(b.addedAt)}`;
-  return `<div class="list-row${ctx.current ? ' current' : ''}${faded(b) ? ' unavailable' : ''}" data-id="${b.id}">
+  return `<div class="list-row${ctx.current ? ' current' : ''}${faded(b) ? ' unavailable' : ''}${chosenClass([b.id])}" data-id="${b.id}">
     <div class="thumb">${coverHtml(b)}</div>
-    ${b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : ''}
+    ${opener(b)}
     <div class="body">
       <div class="title">${ctx.position != null ? `<span class="no">#${ctx.position}</span> ` : ''}${escapeHtml(b.title)}</div>
       ${about ? `<div class="about">${about}</div>` : ''}
@@ -231,6 +275,9 @@ function groupSeries() {
     g.lastRead = Math.max(0, ...g.items.map((i) => i.book.progress?.updatedAt || 0));
     g.lastAdded = Math.max(...g.items.map((i) => i.book.addedAt));
     g.author = mainAuthor(g.items.map((i) => i.book.author));
+    // The author and genre the series goes under when the library is grouped by them.
+    g.lead = mostCommon(g.items.flatMap((i) => authorNames(i.book.author)), authorKey);
+    g.genre = mostCommon(g.items.map((i) => i.book.genre), genreKey);
   }
   return [...groups.values()];
 }
@@ -345,9 +392,11 @@ function stackCard(g) {
   const place = seriesPlace(g);
   const cover = coverHtml((place.item || g.items[0]).book);
   const pct = groupPct(g);
-  return `<div class="card group${n > 1 ? ' pile' : ''}">
-    ${n > 1 ? `<div class="stack">${cover}</div>` : cover}<span class="cover-tag">${plural(n, 'book', 'books')}</span>
-    <a class="link" href="/?series=${g.id}" data-series="${g.id}" aria-label="${escapeHtml(g.name)}, ${plural(n, 'book', 'books')}"></a>
+  // While choosing books, a stack's tick sits at the foot of its top cover, clear of the number of books.
+  const tick = selecting ? TICK : '';
+  return `<div class="card group${n > 1 ? ' pile' : ''}${chosenClass(g.items.map((i) => i.book.id))}">
+    ${n > 1 ? `<div class="stack">${cover}${tick}</div>` : `${cover}${tick}`}<span class="cover-tag">${plural(n, 'book', 'books')}</span>
+    ${seriesOpener(g, `${g.name}, ${plural(n, 'book', 'books')}`)}
     <div class="info">
       <div class="title">${escapeHtml(g.name)}</div>
       <div class="author">${escapeHtml(g.author)}</div>
@@ -362,15 +411,15 @@ function groupRow(g) {
   const n = g.items.length;
   const place = seriesPlace(g);
   const about = [g.author, plural(n, 'book', 'books')].filter(Boolean).map(escapeHtml).join(' · ');
-  return `<div class="list-row group">
+  return `<div class="list-row group${chosenClass(g.items.map((i) => i.book.id))}">
     <div class="thumb${n > 1 ? ' stack' : ''}">${coverHtml((place.item || g.items[0]).book)}</div>
-    <a class="link" href="/?series=${g.id}" data-series="${g.id}" aria-label="${escapeHtml(g.name)}, ${plural(n, 'book', 'books')}"></a>
+    ${seriesOpener(g, `${g.name}, ${plural(n, 'book', 'books')}`)}
     <div class="body">
       <div class="title">${escapeHtml(g.name)}</div>
       <div class="about">${about}</div>
       <div class="meta">${g.state !== 'unread' ? `<div class="progress"><div style="width:${groupPct(g)}%"></div></div>` : ''}<span class="place">${escapeHtml(place.text)}</span></div>
     </div>
-    <span class="chevron" aria-hidden="true">&#8250;</span>
+    <span class="chevron" aria-hidden="true">&#8250;</span>${selecting ? TICK : ''}
   </div>`;
 }
 
@@ -385,9 +434,9 @@ function shelf(g) {
     const st = status(b);
     const pct = b.progress ? Math.round(b.progress.percent * 100) : 0;
     const state = { finished: '&#10003; Finished', reading: `${pct}% read`, unread: 'Not started', processing: 'Preparing…', error: 'Could not convert' }[st];
-    return `<div class="shelf-book${current ? ' current' : ''}">
+    return `<div class="shelf-book${current ? ' current' : ''}${chosenClass([b.id])}">
       ${coverHtml(b)}${place.position != null ? `<span class="cover-tag">#${numberIn(place)}</span>` : ''}
-      ${b.status === 'ready' ? `<a class="link" href="/read/${b.id}" aria-label="Read ${escapeHtml(b.title)}"></a>` : ''}
+      ${opener(b)}
       <div class="title">${escapeHtml(b.title)}</div>
       ${st === 'reading' ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : ''}
       <div class="state">${state}</div>
@@ -398,8 +447,10 @@ function shelf(g) {
   const books = display === 'list'
     ? tiles(items.map((i) => (i.missing ? missingRow(i.missing) : bookRow(i.book, { seriesId: g.id, position: numberIn(i), current: current(i) }))).join(''))
     : `<div class="shelf-row">${items.map((i) => (i.missing ? missingShelfBook(i.missing) : shelfBook(i, current(i)))).join('')}</div>`;
+  // In a section of the Group by menu, a shelf's heading comes under the section's.
+  const h = groupBy === 'none' ? 'h2' : 'h3';
   return `<section class="shelf">
-    <div class="shelf-head"><h2><a href="/?series=${g.id}" data-series="${g.id}">${escapeHtml(g.name)}</a></h2><span class="muted">${facts}</span></div>
+    <div class="shelf-head"><${h}><a href="/?series=${g.id}" data-series="${g.id}">${escapeHtml(g.name)}</a></${h}><span class="muted">${facts}</span>${pickAll()}</div>
     ${books}
   </section>`;
 }
@@ -421,12 +472,12 @@ function renderSeriesList() {
   const q = els.search.value.trim().toLowerCase();
   const f = els.filter.value;
   const list = all.filter((g) => {
-    if (q && !`${g.name} ${g.items.map((i) => `${i.book.title} ${i.book.author}`).join(' ')}`.toLowerCase().includes(q)) return false;
+    if (q && !`${g.name} ${g.items.map((i) => `${i.book.title} ${i.book.author} ${i.book.genre || ''}`).join(' ')}`.toLowerCase().includes(q)) return false;
     if (f === 'duplicates') return g.items.some((i) => flagged(i.book));
     return f === 'all' || g.state === f;
   });
   if (!list.length) { els.library.innerHTML = '<div class="empty">No series or collections match.</div>'; return; }
-  els.library.innerHTML = tiles(list.sort(sorter()).map(stackCard).join(''));
+  els.library.innerHTML = grouped(list.sort(sorter()), (things) => tiles(things.map((g) => stackCard(g)).join('')));
 }
 
 function renderSeries(id) {
@@ -439,7 +490,7 @@ function renderSeries(id) {
   const next = place.item && `${place.verb} ${place.item.position != null ? `#${numberIn(place.item)} ` : ''}${place.item.book.title}`;
   // Every book of the series the library lacks, from Hardcover when it knows the series.
   const missing = lacking(g, { all: true });
-  const facts = [g.numbered ? 'Series' : 'Collection', plural(g.items.length, 'book', 'books'), g.author, g.finished ? `${g.finished} finished` : '',
+  const facts = [g.numbered ? 'Series' : 'Collection', plural(g.items.length, 'book', 'books'), g.author, g.genre, g.finished ? `${g.finished} finished` : '',
     missing.length ? `${missing.length} not in the library` : ''];
   els.library.innerHTML = `<div class="series-head">
       <button class="btn small" data-back>&#8592; All series and collections</button>
@@ -447,13 +498,39 @@ function renderSeries(id) {
       <p class="muted">${facts.filter(Boolean).map(escapeHtml).join(' · ')}</p>
       <div class="row">
         ${next ? `<a class="btn primary" href="/read/${place.item.book.id}">${escapeHtml(next)}</a>` : ''}
+        ${g.items.some((i) => mayEdit(i.book)) ? `<button class="btn" data-genre-series="${g.id}">Set genre</button>` : ''}
         ${me.isAdmin ? `<button class="btn" data-edit-series="${g.id}">Rename or remove</button>` : ''}
       </div>
     </div>
     ${tiles(inOrder(g.items, missing).map((i) => (i.missing ? missingCard(i.missing) : card(i.book, { seriesId: g.id, position: numberIn(i) }))).join(''))}`;
 }
 
-const heading = (text, count) => `<div class="section-title"><h2 style="margin:0">${text}</h2><span class="muted">${count}</span></div>`;
+// Under a section of the Group by menu, a heading is one level down.
+const heading = (text, count, h = groupBy === 'none' ? 'h2' : 'h3') => `<div class="section-title"><${h} style="margin:0">${text}</${h}><span class="muted">${count}</span></div>`;
+
+// ---- grouping by author or genre ----
+
+/**
+ * The names a book goes under in the Group by menu: its authors, or its genre. A series shown as one goes
+ * under its lead author, or the genre most of its books have (see groupSeries()).
+ */
+const groupNames = (x) => (groupBy === 'author' ? (x.items ? [x.lead] : authorNames(x.author)) : [x.genre]);
+/** How many books there are among books and series shown as one. */
+const bookCount = (things) => things.reduce((n, x) => n + (x.items ? x.items.length : 1), 0);
+
+/**
+ * Books and series as the Group by menu has them: all together, or in a section per author or genre
+ * (see sections() in groups.js), each under a heading with its number of books. `show` draws the books
+ * and series of one section, in the order they come.
+ */
+function grouped(things, show) {
+  if (groupBy === 'none') return show(things);
+  const none = groupBy === 'author' ? 'No author' : 'No genre';
+  return sections(things, groupNames, groupBy).map((s) => `<section class="group-section">
+      <div class="group-head"><h2>${escapeHtml(s.name || none)}</h2><span class="muted">${plural(bookCount(s.items), 'book', 'books')}</span>${pickAll()}</div>
+      ${show(s.items)}
+    </section>`).join('');
+}
 
 /** The books you're in the middle of, one card each, above the library when it is sorted by Recently read. */
 function continueReading() {
@@ -509,11 +586,13 @@ function renderDuplicates() {
 function renderBooks() {
   if (els.filter.value === 'duplicates') { renderDuplicates(); return; }
   const cont = continueReading();
-  const allBooks = cont && `${cont}${heading('All books', books.length)}`;
+  // In sections by author or genre, their headings take the place of "All books".
+  const allBooks = cont && groupBy === 'none' ? `${cont}${heading('All books', books.length)}` : cont;
+  const cards = (things) => tiles(things.map((x) => (x.items ? stackCard(x) : card(x))).join(''));
   // Searching always lists the matching books themselves.
   if (layout === 'every' || els.search.value.trim()) {
     const list = visible();
-    els.library.innerHTML = list.length ? `${allBooks}${tiles(list.map((b) => card(b)).join(''))}` : '<div class="empty">No books match.</div>';
+    els.library.innerHTML = list.length ? `${allBooks}${grouped(list, cards)}` : '<div class="empty">No books match.</div>';
     return;
   }
   // A series matches a filter as a whole: Reading means started but not finished.
@@ -523,12 +602,18 @@ function renderBooks() {
   const shownBooks = singles.filter((b) => keep(status(b))).sort(sorter());
   if (!shownSeries.length && !shownBooks.length) { els.library.innerHTML = '<div class="empty">No books match.</div>'; return; }
   if (layout === 'shelves') {
-    const others = shownBooks.length ? `${heading(shownSeries.length ? 'Other books' : 'Books', shownBooks.length)}${tiles(shownBooks.map((b) => card(b)).join(''))}` : '';
-    els.library.innerHTML = `${cont}${shownSeries.map(shelf).join('')}${others}`;
+    // The series on shelves, then the other books. In a section without shelves its heading says it all.
+    const shelves = (things) => {
+      const inSeries = things.filter((x) => x.items);
+      const alone = things.filter((x) => !x.items);
+      const title = inSeries.length || groupBy === 'none' ? heading(inSeries.length ? 'Other books' : 'Books', alone.length) : '';
+      return `${inSeries.map((g) => shelf(g)).join('')}${alone.length ? `${title}${cards(alone)}` : ''}`;
+    };
+    els.library.innerHTML = `${cont}${grouped([...shownSeries, ...shownBooks], shelves)}`;
     return;
   }
   const items = [...shownSeries, ...shownBooks].sort(sorter());
-  els.library.innerHTML = `${allBooks}${tiles(items.map((x) => (x.items ? stackCard(x) : card(x))).join(''))}`;
+  els.library.innerHTML = `${allBooks}${grouped(items, cards)}`;
 }
 
 // The open series is part of the address (/?series=12), so reloading and the back button work.
@@ -557,6 +642,10 @@ function render() {
   els.tabs.querySelector('[data-view="books"] .n').textContent = books.length || '';
   els.tabs.querySelector('[data-view="series"] .n').textContent = new Set(books.flatMap((b) => b.series.map((s) => s.id))).size || '';
   document.body.classList.toggle('series-open', seriesId != null);
+  // While choosing books, tapping one chooses it, and the bar at the bottom says what can be done with them.
+  document.body.classList.toggle('selecting', selecting);
+  els.select.setAttribute('aria-pressed', String(selecting));
+  els.selectBar.classList.toggle('hidden', !selecting);
   els.layout.classList.toggle('hidden', shown !== 'books');
   els.sectionName.textContent = shown === 'series' ? 'Series & collections' : 'Books';
   const dupCount = books.filter(flagged).length;
@@ -568,13 +657,73 @@ function render() {
   els.activeFilters.innerHTML = narrowing.length ? `<span>Showing ${escapeHtml(narrowing.join(' · '))}</span><button type="button" class="btn small" data-show-all>Show all</button>` : '';
   els.activeFilters.classList.toggle('hidden', !narrowing.length);
   els.offlineNote.classList.toggle('hidden', !offline);
-  if (!books.length) {
-    els.library.innerHTML = '<div class="empty"><p>The library is empty.</p><p>Upload EPUB, MOBI, PDF, Markdown or text files to get started.</p></div>';
-    return;
-  }
-  if (seriesId != null) renderSeries(seriesId);
+  if (!books.length) els.library.innerHTML = '<div class="empty"><p>The library is empty.</p><p>Upload EPUB, MOBI, PDF, Markdown or text files to get started.</p></div>';
+  else if (seriesId != null) renderSeries(seriesId);
   else if (view === 'series') renderSeriesList();
   else renderBooks();
+  if (selecting) showSelection();
+}
+
+// ---- choosing books to change together (Select) ----
+
+/** Whether you can change a book's details: a book you added, or any as an admin. */
+const mayEdit = (b) => me.isAdmin || b.addedById === me.id;
+
+/** The ids of the books in each series and collection, by its id. */
+function seriesBookIds() {
+  const out = new Map();
+  for (const b of books) {
+    for (const s of b.series) {
+      if (!out.has(s.id)) out.set(s.id, []);
+      out.get(s.id).push(b.id);
+    }
+  }
+  return out;
+}
+
+/** The books shown in part of the page: each book, and every book of a series or collection shown as one. */
+function booksIn(root, inSeries = seriesBookIds()) {
+  const ids = new Set([...root.querySelectorAll('[data-pick]')].map((el) => el.dataset.pick));
+  for (const el of root.querySelectorAll('[data-pick-series]')) for (const id of inSeries.get(Number(el.dataset.pickSeries)) || []) ids.add(id);
+  return [...ids];
+}
+
+/**
+ * Shows which books are chosen without drawing the library again, which would redraw every cover (slow
+ * on e-ink): on each book and series, on the buttons that choose a section, and in the bar.
+ */
+function showSelection() {
+  const inSeries = seriesBookIds();
+  const mark = (el, state) => {
+    el.setAttribute('aria-pressed', state);
+    const tile = el.closest('.card, .list-row, .shelf-book');
+    tile?.classList.toggle('selected', state === 'true');
+    tile?.classList.toggle('part-selected', state === 'mixed');
+  };
+  for (const el of els.library.querySelectorAll('[data-pick]')) mark(el, String(selected.has(el.dataset.pick)));
+  for (const el of els.library.querySelectorAll('[data-pick-series]')) mark(el, chosen(inSeries.get(Number(el.dataset.pickSeries)) || []));
+  for (const el of els.library.querySelectorAll('[data-pick-section]')) {
+    el.textContent = chosen(booksIn(el.closest('section'), inSeries)) === 'true' ? 'Deselect all' : 'Select all';
+  }
+  const n = selected.size;
+  els.selectBar.querySelector('[data-count]').textContent = n ? `${plural(n, 'book', 'books')} selected` : 'Choose books, or a series for all its books';
+  for (const btn of els.selectBar.querySelectorAll('[data-sel="genre"], [data-sel="clear"]')) btn.disabled = !n;
+}
+
+/** Chooses these books, or leaves them all when every one of them is chosen already. */
+function toggle(ids) {
+  const all = ids.length > 0 && ids.every((id) => selected.has(id));
+  for (const id of ids) {
+    if (all) selected.delete(id);
+    else selected.add(id);
+  }
+  showSelection();
+}
+
+function stopSelecting() {
+  selecting = false;
+  selected.clear();
+  render();
 }
 
 // ---- uploads ----
@@ -859,7 +1008,7 @@ function bookMenu(b) {
   const canEdit = me.isAdmin || b.addedById === me.id;
   const { root, close } = dialog(`
     <h2>${escapeHtml(b.title)}</h2>
-    <p class="muted">${escapeHtml(b.author || '')}<br>${b.format.toUpperCase()} · ${(b.size / 1048576).toFixed(1)} MB · added by ${escapeHtml(b.addedBy || 'unknown')} ${formatDate(b.addedAt)}</p>
+    <p class="muted">${escapeHtml(b.author || '')}<br>${b.genre ? `${escapeHtml(b.genre)} · ` : ''}${b.format.toUpperCase()} · ${(b.size / 1048576).toFixed(1)} MB · added by ${escapeHtml(b.addedBy || 'unknown')} ${formatDate(b.addedAt)}</p>
     ${b.series.length ? `<p class="series-links">Part of ${b.series.map(seriesLink).join(', ')}</p>` : ''}
     ${b.status === 'error' ? `<p class="error">${escapeHtml(b.error || 'Conversion failed')}</p>` : ''}
     <div class="menu">
@@ -1010,7 +1159,11 @@ function showSize(img, label, text) {
   }
 }
 
-/** Title, author and the series and collections a book is in. */
+/** The genres in the library, each spelled as its books have it, in alphabetical order. */
+const genreNames = () => [...new Map(books.filter((b) => b.genre).map((b) => [genreKey(b.genre), b.genre])).values()].sort((x, y) => x.localeCompare(y));
+const genreList = (names) => `<datalist id="genre-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`;
+
+/** Title, author, genre and the series and collections a book is in. */
 function editDetails(b) {
   const names = [...new Set(books.flatMap((x) => x.series.map((s) => s.name)))].sort((x, y) => x.localeCompare(y));
   const { root, close } = dialog(`
@@ -1031,10 +1184,11 @@ function editDetails(b) {
         <button type="button" class="btn small" data-add-row>Add to another</button>
         <p class="muted hint">The number puts a series in order (1, 2, 2.5 …); a book holding several, such as an omnibus, takes a range (1-3). Leave it empty for a collection without an order.</p>
       </fieldset>
+      <div class="field"><label for="ed-genre">Genre</label><input id="ed-genre" name="genre" list="genre-names" value="${escapeHtml(b.genre || '')}" maxlength="100" autocomplete="off"></div>
       <p class="error hidden" data-error></p>
       <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button></div>
     </form>
-    <datalist id="series-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`);
+    <datalist id="series-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>${genreList(genreNames())}`);
   const form = root.querySelector('form');
   const rows = root.querySelector('.series-rows');
   const error = root.querySelector('[data-error]');
@@ -1177,7 +1331,7 @@ function editDetails(b) {
     try {
       // The cover first: when the catalogue cannot send it, nothing has changed yet.
       if (form.elements.useCover?.checked) await api(`/api/books/${b.id}/cover`, { method: 'PUT', body: { source: coverFrom.coverSource, coverId: coverFrom.coverId } });
-      await api(`/api/books/${b.id}`, { method: 'PATCH', body: { title, author: form.elements.author.value.trim(), series } });
+      await api(`/api/books/${b.id}`, { method: 'PATCH', body: { title, author: form.elements.author.value.trim(), series, genre: form.elements.genre.value.trim() } });
       close();
       await load();
     } catch (err) {
@@ -1347,7 +1501,79 @@ function editSeries(id) {
   });
 }
 
+/**
+ * The genre of several books at once: the books chosen, or a whole series. The one who added a book, or
+ * an admin, can change it, so the books someone else added stay as they are, and the dialog says so.
+ * `done` runs once the genre is saved.
+ */
+function editGenre(ids, done = () => {}) {
+  const wanted = new Set(ids);
+  const mine = books.filter((b) => wanted.has(b.id) && mayEdit(b));
+  const others = books.filter((b) => wanted.has(b.id)).length - mine.length;
+  const now = [...new Set(mine.map((b) => b.genre || ''))];
+  const names = genreNames();
+  const note = !others ? '' : `<p class="muted hint">${mine.length
+    ? `The genre of ${plural(others, 'book', 'books')} added by someone else stays as it is: only the one who added a book, or an admin, can change it.`
+    : 'Someone else added these books, and only the one who added a book, or an admin, can change its genre.'}</p>`;
+  const { root, close } = dialog(`
+    <h2>Genre</h2>
+    ${mine.length ? `<form class="details" novalidate>
+      <div class="field">
+        <label for="gn-genre">Genre of ${plural(mine.length, 'book', 'books')}</label>
+        <input id="gn-genre" name="genre" list="genre-names" value="${now.length === 1 ? escapeHtml(now[0]) : ''}" maxlength="100" autocomplete="off"${now.length > 1 ? ' placeholder="They have different genres now"' : ''}>
+        ${names.length ? `<div class="genre-choices">${names.map((n) => `<button type="button" class="btn small" data-genre="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('')}</div>` : ''}
+        <p class="muted hint">Choose a genre, or type a new one. Leave it empty for no genre.</p>
+        ${note}
+      </div>
+      <p class="error hidden" data-error></p>
+      <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button></div>
+    </form>${genreList(names)}` : `<div class="field">${note}</div><div class="row"><button class="btn" type="button" data-close>Close</button></div>`}`);
+  const form = root.querySelector('form');
+  if (!form) return;
+  const input = form.elements.genre;
+  const error = root.querySelector('[data-error]');
+  // The genre in the box is marked among the buttons.
+  const showChoice = () => {
+    for (const btn of root.querySelectorAll('[data-genre]')) btn.setAttribute('aria-pressed', String(genreKey(btn.dataset.genre) === genreKey(input.value)));
+  };
+  showChoice();
+  input.addEventListener('input', showChoice);
+  root.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-genre]');
+    if (!btn) return;
+    input.value = btn.dataset.genre;
+    showChoice();
+  });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const save = form.querySelector('[type="submit"]');
+    save.disabled = true;
+    save.textContent = 'Saving…';
+    try {
+      const { genre, updated } = await api('/api/books', { method: 'PATCH', body: { ids: mine.map((b) => b.id), genre: input.value.trim() } });
+      close();
+      toast(genre ? `Genre of ${plural(updated, 'book', 'books')} set to ${genre}` : `Genre of ${plural(updated, 'book', 'books')} removed`);
+      done();
+      await load();
+    } catch (err) {
+      error.textContent = err.message;
+      error.classList.remove('hidden');
+      save.disabled = false;
+      save.textContent = 'Save';
+    }
+  });
+}
+
 els.library.addEventListener('click', (e) => {
+  // While choosing books, a book, a series or a section's "Select all" chooses its books.
+  const pick = selecting && e.target.closest('[data-pick], [data-pick-series], [data-pick-section]');
+  if (pick) {
+    const { pick: id, pickSeries } = pick.dataset;
+    toggle(id ? [id] : pickSeries ? seriesBookIds().get(Number(pickSeries)) || [] : booksIn(pick.closest('section')));
+    return;
+  }
+  const genreOf = e.target.closest('[data-genre-series]');
+  if (genreOf) { editGenre(seriesBookIds().get(Number(genreOf.dataset.genreSeries)) || []); return; }
   const link = e.target.closest('a[data-series]');
   if (link && plainClick(e)) { e.preventDefault(); openSeries(Number(link.dataset.series)); return; }
   if (e.target.closest('[data-back]')) { closeSeries(); return; }
@@ -1396,8 +1622,27 @@ window.addEventListener('popstate', () => { openedHere = false; render(); });
 els.search.addEventListener('input', render);
 els.filter.addEventListener('change', () => { savePrefs(); render(); });
 els.sort.addEventListener('change', () => { savePrefs(); render(); });
+els.group.addEventListener('change', () => { groupBy = els.group.value; savePrefs(); render(); });
 els.layout.addEventListener('change', () => { layout = els.layout.value; savePrefs(); render(); });
 els.display.addEventListener('change', () => { display = els.display.value; savePrefs(); render(); });
+els.select.addEventListener('click', () => {
+  setMenu(false);
+  if (selecting) { stopSelecting(); return; }
+  selecting = true;
+  render();
+});
+els.selectBar.addEventListener('click', (e) => {
+  const act = e.target.closest('[data-sel]')?.dataset.sel;
+  if (act === 'all') {
+    for (const id of booksIn(els.library)) selected.add(id);
+    showSelection();
+  } else if (act === 'clear') {
+    selected.clear();
+    showSelection();
+  } else if (act === 'genre') editGenre([...selected], () => selected.clear());
+  else if (act === 'done') stopSelecting();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && selecting && !els.dialogRoot.childElementCount) stopSelecting(); });
 document.getElementById('btn-logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); localStorage.removeItem(SAVED); location.href = '/login'; });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') (offline ? start : load)(); });
 window.addEventListener('online', () => { if (offline) start(); });

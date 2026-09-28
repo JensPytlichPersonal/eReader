@@ -191,9 +191,9 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 /* Shelves: each series on a row of its own, every book with its title */
 .shelf { margin: 22px 0 8px; }
 .shelf-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin-bottom: 10px; }
-.shelf-head h2 { margin: 0; font-size: 20px; }
-.shelf-head h2 a { text-decoration: none; }
-.shelf-head h2 a::after { content: " \203A"; }
+.shelf-head h2, .shelf-head h3 { margin: 0; font-size: 20px; }
+.shelf-head a { text-decoration: none; }
+.shelf-head a::after { content: " \203A"; }
 .shelf-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--shelf-min, 112px), 1fr)); gap: 16px 12px; padding-bottom: 18px; border-bottom: 2px solid var(--line); }
 .shelf .list { margin-bottom: 18px; }
 .shelf-book { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -240,6 +240,49 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .series-head .btn.primary { white-space: normal; text-align: left; padding-top: 6px; padding-bottom: 6px; }
 .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
 .section-title { display: flex; align-items: baseline; gap: 10px; margin: 20px 0 10px; }
+/* Group by author or genre: a section for each, its heading standing out above the shelves and books in it */
+.group-section { margin: 28px 0 8px; }
+.group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding-top: 10px; margin-bottom: 12px; border-top: 3px solid var(--fg); }
+.group-head h2 { margin: 0; font-size: 22px; }
+.group-section .shelf { margin: 16px 0 8px; }
+.group-section .shelf-head h3 { font-size: 17px; }
+.group-section .section-title { margin: 16px 0 10px; }
+.group-section .section-title h3 { font-size: 16px; }
+.group-head .btn, .shelf-head .btn { margin-left: auto; align-self: center; }
+
+/* Choosing books (Select): tapping a book or a series chooses it. A tick takes the place of the menu
+   button, the books chosen are framed, and a bar at the bottom says what can be done with them. */
+.pick { margin: 0; padding: 0; border: 0; background: none; cursor: pointer; }
+.pick:focus-visible { outline: 3px solid var(--fg); outline-offset: -3px; }
+.selecting .menu-btn, .selecting .list-row .chevron { display: none; }
+/* A series link or duplicate flag on a book chooses the book too */
+.selecting .card .series-line a, .selecting .list-row .about a, .selecting .dup-flag { pointer-events: none; }
+.check { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 2px solid var(--fg); border-radius: 50%; background: var(--bg); color: var(--fg); font-weight: 800; font-size: 20px; line-height: 1; pointer-events: none; }
+.card .check { position: absolute; top: var(--menu-inset, 6px); right: var(--menu-inset, 6px); width: var(--menu-size, 40px); height: var(--menu-size, 40px); font-size: calc(var(--menu-size, 40px) * .5); }
+.card .stack .check { top: auto; bottom: var(--menu-inset, 6px); right: calc(var(--edge, 8px) + var(--menu-inset, 6px)); z-index: 2; }
+.shelf-book .check { position: absolute; top: 5px; right: 5px; width: 30px; height: 30px; font-size: 16px; }
+.list-row .check { grid-column: 3; grid-row: 1; }
+.selected .check, .part-selected .check { background: var(--fg); color: var(--bg); }
+.selected .check::after { content: "\2713"; }
+.part-selected .check::after { content: ""; width: 40%; height: 3px; background: currentColor; }
+.card.selected, .card.part-selected { border-color: var(--fg); }
+.card.selected { box-shadow: 0 0 0 2px var(--fg); }
+.list-row.selected { box-shadow: inset 0 0 0 3px var(--fg); }
+.shelf-book.selected .cover { border-color: var(--fg); outline: 3px solid var(--fg); outline-offset: 2px; }
+#btn-select[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.select-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 10px max(calc(16px + var(--safe-right)), calc((100% - 1168px) / 2)) calc(10px + var(--safe-bottom)) max(calc(16px + var(--safe-left)), calc((100% - 1168px) / 2));
+  background: var(--bg); border-top: 2px solid var(--fg);
+}
+.select-bar .count { flex: 1 1 auto; font-weight: 700; }
+.selecting main.page { padding-bottom: calc(90px + var(--safe-bottom)); }
+.selecting .toast { bottom: calc(80px + var(--safe-bottom)); }
+@media (max-width: 599px) {
+  .select-bar .count { flex-basis: 100%; }
+  .selecting main.page { padding-bottom: calc(130px + var(--safe-bottom)); }
+  .selecting .toast { bottom: calc(120px + var(--safe-bottom)); }
+}
 
 /* Phones: the tabs, search, menus, upload and account links sit behind the menu button, so the books
    get the screen. A line under the header says when a search or filter hides books. */
@@ -279,6 +322,10 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .field .series-row input[name="series-name"] { flex: 1 1 auto; }
 .field .series-row input[name="series-no"] { flex: 0 0 80px; text-align: center; }
 .series-row .btn.icon { flex: none; }
+/* The genres in the library, to choose one with a tap rather than typing it */
+.genre-choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.genre-choices .btn { white-space: normal; }
+.genre-choices .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .lookup { margin: -4px 0 14px; }
 .lookup .hint a { font-weight: 600; }
 .matches { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
@@ -312,7 +359,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
    stays under the author) and their covers larger. */
 @media (min-width: 900px) {
   .sheet.wide { width: min(94vw, 980px); }
-  .sheet.wide .details { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: repeat(6, auto) 1fr; column-gap: 28px; align-items: start; }
+  .sheet.wide .details { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: repeat(7, auto) 1fr; column-gap: 28px; align-items: start; }
   .sheet.wide .details > * { grid-column: 1; }
   .sheet.wide .lookup { display: contents; }
   .sheet.wide .lookup > .btn { grid-column: 1; justify-self: start; margin: -4px 0 14px; }
