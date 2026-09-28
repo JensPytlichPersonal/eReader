@@ -11,6 +11,7 @@
   --radius: 6px;
   --ctl: 44px; /* the height of a button or a one-line field */
   --ctl-menu: 40px; /* the library's menus, on a row of their own under the search field */
+  --cover-ratio: 5 / 8; /* the slot a cover stands in: the tallest common shape of a cover (1600 x 2560); shorter covers leave air above them, taller ones come out narrower */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
@@ -55,6 +56,15 @@
   --panel: #000000;
   --accent: #ffffff;
   --accent-fg: #000000;
+}
+/* Drawn around a cover's picture rather than its box (see .card): a 2 px edge, a ring on the cover you are on or have
+   chosen, and behind the top cover of a series the sheets of the others (declared on .stack, so the distances a size of
+   card or a list's stacks set reach them: each sheet stands out --sheet, its edge --sheet-edge; together they must fit
+   in the stack's padding, --edge). */
+:root {
+  --sheet: 2px; --sheet-edge: 2px;
+  --cover-edge: drop-shadow(2px 0 0 var(--line)) drop-shadow(-2px 0 0 var(--line)) drop-shadow(0 2px 0 var(--line)) drop-shadow(0 -2px 0 var(--line));
+  --cover-ring: drop-shadow(3px 0 0 var(--fg)) drop-shadow(-3px 0 0 var(--fg)) drop-shadow(0 3px 0 var(--fg)) drop-shadow(0 -3px 0 var(--fg));
 }
 
 * { box-sizing: border-box; }
@@ -150,7 +160,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-min, 170px), 1fr)); gap: var(--grid-gap, 16px); }
 #library.cols-2 { --card-min: 230px; --shelf-min: 150px; }
 #library.cols-4 {
-  --card-min: 125px; --shelf-min: 88px; --grid-gap: 12px; --edge: 5px;
+  --card-min: 125px; --shelf-min: 88px; --grid-gap: 12px; --edge: 6px; --sheet: 1px; --sheet-edge: 2px;
   --card-title: 12px; --card-text: 11px; --card-meta: 11px; --card-pad: 6px 6px 5px; --menu-size: 28px; --menu-inset: 4px; --tag-size: 11px; --ph-title: 12px;
 }
 #library.cols-4 .card .author, #library.cols-4 .card .series-line, #library.cols-4 .card .dup-flag, #library.cols-4 .card:not(.group) .meta, #library.cols-4 .card .cover.placeholder .a { display: none; }
@@ -158,8 +168,8 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 #library.cols-4 .card.group .info > .title { order: -2; }
 #library.cols-4 .card.group .info > .meta { order: -1; margin-top: auto; }
 #library.cols-4 .card.group .info > .progress { order: 0; margin-top: 0; }
-/* Keep a cover's title clear of the buttons on it */
-#library.cols-4 .card .cover.placeholder { justify-content: flex-start; padding: calc(var(--menu-size) + 2 * var(--menu-inset)) 5px 6px; }
+/* Keep a cover's title clear of the buttons at its foot */
+#library.cols-4 .card .cover.placeholder { justify-content: flex-start; padding: 6px 5px calc(var(--menu-size) + 2 * var(--menu-inset)); }
 @media (max-width: 599px) {
   #library.cols-2 { --cols: 2; }
   #library.cols-3 {
@@ -170,11 +180,22 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
   #library.cols-4 { --cols: 4; --grid-gap: 8px; }
   #library .grid, #library .shelf-row { grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: var(--grid-gap, 12px); }
 }
-.card { position: relative; display: flex; flex-direction: column; border: 2px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); text-decoration: none; }
+.card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(var(--count-line, 0px), auto) auto minmax(0, 1fr); border: 2px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); text-decoration: none; }
+/* Three rows: the number of books of a series (empty otherwise), the cover's slot, the text. The slot is as wide
+   as the card and --cover-ratio tall, whatever the cover in it; covers are whole, standing on its bottom edge. */
+.card::before { content: ""; grid-row: 2 / 3; grid-column: 1 / 2; aspect-ratio: var(--cover-ratio); }
+.card > .count { grid-row: 1 / 2; grid-column: 1 / 2; }
+.card > .cover, .card > .stack { grid-row: 2 / 3; grid-column: 1 / 2; align-self: end; width: 100%; }
+.card > .info { grid-row: 3 / 4; grid-column: 1 / 2; }
+/* What sits on a cover sits at its foot, the one edge every picture reaches */
+.card > .cover-tag, .card > .menu-btn, .card > .check, .card > .status { grid-row: 2 / 3; grid-column: 1 / 2; }
 .card:focus-within, .card:hover { border-color: var(--fg); }
 /* Offline: a book this device doesn't keep, so it needs a connection (see showOffline in library.js). */
 .card.unavailable, .list-row.unavailable { opacity: .4; }
-.card .cover { display: block; aspect-ratio: 2 / 3; width: 100%; object-fit: cover; background: var(--panel); border-bottom: 2px solid var(--line); }
+.card .cover { display: block; width: 100%; }
+.card > img.cover { aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; filter: var(--cover-edge); }
+/* A cover the book has none of: a tile of the usual 2:3 shape, standing on the same edge */
+.card > .cover.placeholder { aspect-ratio: 2 / 3; height: auto; background: var(--panel); border-bottom: 2px solid var(--line); }
 .card .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 12px; gap: 6px; font-weight: 700; }
 .card .cover.placeholder .t { font-size: var(--ph-title, 16px); line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
 .card .cover.placeholder .a { font-size: calc(var(--ph-title, 16px) * .75); font-weight: 500; color: var(--muted); }
@@ -190,7 +211,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .badge { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
 .progress { height: 8px; border: 1px solid var(--fg); border-radius: 4px; overflow: hidden; background: var(--bg); }
 .progress > div { height: 100%; background: var(--fg); }
-.card .menu-btn { position: absolute; top: var(--menu-inset, 6px); right: var(--menu-inset, 6px); width: var(--menu-size, 40px); height: var(--menu-size, 40px); padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: calc(var(--menu-size, 40px) * .45); line-height: 1; }
+.card .menu-btn { position: absolute; top: auto; bottom: var(--menu-inset, 6px); right: var(--menu-inset, 6px); width: var(--menu-size, 40px); height: var(--menu-size, 40px); padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: calc(var(--menu-size, 40px) * .45); line-height: 1; }
 .card .status { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-weight: 700; font-size: var(--card-title, 16px); background: var(--bg); padding: 8px; border-top: 2px solid var(--fg); border-bottom: 2px solid var(--fg); }
 .card .status.err { color: var(--danger); }
 .card .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
@@ -202,18 +223,17 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .list-row .dup-flag { font-size: 12px; white-space: nowrap; }
 .dup-group .grid { padding-bottom: 18px; border-bottom: 2px solid var(--line); }
 /* Number in the series on a book's cover, number of books on a series' cover */
-.card .cover-tag, .shelf-book .cover-tag { position: absolute; top: var(--menu-inset, 6px); left: var(--menu-inset, 6px); padding: 2px calc(var(--tag-size, 14px) * .55); border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: var(--tag-size, 14px); }
+.card .cover-tag, .shelf-book .cover-tag { position: absolute; top: auto; bottom: var(--menu-inset, 6px); left: var(--menu-inset, 6px); padding: 2px calc(var(--tag-size, 14px) * .55); border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: var(--tag-size, 14px); }
 /* The number of books in a series: the e-ink look keeps the tag on the cover, the soft look shows this line above it */
 .card .count { display: none; }
-/* A series folded into one tile: the cover of the book you're on, with the edges of the others behind it */
-.stack { position: relative; isolation: isolate; padding: var(--edge, 8px) var(--edge, 8px) 0 0; }
-.stack::before, .stack::after { content: ""; position: absolute; border: 2px solid var(--muted); border-radius: 3px; background: var(--panel); }
-.stack::before { top: 0; right: 0; bottom: var(--edge, 8px); left: var(--edge, 8px); }
-.stack::after { top: calc(var(--edge, 8px) / 2); right: calc(var(--edge, 8px) / 2); bottom: calc(var(--edge, 8px) / 2); left: calc(var(--edge, 8px) / 2); }
-.stack .cover { position: relative; z-index: 1; border: 2px solid var(--muted); border-radius: 3px 3px 0 0; }
-.card .stack { border-bottom: 2px solid var(--line); }
-.card .stack .cover { border-bottom: 0; }
-.card.pile .cover-tag { top: calc(var(--edge, 8px) + var(--menu-inset, 6px)); }
+/* A series folded into one tile: the cover of the book you're on, with the edges of the others drawn behind it */
+.stack {
+  position: relative; isolation: isolate; padding: var(--edge, 8px) var(--edge, 8px) 0 0;
+  --cover-sheets: drop-shadow(var(--sheet) calc(-1 * var(--sheet)) 0 var(--bg)) drop-shadow(var(--sheet-edge) calc(-1 * var(--sheet-edge)) 0 var(--muted)) drop-shadow(var(--sheet) calc(-1 * var(--sheet)) 0 var(--bg)) drop-shadow(var(--sheet-edge) calc(-1 * var(--sheet-edge)) 0 var(--muted));
+}
+.stack img.cover { position: relative; z-index: 1; display: block; width: 100%; aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; filter: var(--cover-edge) var(--cover-sheets); }
+/* A series whose top book has no cover: its tile stands in the stack as a picture would */
+.stack .cover.placeholder { position: relative; z-index: 1; width: 100%; aspect-ratio: 2 / 3; height: auto; background: var(--panel); border: 2px solid var(--line); filter: var(--cover-sheets); }
 .card .meta .place { font-weight: 700; color: var(--fg); }
 /* Shelves: each series on a row of its own, every book with its title */
 .shelf { margin: 22px 0 8px; }
@@ -223,13 +243,22 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .shelf-head a::after { content: " \203A"; }
 .shelf-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--shelf-min, 112px), 1fr)); gap: 16px 12px; padding-bottom: 18px; border-bottom: 2px solid var(--line); }
 .shelf .list { margin-bottom: 18px; }
-.shelf-book { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.shelf-book .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
+.shelf-book { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); gap: 4px 0; min-width: 0; }
+/* The cover's slot, as in .card; then the title, the bar and the state, the state at the foot */
+.shelf-book::before { content: ""; grid-row: 1 / 2; grid-column: 1 / 2; aspect-ratio: var(--cover-ratio); }
+.shelf-book > .cover { grid-row: 1 / 2; grid-column: 1 / 2; align-self: end; display: block; width: 100%; }
+.shelf-book > img.cover { aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; filter: var(--cover-edge); }
+.shelf-book > .cover.placeholder { aspect-ratio: 2 / 3; height: auto; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
+.shelf-book > .cover-tag, .shelf-book > .check { grid-row: 1 / 2; grid-column: 1 / 2; }
+.shelf-book > .title { grid-row: 2 / 3; }
+.shelf-book > .progress { grid-row: 3 / 4; }
+.shelf-book > .state { grid-row: 4 / 5; align-self: end; }
 .shelf-book .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 8px; text-align: center; overflow: hidden; }
 .shelf-book .cover.placeholder .t { font-weight: 700; font-size: 13px; line-height: 1.2; }
 .shelf-book .cover.placeholder .a { font-size: 11px; color: var(--muted); }
-.shelf-book.current .cover { border-color: var(--fg); outline: 3px solid var(--fg); outline-offset: 2px; }
-.shelf-book:hover .cover, .shelf-book:focus-within .cover { border-color: var(--fg); }
+.shelf-book.current img.cover { filter: var(--cover-ring); }
+.shelf-book.current .cover.placeholder { border-color: var(--fg); outline: 3px solid var(--fg); outline-offset: 2px; }
+.shelf-book:hover .cover.placeholder, .shelf-book:focus-within .cover.placeholder { border-color: var(--fg); }
 .shelf-book .title { font-weight: 700; font-size: 13px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .shelf-book .state { font-size: 12px; color: var(--muted); margin-top: auto; }
 .shelf-book .progress { margin-top: auto; }
@@ -241,9 +270,11 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .list-row:hover, .list-row:focus-within { background: var(--panel); }
 .list-row.current { box-shadow: inset 5px 0 0 var(--fg); padding-left: 14px; }
 .list-row .thumb { width: 48px; }
-.list-row .stack { --edge: 4px; }
-.list-row .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 2px solid var(--line); border-radius: 3px; }
-.list-row .stack .cover { border-color: var(--muted); }
+.list-row .stack { --edge: 4px; --sheet: 1px; --sheet-edge: 1px; }
+.list-row .cover { display: block; width: 100%; }
+.list-row img.cover { aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; border-radius: 0; filter: var(--cover-edge); }
+.list-row .cover.placeholder { aspect-ratio: 2 / 3; height: auto; background: var(--panel); border: 2px solid var(--line); border-radius: 3px; }
+.list-row .stack img.cover { filter: var(--cover-edge) var(--cover-sheets); }
 .list-row .cover.placeholder > * { display: none; }
 .list-row .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .list-row .title { font-weight: 700; font-size: 15px; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -261,7 +292,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .card.missing .cover { border-bottom-style: dashed; }
 .card.missing .meta { flex-wrap: wrap; }
 .shelf-book.missing .cover, .list-row.missing .cover { border-style: dashed; }
-.missing .cover { background: none; }
+.missing .cover, .missing .cover.placeholder { background: none; }
 .missing .cover.placeholder, .missing .title { color: var(--muted); }
 .series-head { margin-bottom: 18px; }
 .series-head h1 { margin: 14px 0 4px; }
@@ -288,9 +319,9 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .selecting .card .series-line a, .selecting .list-row .about a, .selecting .dup-flag { pointer-events: none; }
 /* Only in the library: the reader's settings rows are <label class="check"> too */
 .library .check { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 2px solid var(--fg); border-radius: 50%; background: var(--bg); color: var(--fg); font-weight: 800; font-size: 20px; line-height: 1; pointer-events: none; }
-.card .check { position: absolute; top: var(--menu-inset, 6px); right: var(--menu-inset, 6px); width: var(--menu-size, 40px); height: var(--menu-size, 40px); font-size: calc(var(--menu-size, 40px) * .5); }
+.card .check { position: absolute; top: auto; bottom: var(--menu-inset, 6px); right: var(--menu-inset, 6px); width: var(--menu-size, 40px); height: var(--menu-size, 40px); font-size: calc(var(--menu-size, 40px) * .5); }
 .card .stack .check { top: auto; bottom: var(--menu-inset, 6px); right: calc(var(--edge, 8px) + var(--menu-inset, 6px)); z-index: 2; }
-.shelf-book .check { position: absolute; top: 5px; right: 5px; width: 30px; height: 30px; font-size: 16px; }
+.shelf-book .check { position: absolute; top: auto; bottom: 5px; right: 5px; width: 30px; height: 30px; font-size: 16px; }
 .list-row .check { grid-column: 3; grid-row: 1; }
 .selected .check, .part-selected .check { background: var(--fg); color: var(--bg); }
 .selected .check::after { content: "\2713"; }
@@ -298,7 +329,8 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .card.selected, .card.part-selected { border-color: var(--fg); }
 .card.selected { box-shadow: 0 0 0 2px var(--fg); }
 .list-row.selected { box-shadow: inset 0 0 0 3px var(--fg); }
-.shelf-book.selected .cover { border-color: var(--fg); outline: 3px solid var(--fg); outline-offset: 2px; }
+.shelf-book.selected img.cover { filter: var(--cover-ring); }
+.shelf-book.selected .cover.placeholder { border-color: var(--fg); outline: 3px solid var(--fg); outline-offset: 2px; }
 #btn-select[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .select-bar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
@@ -412,8 +444,9 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 /* Cover dialog: the cover as the library shows it, beside the ways to change it */
 .cover-edit { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
 .cover-preview { flex: 0 0 110px; }
-.cover-preview .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
-.cover-preview .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 8px; text-align: center; overflow: hidden; }
+.cover-preview .cover { display: block; width: 100%; }
+.cover-preview img.cover { aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; filter: var(--cover-edge); }
+.cover-preview .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 8px; aspect-ratio: 2 / 3; height: auto; text-align: center; overflow: hidden; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
 .cover-preview .cover.placeholder .t { font-weight: 700; font-size: 14px; line-height: 1.2; }
 .cover-preview .cover.placeholder .a { font-size: 12px; color: var(--muted); }
 .cover-edit .menu { flex: 1 1 210px; min-width: 0; }
