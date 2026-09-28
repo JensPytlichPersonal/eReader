@@ -9,6 +9,7 @@ import { detectFormat, readMetadata, SUPPORTED_EXTENSIONS } from '../converters/
 import { sniffImage, titleFromFilename } from '../converters/bundle.js';
 import { cleanSeriesName, knownSeriesName, parsePosition } from '../converters/series.js';
 import { LookupError } from '../lookup.js';
+import { fingerprint } from '../duplicates.js';
 
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
 const COVER_TYPES = ['jpg', 'png', 'gif', 'webp'];
@@ -37,7 +38,7 @@ export function parseSeriesInput(input) {
   return { series };
 }
 
-export function bookRoutes(db, auth, config, processor, series, lookups) {
+export function bookRoutes(db, auth, config, processor, series, lookups, duplicates) {
   const r = Router();
   const stmts = {
     list: db.prepare(`SELECT b.*, u.username AS added_by_name,
@@ -46,7 +47,9 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
       LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?
       ORDER BY COALESCE(p.updated_at, 0) DESC, b.added_at DESC`),
     get: db.prepare('SELECT b.*, u.username AS added_by_name FROM books b LEFT JOIN users u ON u.id = b.added_by WHERE b.id = ?'),
-    insert: db.prepare('INSERT INTO books (id, title, author, format, original_name, size, added_by, added_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+    insert: db.prepare('INSERT INTO books (id, title, author, format, original_name, size, added_by, added_at, status, sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+    // The book a file already is, the first one added when there are several (from before uploads were checked).
+    withFile: db.prepare('SELECT b.*, u.username AS added_by_name FROM books b LEFT JOIN users u ON u.id = b.added_by WHERE b.sha256 = ? ORDER BY b.added_at LIMIT 1'),
     delete: db.prepare('DELETE FROM books WHERE id = ?'),
     updateMeta: db.prepare('UPDATE books SET title = ?, author = ?, edited_at = ? WHERE id = ?'),
     // Always later than the cover's current version, even for two changes within a millisecond.
@@ -97,13 +100,17 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
 
   r.use(auth.requireUser);
 
+  // The library. Only here does a book list its possible duplicates, [{ id, reason }] (see duplicates.js),
+  // since finding them compares every book.
   r.get('/', (req, res) => {
     const bookSeries = series.byBook();
-    const books = stmts.list.all(req.user.id).map((b) => shapeBook(b, bookSeries.get(b.id) || []));
+    const alike = duplicates.byBook();
+    const books = stmts.list.all(req.user.id).map((b) => ({ ...shapeBook(b, bookSeries.get(b.id) || []), duplicates: alike.get(b.id) || [] }));
     res.json({ books, processing: processor.isBusy(), supported: SUPPORTED_EXTENSIONS });
   });
 
-  // Upload: raw body, filename in X-File-Name (URL encoded)
+  // Upload: raw body, filename in X-File-Name (URL encoded). A file that is already in the library, under
+  // any name, is not added again: the answer is 409, with the book it is.
   r.post('/', express.raw({ type: () => true, limit: config.maxUploadBytes }), async (req, res) => {
     let filename = '';
     try { filename = decodeURIComponent(req.get('x-file-name') || ''); } catch { filename = req.get('x-file-name') || ''; }
@@ -113,12 +120,23 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
     if (!filename) return res.status(400).json({ error: 'Missing X-File-Name header' });
     const format = detectFormat(filename, body);
     if (!format) return res.status(415).json({ error: `Unsupported file type. Supported: ${SUPPORTED_EXTENSIONS.join(', ')}` });
+    const sha256 = fingerprint(body);
+    const alreadyIn = (b) => res.status(409).json({ error: `Already in the library as "${b.title}"`, book: shapeBook(b) });
+    let same = stmts.withFile.get(sha256);
+    if (same) return alreadyIn(same);
     const id = crypto.randomBytes(8).toString('hex');
     const ext = (path.extname(filename).slice(1).toLowerCase() || format).replace(/[^a-z0-9]/g, '') || 'bin';
     const dir = bookDir(id);
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(path.join(dir, `original.${ext}`), body);
-    stmts.insert.run(id, titleFromFilename(filename), '', format, filename, body.length, req.user.id, now(), 'processing');
+    // Asked again: the same file may have been sent twice at once, and the other copy saved meanwhile.
+    // From here to the insert nothing waits, so only one of them gets in.
+    same = stmts.withFile.get(sha256);
+    if (same) {
+      await fsp.rm(dir, { recursive: true, force: true });
+      return alreadyIn(same);
+    }
+    stmts.insert.run(id, titleFromFilename(filename), '', format, filename, body.length, req.user.id, now(), 'processing', sha256);
     processor.enqueue(id);
     res.status(202).json({ book: shapeBook({ ...stmts.get.get(id) }, []) });
   });
@@ -182,6 +200,23 @@ export function bookRoutes(db, auth, config, processor, series, lookups) {
     stmts.delete.run(b.id);
     series.prune();
     await fsp.rm(bookDir(b.id), { recursive: true, force: true });
+    res.json({ ok: true });
+  });
+
+  // Says that two books which look alike are different books, so neither is flagged as a possible
+  // duplicate of the other any more. Body: { of: the other book's id }. The uploader of either book or
+  // an admin can.
+  r.post('/:id/not-duplicate', (req, res) => {
+    const otherId = req.body?.of;
+    if (typeof otherId !== 'string') return res.status(400).json({ error: 'of must be the id of the other book' });
+    const b = stmts.get.get(req.params.id);
+    const other = stmts.get.get(otherId);
+    if (!b || !other) return res.status(404).json({ error: 'No such book' });
+    if (b.id === other.id) return res.status(400).json({ error: 'That is the same book' });
+    if (!req.user.isAdmin && b.added_by !== req.user.id && other.added_by !== req.user.id) {
+      return res.status(403).json({ error: 'Only the uploader of one of the books or an admin can do this' });
+    }
+    duplicates.markDifferent(b.id, other.id);
     res.json({ ok: true });
   });
 

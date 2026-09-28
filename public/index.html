@@ -39,6 +39,7 @@
         <option value="reading">Reading</option>
         <option value="unread">Not started</option>
         <option value="finished">Finished</option>
+        <option value="duplicates">Duplicates</option>
       </select>
       <select id="sort" aria-label="Sort">
         <option value="recent">Recently read</option>
@@ -59,8 +60,9 @@
       </select>
       <button class="btn primary" id="btn-upload">Upload books</button>
       <input type="file" id="file-input" class="hidden" multiple accept=".epub,.mobi,.prc,.azw,.azw3,.pdf,.md,.markdown,.txt,.text,application/epub+zip,application/pdf,text/plain,text/markdown">
+      <input type="file" id="folder-input" class="hidden" webkitdirectory>
     </div>
-    <div class="dropzone" id="dropzone">Drop EPUB, MOBI, PDF, Markdown or text files here to add them to the library</div>
+    <div class="dropzone" id="dropzone">Drop EPUB, MOBI, PDF, Markdown or text files, or folders of them, here to add them to the library <button type="button" class="btn small hidden" id="btn-upload-folder">Upload a folder</button></div>
   </div>
   <div class="uploads" id="uploads"></div>
   <div class="active-filters hidden" id="active-filters"></div>
