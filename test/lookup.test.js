@@ -78,7 +78,7 @@ test('Open Library lookup: the file\'s ISBN first, and only books like the title
   // The ISBN names the Danish edition, so its title wins over the work's (the English original).
   assert.deepEqual(results, [{
     key: '/works/OL82563W', source: 'openlibrary', title: 'Harry Potter og De Vises Sten', author: 'J. K. Rowling', year: 1997, series: [{ name: 'Harry Potter', position: 1 }],
-    cover: 'https://covers.openlibrary.org/b/id/12917614-M.jpg', coverSource: 'openlibrary', coverId: 12917614, url: 'https://openlibrary.org/books/OL39797842M', byIsbn: true,
+    cover: 'https://covers.openlibrary.org/b/id/12917614-L.jpg?default=false', coverSource: 'openlibrary', coverId: 12917614, url: 'https://openlibrary.org/books/OL39797842M', byIsbn: true,
   }]);
 });
 
@@ -89,7 +89,7 @@ test('Open Library lookup: the title typed picks the work or a translation, and 
   assert.deepEqual([danish.title, danish.url, danish.byIsbn], ['Harry Potter og De Vises Sten', 'https://openlibrary.org/books/OL39797842M', false]);
   const [english] = await openLibrary.lookup({ title: "Harry Potter and the Philosopher's Stone" });
   assert.deepEqual([english.title, english.url, english.cover], [
-    "Harry Potter and the Philosopher's Stone", 'https://openlibrary.org/works/OL82563W', 'https://covers.openlibrary.org/b/id/15155833-M.jpg',
+    "Harry Potter and the Philosopher's Stone", 'https://openlibrary.org/works/OL82563W', 'https://covers.openlibrary.org/b/id/15155833-L.jpg?default=false',
   ]);
   assert.equal(ol.calls[0].params.lang, undefined, 'no language, no preference');
 

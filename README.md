@@ -274,9 +274,13 @@ the file's ISBN first, each with the catalogue it came from. A book both catalog
 once, from Hardcover, with Open Library filling in a series or cover Hardcover lacks. Choosing a match
 fills in the title, author and series; nothing changes until you press *Save*.
 
-When the match has a cover, the dialog shows it with *Use this cover*, ticked when the book has no cover
-yet and left for you to tick when it has one. On saving, the server fetches the large version of the
-picture and keeps it like a cover picked by hand, so *Change cover* can still go back to the book's own.
+Each match shows its cover and the cover's size in pixels, and the dialog says how large the book's
+cover is now, so a sharp cover can be told from a small scan. *Cover only* takes just a match's cover
+and leaves the details as they are. A match chosen for its details offers its cover with *Use this
+cover*, ticked when the book has no cover yet and left for you to tick when it has one; a cover taken
+with *Cover only* is ticked, and stays when the details then come from another match. On saving, the
+server fetches the picture and keeps it like a cover picked by hand, so *Change cover* can still go back
+to the book's own. On a wide screen the matches are beside the form.
 
 - A series the catalogue names joins the library's series of that name, however it is spelled there
   ("The Expanse" joins "Expanse").
@@ -284,8 +288,8 @@ picture and keeps it like a cover picked by hand, so *Change cover* can still go
   English original, when the ISBN or the title typed points to that edition. The book's language
   tells Open Library which edition to prefer.
 - Only the server talks to the catalogues, and only when someone presses the button or saves a cover
-  from one: the title, author and ISBN go out. The small covers in the list of matches load from the
-  catalogues' own sites.
+  from one: the title, author and ISBN go out. The covers in the list of matches load from the
+  catalogues' own sites, as large as they would be saved.
 
 Like editing, looking up is for the uploader of a book or an admin.
 
@@ -307,10 +311,12 @@ before restarting the service; without it systemd keeps the settings it had. The
 startup which catalogues it looks books up in, and so does `curl http://127.0.0.1:8080/api/health`,
 under `lookup`.
 
-A Hardcover cover is the one its website shows for the book, saved as Hardcover stores it. Hardcover
-sometimes has a book more than once, under different titles, each with its own cover. To use another
-one's cover, type its title and look it up, choose it and tick the cover, then put back the details it
-filled in before saving. Or save the picture from Hardcover's website and add it with *Change cover*.
+Hardcover sometimes lists a book under another title and other authors, with its own only on an
+edition: *Beyond the Dark Portal* is also listed as "World of Warcraft, Vol. 4". So the lookup searches
+for the title alone as well, and looks at each book's editions. Such a book is offered with its
+edition's title, authors and cover, but only when those are the authors typed, so another book with the
+same title stays out. A cover is the one Hardcover's website shows for the book or edition, saved as
+Hardcover stores it.
 
 Keep the token on the server: anyone holding it can act as your Hardcover account within its
 permissions. If Hardcover stops answering, for example because the token has expired, the lookup still
