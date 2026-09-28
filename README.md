@@ -48,7 +48,8 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   image, use a page of the PDF, or show the title instead.
 - **List or cards.** The View menu shows the library as a list or as cards in three sizes. On a phone
   the cards are 2, 3 or 4 across, and the tabs, search, menus, upload and account links sit behind
-  the ☰ button so the books fill the screen.
+  the ☰ button so the books fill the screen. Coming back from a book returns you to where you were in
+  the library, the same tab or series page, at the same place.
 - **Table of contents, bookmarks, progress slider, chapter titles** and a "who else is reading" peek.
 - **Upload from the app**: books, or whole folders of them, with a button or by drag and drop.
   Conversion runs in the background. The same file is never added twice, and the same book in another

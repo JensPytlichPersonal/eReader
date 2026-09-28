@@ -88,6 +88,7 @@ async function load() {
   for (const id of selected) if (!ids.has(id)) selected.delete(id); // deleted meanwhile
   try { if (me) localStorage.setItem(SAVED, JSON.stringify({ me, books })); } catch { /* storage full */ }
   render();
+  restoreFirst();
   const processing = books.some((b) => b.status === 'processing');
   clearTimeout(pollTimer);
   if (processing) pollTimer = setTimeout(load, 3000);
@@ -111,6 +112,7 @@ async function showOffline() {
   kept = new Set(here.filter(Boolean));
   offline = true;
   render();
+  restoreFirst();
 }
 const faded = (b) => offline && !kept.has(b.id);
 
@@ -622,19 +624,64 @@ function renderBooks() {
 const openSeriesId = () => { const v = new URLSearchParams(location.search).get('series'); return /^\d+$/.test(v || '') ? Number(v) : null; };
 let openedHere = false; // the series page was opened from this page, so "back" returns to where we were
 
+// ---- where the library was scrolled to ----
+// Coming back from a book loads the library afresh, and it renders only once the books have come, too late for the
+// browser to put the page back where it was. So this tab keeps the place of each view itself: the Books tab, the
+// Series & collections tab, and each series page by its address.
+history.scrollRestoration = 'manual';
+const SCROLL = 'ereader.scroll';
+const scrollKey = () => (openSeriesId() != null ? location.search : view);
+// Only the first render after the page loads goes back to the view's place (see restoreFirst()).
+let restorePending = true;
+
+/** Where each view was last scrolled to in this tab, by scrollKey(). */
+function scrollPlaces() {
+  try { return JSON.parse(sessionStorage.getItem(SCROLL)) || {}; } catch { return {}; }
+}
+
+/** Keeps `y` as the place of the view shown, or with null forgets it. Without storage (private mode, full) nothing is put back. */
+function keepPlace(y) {
+  const places = scrollPlaces();
+  if (y == null) delete places[scrollKey()];
+  else places[scrollKey()] = y;
+  try { sessionStorage.setItem(SCROLL, JSON.stringify(places)); } catch { /* nothing to go back to */ }
+}
+
+// Until the first render has put the page back, it is not anywhere worth keeping.
+function saveScroll() { if (!restorePending) keepPlace(window.scrollY); }
+
+// The browser holds the page within its height, should the view be shorter now. A view entered with no place kept
+// starts at `orElse` (the top) when one is given, and is otherwise left where it is.
+function restoreScroll(orElse) {
+  const y = scrollPlaces()[scrollKey()] ?? orElse;
+  if (y != null) window.scrollTo(0, y);
+}
+
+/** After the first render of the page, back to where the view was. Later ones, while books convert or after an edit, leave the page where it is. */
+function restoreFirst() {
+  if (!restorePending) return;
+  restorePending = false;
+  restoreScroll();
+}
+
 function openSeries(id) {
+  saveScroll();
   history.pushState(null, '', `/?series=${id}`);
   openedHere = true;
+  // A series page opens at the top, not where it was the last time.
+  keepPlace(null);
   render();
   window.scrollTo(0, 0);
 }
 
 function closeSeries() {
+  saveScroll();
   view = 'series';
   savePrefs();
   if (openedHere) { history.back(); return; }
   history.replaceState(null, '', '/');
   render();
+  restoreScroll(0);
 }
 
 function render() {
@@ -1618,12 +1665,18 @@ els.tabs.addEventListener('click', (e) => {
   const tab = e.target.closest('[data-view]');
   if (!tab) return;
   setMenu(false);
+  saveScroll();
   view = tab.dataset.view;
   savePrefs();
   if (openSeriesId() != null) { history.pushState(null, '', '/'); openedHere = false; }
   render();
+  restoreScroll(0); // each tab comes back where it was
 });
-window.addEventListener('popstate', () => { openedHere = false; render(); });
+window.addEventListener('popstate', () => { openedHere = false; render(); restoreScroll(0); });
+// Leaving the library, for a book or anything else, keeps its place; coming back to it from the back-forward
+// cache puts it there again.
+window.addEventListener('pagehide', saveScroll);
+window.addEventListener('pageshow', (e) => { if (e.persisted) restoreScroll(); });
 els.search.addEventListener('input', render);
 els.filter.addEventListener('change', () => { savePrefs(); render(); });
 els.sort.addEventListener('change', () => { savePrefs(); render(); });
