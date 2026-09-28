@@ -33,7 +33,7 @@
       <button type="button" data-view="series" aria-pressed="false">Series &amp; collections<span class="n"></span></button>
     </div>
     <div class="toolbar">
-      <input type="search" id="search" placeholder="Search title, author or series" autocomplete="off">
+      <input type="search" id="search" placeholder="Search title, author, series or genre" autocomplete="off">
       <select id="filter" aria-label="Filter">
         <option value="all">All books</option>
         <option value="reading">Reading</option>
@@ -47,6 +47,11 @@
         <option value="title">Title</option>
         <option value="author">Author</option>
       </select>
+      <select id="group" aria-label="Group by">
+        <option value="none">No grouping</option>
+        <option value="author">Group by author</option>
+        <option value="genre">Group by genre</option>
+      </select>
       <select id="layout" aria-label="Show series as">
         <option value="stacks">Series as stacks</option>
         <option value="shelves">Series as shelves</option>
@@ -58,6 +63,7 @@
         <option value="cards-3">Cards</option>
         <option value="cards-4">Small cards</option>
       </select>
+      <button type="button" class="btn" id="btn-select" aria-pressed="false">Select</button>
       <button class="btn primary" id="btn-upload">Upload books</button>
       <input type="file" id="file-input" class="hidden" multiple accept=".epub,.mobi,.prc,.azw,.azw3,.pdf,.md,.markdown,.txt,.text,application/epub+zip,application/pdf,text/plain,text/markdown">
       <input type="file" id="folder-input" class="hidden" webkitdirectory>
@@ -69,6 +75,13 @@
   <p class="notice hidden" id="offline-note">No connection. The books kept on this device can be read; the faded ones need a connection.</p>
   <div id="library"></div>
 </main>
+<div class="select-bar hidden" id="select-bar" role="region" aria-label="Selected books">
+  <span class="count" data-count aria-live="polite"></span>
+  <button type="button" class="btn small" data-sel="all">Select all</button>
+  <button type="button" class="btn small" data-sel="clear">Clear</button>
+  <button type="button" class="btn small primary" data-sel="genre">Set genre</button>
+  <button type="button" class="btn small" data-sel="done">Done</button>
+</div>
 <div id="dialog-root"></div>
 <script type="module" src="/js/library.js"></script>
 </body>

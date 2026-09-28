@@ -14,7 +14,7 @@ export const METADATA_VERSION = 2;
 // The formats whose files carry ISBNs.
 const ISBN_FORMATS = ['epub', 'mobi'];
 
-export function createProcessor(db, config, series, log = console) {
+export function createProcessor(db, config, { series, genres }, log = console) {
   const queue = [];
   let running = false;
   const stmts = {
@@ -62,6 +62,12 @@ export function createProcessor(db, config, series, log = console) {
           manifest.convertedAt || now(), METADATA_VERSION, (result.meta.isbns || []).join(' '), id,
         );
         if (!edited) series.setForBook(id, result.meta.series);
+        // A book new to the library takes the genre of the other books in its series. Converting again
+        // leaves the genre as it is, so a book someone took out of the series' genre stays out.
+        if (!current.converted_at && !current.genre) {
+          const genre = genres.ofSeries(id);
+          if (genre) genres.set([id], genre);
+        }
       });
       log.info?.(`[convert] ${id} ok: "${manifest.title}" (${manifest.format}, ${manifest.sections.length} sections)`);
     } catch (err) {

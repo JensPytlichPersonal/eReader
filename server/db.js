@@ -54,7 +54,9 @@ CREATE TABLE IF NOT EXISTS books (
   -- The SHA-256 of the uploaded file, so the same file is not added twice ('' until known; see duplicates.js).
   sha256 TEXT NOT NULL DEFAULT '',
   -- The ISBNs in the book's file, 13 digits each, separated by spaces. The same book in another file shares one.
-  isbns TEXT NOT NULL DEFAULT ''
+  isbns TEXT NOT NULL DEFAULT '',
+  -- The book's genre, set by hand ('' for none; see genres.js). Converting again keeps it.
+  genre TEXT NOT NULL DEFAULT ''
 );
 
 -- Two books that look like the same book, but that someone said are different books, so they are no
@@ -133,6 +135,7 @@ function migrate(db) {
   if (!columns.has('cover_edited_at')) db.exec('ALTER TABLE books ADD COLUMN cover_edited_at INTEGER NOT NULL DEFAULT 0');
   if (!columns.has('sha256')) db.exec("ALTER TABLE books ADD COLUMN sha256 TEXT NOT NULL DEFAULT ''");
   if (!columns.has('isbns')) db.exec("ALTER TABLE books ADD COLUMN isbns TEXT NOT NULL DEFAULT ''");
+  if (!columns.has('genre')) db.exec("ALTER TABLE books ADD COLUMN genre TEXT NOT NULL DEFAULT ''");
   // Here rather than in SCHEMA, which runs before an older database has the column.
   db.exec('CREATE INDEX IF NOT EXISTS books_sha256 ON books(sha256)');
   const seriesColumns = new Set(db.prepare('PRAGMA table_info(book_series)').all().map((c) => c.name));
