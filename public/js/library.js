@@ -1,5 +1,6 @@
 import { api, ApiError, requireUser, escapeHtml, formatDate, toast, registerServiceWorker } from './api.js';
 import { loadSettings, applyTheme, adoptAccountFont } from './settings.js';
+import { gaps, inOrder, missingBooks } from './missing.js';
 
 registerServiceWorker();
 applyTheme(loadSettings());
@@ -262,6 +263,81 @@ function seriesPlace(g) {
 /** How far through a group you are, finished books counting whole. */
 const groupPct = (g) => Math.round(g.items.reduce((sum, i) => sum + (status(i.book) === 'finished' ? 1 : i.book.progress?.percent || 0), 0) / g.items.length * 100);
 
+// ---- books a series lacks ----
+
+// What Hardcover lists for each series (GET /api/series/:id/missing), by series id: the answer for the
+// books the series had when it was asked (`key`), and whether asking failed or is under way.
+const catalogued = new Map();
+const RETRY = 10 * 60 * 1000;
+let renderSoon = null;
+
+/**
+ * The books a series lacks, in order (see missingBooks() in missing.js), `all` of them for the series'
+ * own page. The server is asked what Hardcover lists the first time and when the series' books change:
+ * for its page always, for a shelf only when there are gaps to put titles to.
+ */
+function lacking(g, { all = false } = {}) {
+  if (!g.numbered) return [];
+  const key = `${g.name}\n${g.items.map((i) => `${i.book.id}@${numberIn(i)}`).join(' ')}`;
+  const known = catalogued.get(g.id);
+  const outdated = !known || known.key !== key || (known.failed && Date.now() - known.at > RETRY);
+  if (outdated && !known?.asking && !offline && (all || gaps(g.items)?.length)) askCatalogue(g.id, key);
+  return missingBooks(g.items, known?.answer, { all });
+}
+
+function askCatalogue(id, key) {
+  const before = catalogued.get(id);
+  catalogued.set(id, { ...before, asking: true });
+  api(`/api/series/${id}/missing`).then((answer) => {
+    catalogued.set(id, { key, answer, at: Date.now() });
+    // Without a series on Hardcover the gaps stay as they are. The answers that come at once are shown together.
+    if ((answer.series || before?.answer?.series) && !renderSoon) renderSoon = setTimeout(() => { renderSoon = null; render(); }, 50);
+  }, () => {
+    // Hardcover could not be asked, or this device is offline: the gaps show until it is asked again.
+    catalogued.set(id, { key, answer: before?.answer, at: Date.now(), failed: true });
+  });
+}
+
+const missingState = (m) => (m.upcoming ? 'Not out yet' : 'Not in the library');
+// An outline, with the title and author inside when Hardcover gave them.
+const missingCover = (m) => `<div class="cover placeholder">${m.title ? `<div class="t">${escapeHtml(m.title)}</div><div class="a">${escapeHtml(m.author)}</div>` : ''}</div>`;
+// A book Hardcover lists opens there, in another tab.
+const missingLink = (m) => (m.url ? `<a class="link" href="${escapeHtml(m.url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(`#${m.position} ${m.title}, ${missingState(m).toLowerCase()}: see it on Hardcover`)}"></a>` : '');
+const missingMeta = (m) => (m.title ? `<div class="meta"><span>${missingState(m)}</span>${m.url ? '<span class="badge">Hardcover</span>' : ''}</div>` : '');
+
+/** A book the series lacks (see lacking()) as a dashed outline in its place. */
+function missingCard(m) {
+  if (display === 'list') return missingRow(m);
+  return `<div class="card missing">
+    ${missingCover(m)}<span class="cover-tag">#${m.position}</span>${missingLink(m)}
+    <div class="info">
+      <div class="title">${escapeHtml(m.title || missingState(m))}</div>
+      ${m.title ? `<div class="author">${escapeHtml(m.author)}</div>` : ''}
+      ${missingMeta(m)}
+    </div>
+  </div>`;
+}
+
+/** A book the series lacks as a row of the list view. */
+function missingRow(m) {
+  return `<div class="list-row missing">
+    <div class="thumb">${missingCover(m)}</div>
+    ${missingLink(m)}
+    <div class="body">
+      <div class="title"><span class="no">#${m.position}</span> ${escapeHtml(m.title || missingState(m))}</div>
+      ${m.author ? `<div class="about">${escapeHtml(m.author)}</div>` : ''}
+      ${missingMeta(m)}
+    </div>
+  </div>`;
+}
+
+/** A book the series lacks on its shelf. */
+const missingShelfBook = (m) => `<div class="shelf-book missing">
+    ${missingCover(m)}<span class="cover-tag">#${m.position}</span>${missingLink(m)}
+    ${m.title ? `<div class="title">${escapeHtml(m.title)}</div>` : ''}
+    <div class="state">${missingState(m)}</div>
+  </div>`;
+
 /** A series or collection as one tile: a stack of books with the one you're on as the top cover. */
 function stackCard(g) {
   if (display === 'list') return groupRow(g);
@@ -298,7 +374,10 @@ function groupRow(g) {
   </div>`;
 }
 
-/** A series as a shelf: every book in order with its title, and the book you're on outlined. */
+/**
+ * A series as a shelf: every book in order with its title, and the book you're on outlined. Books
+ * missing below the highest one the library has are dashed outlines in their place.
+ */
 function shelf(g) {
   const place = seriesPlace(g);
   const facts = [g.author, plural(g.items.length, 'book', 'books'), place.text].filter(Boolean).map(escapeHtml).join(' · ');
@@ -315,9 +394,10 @@ function shelf(g) {
     </div>`;
   };
   const current = (i) => i === place.item && g.state !== 'unread';
+  const items = inOrder(g.items, lacking(g));
   const books = display === 'list'
-    ? tiles(g.items.map((i) => bookRow(i.book, { seriesId: g.id, position: numberIn(i), current: current(i) })).join(''))
-    : `<div class="shelf-row">${g.items.map((i) => shelfBook(i, current(i))).join('')}</div>`;
+    ? tiles(items.map((i) => (i.missing ? missingRow(i.missing) : bookRow(i.book, { seriesId: g.id, position: numberIn(i), current: current(i) }))).join(''))
+    : `<div class="shelf-row">${items.map((i) => (i.missing ? missingShelfBook(i.missing) : shelfBook(i, current(i)))).join('')}</div>`;
   return `<section class="shelf">
     <div class="shelf-head"><h2><a href="/?series=${g.id}" data-series="${g.id}">${escapeHtml(g.name)}</a></h2><span class="muted">${facts}</span></div>
     ${books}
@@ -357,7 +437,10 @@ function renderSeries(id) {
   }
   const place = seriesPlace(g);
   const next = place.item && `${place.verb} ${place.item.position != null ? `#${numberIn(place.item)} ` : ''}${place.item.book.title}`;
-  const facts = [g.numbered ? 'Series' : 'Collection', plural(g.items.length, 'book', 'books'), g.author, g.finished ? `${g.finished} finished` : ''];
+  // Every book of the series the library lacks, from Hardcover when it knows the series.
+  const missing = lacking(g, { all: true });
+  const facts = [g.numbered ? 'Series' : 'Collection', plural(g.items.length, 'book', 'books'), g.author, g.finished ? `${g.finished} finished` : '',
+    missing.length ? `${missing.length} not in the library` : ''];
   els.library.innerHTML = `<div class="series-head">
       <button class="btn small" data-back>&#8592; All series and collections</button>
       <h1>${escapeHtml(g.name)}</h1>
@@ -367,7 +450,7 @@ function renderSeries(id) {
         ${me.isAdmin ? `<button class="btn" data-edit-series="${g.id}">Rename or remove</button>` : ''}
       </div>
     </div>
-    ${tiles(g.items.map((i) => card(i.book, { seriesId: g.id, position: numberIn(i) })).join(''))}`;
+    ${tiles(inOrder(g.items, missing).map((i) => (i.missing ? missingCard(i.missing) : card(i.book, { seriesId: g.id, position: numberIn(i) }))).join(''))}`;
 }
 
 const heading = (text, count) => `<div class="section-title"><h2 style="margin:0">${text}</h2><span class="muted">${count}</span></div>`;

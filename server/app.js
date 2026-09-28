@@ -11,6 +11,7 @@ import { createDuplicates } from './duplicates.js';
 import { createOpenLibrary } from './openlibrary.js';
 import { createHardcover } from './hardcover.js';
 import { createLookup } from './lookup.js';
+import { createMissingBooks } from './missing.js';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { bookRoutes, bookFiles } from './routes/books.js';
@@ -32,6 +33,8 @@ export function createApp(overrides = {}) {
   const hardcover = overrides.hardcover !== undefined ? overrides.hardcover : config.hardcoverToken ? createHardcover({ token: config.hardcoverToken }) : null;
   if (hardcover?.problem) log.error?.(`[lookup] ${hardcover.problem}`);
   const lookups = createLookup({ openLibrary: overrides.openLibrary ?? createOpenLibrary(), hardcover });
+  // The books a series lacks come from Hardcover alone. Tests hand in one that does not wait between lookups.
+  const missingBooks = overrides.missingBooks !== undefined ? overrides.missingBooks : hardcover ? createMissingBooks({ catalogue: hardcover, log }) : null;
 
   const app = express();
   app.disable('x-powered-by');
@@ -47,7 +50,7 @@ export function createApp(overrides = {}) {
   app.use('/api/auth', authRoutes(db, auth, config));
   app.use('/api/users', userRoutes(db, auth));
   app.use('/api/books', bookRoutes(db, auth, config, processor, series, lookups, duplicates));
-  app.use('/api/series', seriesRoutes(auth, series));
+  app.use('/api/series', seriesRoutes(auth, series, missingBooks));
   app.use('/books', bookFiles(db, auth, config));
   // `lookup`: the catalogues books are looked up in, so an admin can see whether HARDCOVER_TOKEN was picked up.
   app.get('/api/health', (req, res) => res.json({ ok: true, processing: processor.isBusy(), lookup: lookups.sources }));

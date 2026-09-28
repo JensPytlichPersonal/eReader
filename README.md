@@ -34,7 +34,8 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   either). Turn pages by tapping the left/right edge, swiping, or with the keyboard.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're
   on; opening it lists the books in reading order with a button that continues where you are. Series
-  are picked up from the books themselves, and any books can be grouped by hand.
+  are picked up from the books themselves, and any books can be grouped by hand. A book missing from
+  a series shows as a dashed outline in its place, with its title from Hardcover.
 - **Details from Open Library and Hardcover.** When a book's title, author, series or cover is missing
   or wrong, look it up online from its details and pick the matching book to fill them in.
 - **Covers.** EPUB and MOBI books bring their own. Where one is missing (most PDFs) or wrong, pick an
@@ -162,7 +163,7 @@ them in the `command=` of the authorized key, for example
 | `MAX_UPLOAD_MB` | `500` | Maximum size of an uploaded file |
 | `SECURE_COOKIES` | `false` | Set to `true` when the server is only reachable over https |
 | `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy that sets `X-Forwarded-*` |
-| `HARDCOVER_TOKEN` | (none) | A Hardcover API token, so looking books up asks Hardcover as well as Open Library (see below) |
+| `HARDCOVER_TOKEN` | (none) | A Hardcover API token, so looking books up asks Hardcover as well as Open Library, and the books a series lacks get their titles (see below) |
 
 Run it behind a reverse proxy with https (Caddy, nginx, Traefik) for use outside your home network.
 https also enables the offline cache and lets the app be installed as a proper web app.
@@ -291,6 +292,18 @@ cards. The books you are reading still show one by one under *Continue reading*,
 lists the matching books themselves. Filters apply to a whole series: *Reading* shows series you have
 started but not finished.
 
+A book the library lacks shows as a dashed outline in its place: with #1, #2 and #4 in the library, #3
+sits between them, on the series' page and on its shelf. The numbers alone tell which are missing, and
+an omnibus counts for the books it holds: with #1–3 and #5, only #4 is missing.
+When the server has a [Hardcover](#hardcover) token, Hardcover says what they are: the outline gets
+the title and author, and opens the book on Hardcover. The series' page then shows the whole series,
+including the books after the last one the library has, marking those not out yet; a shelf keeps to
+the gaps. Only a series' main books count, the ones with whole numbers, so a novella at 1.5 or a box
+set is never missing. Hardcover's series is taken only when it has the library's name for it and an
+author or title of its books, or two of their titles under any name; the name and author suffice for a
+translation, whose titles differ. When no series fits, and without a token, the outlines show only
+their number.
+
 Where the series comes from:
 
 | Source | Example |
@@ -335,7 +348,9 @@ to the book's own. On a wide screen the dialog grows once there are matches, to 
   tells Open Library which edition to prefer.
 - Only the server talks to the catalogues, and only when someone presses the button or saves a cover
   from one: the title, author and ISBN go out. The covers in the list of matches load from the
-  catalogues' own sites, as large as they would be saved.
+  catalogues' own sites, as large as they would be saved. With a Hardcover token, a series' name also
+  goes to Hardcover when its page, or a shelf with a gap, is shown, to find the books it lacks (see
+  below).
 
 Like editing, looking up is for the uploader of a book or an admin.
 
@@ -363,6 +378,13 @@ for the title alone as well, and looks at each book's editions. Such a book is o
 edition's title, authors and cover, but only when those are the authors typed, so another book with the
 same title stays out. A cover is the one Hardcover's website shows for the book or edition, saved as
 Hardcover stores it.
+
+The token also tells the library which books a series lacks (see
+[Series and collections](#series-and-collections)). The server asks Hardcover for the series by its name
+when someone opens the series' page, or sees its shelf with a gap in it. Hardcover allows 60 requests a
+minute, so the server looks series up one at a time, a few seconds apart, and keeps what it found for a
+day. A book added to the library stops showing as missing at once; restarting the server forgets what
+it found.
 
 Keep the token on the server: anyone holding it can act as your Hardcover account within its
 permissions. If Hardcover stops answering, for example because the token has expired, the lookup still
@@ -406,9 +428,9 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), and `duplicates.js`, which finds books that are in the library twice
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, and `missing.js`, which finds the books a series lacks
 - `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
-- `public/` the web app: library, reader (`js/reader.js`), settings, users, service worker
+- `public/` the web app: library (`js/library.js`, which places the books a series lacks with `js/missing.js`), reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)
 
 ## License
