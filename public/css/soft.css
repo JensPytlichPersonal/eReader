@@ -248,6 +248,18 @@
 /* On a stack the number of books sits on the top cover, below the sheets behind it */
 :root[data-skin="soft"] .card.pile .cover-tag { top: calc(var(--edge, 8px) + 8px); }
 :root[data-skin="soft"] #library.cols-4 .card .cover-tag { padding: 2px 7px; font-size: 10.5px; }
+/* A series' number of books: a line above its cover rather than a tag on it. Single books in the same
+   grid leave that line empty, so every cover in a row starts at the same height. */
+:root[data-skin="soft"] .card .count { display: block; padding: 0 2px; font: 600 11px/18px var(--ui-font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root[data-skin="soft"] .card.group .cover-tag { display: none; }
+/* The line's height plus the card's gap. The cover of a single book moves down by it, and so do the
+   buttons on the cover's corner, which are placed from the top of the card. */
+:root[data-skin="soft"] .grid:has(.card.group) > .card:not(.group),
+:root[data-skin="soft"] .card.group { --count-line: 28px; }
+:root[data-skin="soft"] .card > .cover:first-child { margin-top: var(--count-line, 0px); }
+:root[data-skin="soft"] .card > .menu-btn,
+:root[data-skin="soft"] .card > .check { top: calc(var(--menu-inset, 6px) + var(--count-line, 0px)); }
+:root[data-skin="soft"] .card > .cover-tag { top: calc(8px + var(--count-line, 0px)); }
 /* A series folded into one tile: the cover you are on, the others as sheets behind it */
 :root[data-skin="soft"] .stack::before,
 :root[data-skin="soft"] .stack::after { border: 0; border-radius: 5px; background: var(--surface-3); box-shadow: var(--cover-shadow); }

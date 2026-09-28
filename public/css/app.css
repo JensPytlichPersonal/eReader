@@ -199,6 +199,8 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .dup-group .grid { padding-bottom: 18px; border-bottom: 2px solid var(--line); }
 /* Number in the series on a book's cover, number of books on a series' cover */
 .card .cover-tag, .shelf-book .cover-tag { position: absolute; top: var(--menu-inset, 6px); left: var(--menu-inset, 6px); padding: 2px calc(var(--tag-size, 14px) * .55); border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: var(--tag-size, 14px); }
+/* The number of books in a series: the e-ink look keeps the tag on the cover, the soft look shows this line above it */
+.card .count { display: none; }
 /* A series folded into one tile: the cover of the book you're on, with the edges of the others behind it */
 .stack { position: relative; isolation: isolate; padding: var(--edge, 8px) var(--edge, 8px) 0 0; }
 .stack::before, .stack::after { content: ""; position: absolute; border: 2px solid var(--muted); border-radius: 3px; background: var(--panel); }
