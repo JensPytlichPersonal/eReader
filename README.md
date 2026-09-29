@@ -406,6 +406,11 @@ once, from Hardcover, with Open Library filling in a series or cover Hardcover l
 fills in the title, author and series and leaves the cover alone, also when the book has none; nothing
 changes until you press *Save*.
 
+When a catalogue cannot be asked, for instance because it is busy or the Hardcover token has used up
+its requests, a box above the matches says so in the catalogue's own words, and the other catalogue's
+matches are still listed. When neither can be asked, the menu says why for both. Every such problem is
+also written to the server's log, with the title looked up.
+
 Each match shows its cover and the cover's size in pixels, and the menu says how large the book's
 cover is now, so a sharp cover can be told from a small scan. *Use cover* takes a match's cover and
 leaves the details as they are. The cover taken shows in the cover's place, marked as not saved yet,

@@ -42,7 +42,7 @@ export function createCatalogues({ config, settings, log = console, openLibrary,
     current.missingBooks = overrides.missingBooks !== undefined ? overrides.missingBooks : hardcover ? createMissingBooks({ catalogue: hardcover, log }) : null;
   }
 
-  const lookups = createLookup({ openLibrary, hardcover: () => current.hardcover });
+  const lookups = createLookup({ openLibrary, hardcover: () => current.hardcover, log });
 
   /**
    * Where the token in use comes from ('settings', 'env' for HARDCOVER_TOKEN, or 'none'), its last
