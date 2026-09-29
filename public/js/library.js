@@ -1222,15 +1222,15 @@ const addSeriesRow = (rows) => { rows.insertAdjacentHTML('beforeend', seriesRow(
 const CATALOGUES = { hardcover: 'Hardcover', openlibrary: 'Open Library' };
 
 /**
- * A book found online, offered in a book's menu: choosing it (anywhere on it) fills in the form, and
- * "Cover only" takes just its cover. "More covers" shows the other covers the catalogue has for it,
- * such as its editions', under it; choosing one takes just that cover. The sizes of the covers are
- * filled in once they have loaded (see showSize()).
+ * A book found online, offered in a book's menu: choosing it (anywhere on it) fills in the details, and
+ * "Use cover" takes its cover. "More covers" shows the other covers the catalogue has for it, such as
+ * its editions', under it; choosing one takes just that cover. The sizes of the covers are filled in
+ * once they have loaded (see showSize()).
  */
 const matchRow = (m, i) => {
   const about = [m.series.map(seriesLabel).join(', '), m.byIsbn ? 'Same ISBN as the file' : ''].filter(Boolean).join(' · ');
   const buttons = [
-    m.cover && m.coverId ? `<button type="button" class="btn small" data-cover-only="${i}">Cover only</button>` : '',
+    m.cover && m.coverId ? `<button type="button" class="btn small" data-take-cover="${i}">Use cover</button>` : '',
     m.covers.length ? `<button type="button" class="btn small" data-more-covers aria-expanded="false">More covers (${m.covers.length})</button>` : '',
   ].join('');
   return `<div class="match" data-match="${i}">
@@ -1340,11 +1340,10 @@ function editBook(b, root, close) {
   });
   const before = readDetails();
 
-  let pending = null; // the cover the book gets when saved, null to leave it: { src, source, says, body, offered }
-  let byHand = false; // a cover was chosen by hand here, so a match chosen for its details does not tick its own
+  let pending = null; // the cover the book gets when saved, null to leave it: { src, source, says, body }
   let busy = false; // a picture is being prepared
   let saving = false;
-  const lookup = lookUpOnline(root, form, { book: () => b, mayTick: () => !b.hasCover && !byHand, offer });
+  const lookup = lookUpOnline(root, form, { book: () => b, matchCover });
 
   // The cover area, from the cover to be saved or else the book's own: the picture, its size, the note that it
   // is not saved yet, and the ways to change it that make sense from there.
@@ -1371,15 +1370,13 @@ function editBook(b, root, close) {
 
   // A cover chosen by hand, or null for one the book has already: it takes the place of a match's cover.
   function chooseCover(next) {
-    byHand = true;
     setPending(next);
     lookup.leave();
   }
 
-  // The cover of a match that is ticked, or null when none is: ticked, it is the cover the book gets when saved.
-  function offer(m) {
-    if (m) setPending({ src: m.cover, source: 'custom', says: `Cover from ${CATALOGUES[m.source]}`, body: { source: m.coverSource, coverId: m.coverId }, offered: true });
-    else if (pending?.offered) setPending(null);
+  // A match's cover, taken with "Use cover" or from "More covers": the cover the book gets when saved.
+  function matchCover(m) {
+    setPending({ src: m.cover, source: 'custom', says: `Cover from ${CATALOGUES[m.source]}`, body: { source: m.coverSource, coverId: m.coverId } });
   }
 
   // While a picture is prepared or the book saved, the cover's buttons and Save wait.
@@ -1474,7 +1471,6 @@ function editBook(b, root, close) {
         ({ book: b } = await sendCover(pending.body));
         coverSaved = true;
         setPending(null);
-        lookup.untick();
       }
       if (Object.keys(details).length) await api(`/api/books/${b.id}`, { method: 'PATCH', body: details });
       close();
@@ -1491,24 +1487,21 @@ function editBook(b, root, close) {
 }
 
 /**
- * Look up online, in a book's menu: a match chosen fills in the form, and its cover is offered, which ticked
- * is the cover the book gets when saved. `book()` is the book as saved now, `mayTick()` whether the cover of
- * a match chosen for its details is ticked from the start, and `offer(m)` is told the match whose cover is
- * ticked, or null. Gives `untick()`, for once the cover is saved, and `leave()`, for a cover chosen by hand
- * or the one the book had, which also ends "Cover only".
+ * Look up online, in a book's menu: a match chosen fills in the title, author and series and leaves the
+ * cover alone, which changes only with "Use cover" or a cover under "More covers". `book()` is the book as
+ * saved now, and `matchCover(m)` is given the match whose cover was taken. Gives `leave()`, for a cover
+ * chosen by hand or the one the book had, which takes the mark off the cover taken.
  */
-function lookUpOnline(root, form, { book, mayTick, offer }) {
+function lookUpOnline(root, form, { book, matchCover }) {
   const lookupBtn = form.querySelector('[data-lookup]');
   const matches = form.querySelector('[data-matches]');
   const picked = form.querySelector('[data-picked]');
   const rows = form.querySelector('.series-rows');
   let found = [];
   let filled = null; // the match the form was filled in from
-  let coverFrom = null; // the match whose cover is offered
-  let coverOnly = false; // taken with "Cover only", so filling in from another match keeps it
-  let ticked = false; // the offered cover is the one the book gets when saved
+  let coverFrom = null; // the match whose cover was taken, or one of its other covers
   // On a wide screen the menu grows, with the matches beside the form, once there is something to show there.
-  const widen = () => root.classList.toggle('wide', found.length > 0 || !!filled || !!coverFrom);
+  const widen = () => root.classList.toggle('wide', found.length > 0 || !!filled);
   // The book's cover now, which the covers found are compared with.
   const currentCover = () => {
     const b = book();
@@ -1532,7 +1525,7 @@ function lookUpOnline(root, form, { book, mayTick, offer }) {
       const connect = me.isAdmin && !answer.sources.includes('hardcover')
         ? '<p class="muted hint">Hardcover is not connected. An admin can add a token under Settings to search it too.</p>' : '';
       matches.innerHTML = (found.length
-        ? `<p class="muted hint">Choose the matching book to fill in the details, or take only its cover. Nothing changes until you save.</p>
+        ? `<p class="muted hint">Choose the matching book to fill in the details. Use cover takes its cover. Nothing changes until you save.</p>
           ${current ? '<p class="muted hint" data-current></p>' : ''}<div class="matches">${found.map(matchRow).join('')}</div>`
         : `<p class="muted hint">No match on ${escapeHtml(answer.sources.map((s) => CATALOGUES[s]).join(' or '))}. Try a shorter title, or leave out the author.</p>`) + notes + connect;
       if (found.length && current) showSize(current, matches.querySelector('[data-current]'), (size) => (size ? `The current cover is ${size}.` : ''));
@@ -1553,39 +1546,20 @@ function lookUpOnline(root, form, { book, mayTick, offer }) {
     }
   }
 
-  // Shows what the form takes from the matches: the details, and the cover with its tick. The rows they
-  // came from are marked in the list.
+  // Says where the details came from, and marks in the list the match they came from and the cover taken.
   function showPicked() {
-    const current = currentCover();
-    const from = (m) => `<a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${CATALOGUES[m.source]}</a>`;
-    picked.innerHTML = `${filled ? `<p class="hint">Filled in from ${from(filled)}. Check the details, then save.</p>` : ''}
-      ${coverOnly ? `<p class="hint">Cover from ${from(coverFrom)}.</p>` : ''}
-      ${coverFrom ? `<label class="use-cover"><input type="checkbox" name="useCover"${ticked ? ' checked' : ''}>
-        <img class="cover" src="${escapeHtml(coverFrom.cover)}" alt="">
-        <span><span>${book().hasCover ? 'Use this cover instead of the current one' : 'Use this cover'}</span>
-          <span class="about"><span data-size></span>${current ? '<span data-current></span>' : ''}</span></span></label>` : ''}`;
-    if (coverFrom) {
-      showSize(picked.querySelector('.use-cover img'), picked.querySelector('[data-size]'), (size) => size ?? 'The cover could not be loaded');
-      if (current) showSize(current, picked.querySelector('[data-current]'), (size) => (size ? ` · now ${size}` : ''));
-    }
+    picked.innerHTML = filled ? `<p class="hint">Filled in from <a href="${escapeHtml(filled.url)}" target="_blank" rel="noopener">${CATALOGUES[filled.source]}</a>. Check the details, then save.</p>` : '';
     for (const row of matches.querySelectorAll('[data-match]')) row.classList.toggle('chosen', found[Number(row.dataset.match)] === filled);
-    for (const btn of matches.querySelectorAll('[data-cover-only]')) btn.classList.toggle('chosen', coverOnly && found[Number(btn.dataset.coverOnly)] === coverFrom);
+    for (const btn of matches.querySelectorAll('[data-take-cover]')) btn.classList.toggle('chosen', found[Number(btn.dataset.takeCover)] === coverFrom);
     for (const btn of matches.querySelectorAll('[data-cover-choice]')) {
       const m = found[Number(btn.closest('[data-match]').dataset.match)];
-      btn.classList.toggle('chosen', coverOnly && m.covers[Number(btn.dataset.coverChoice)].cover === coverFrom.cover);
+      btn.classList.toggle('chosen', !!coverFrom && m.covers[Number(btn.dataset.coverChoice)].cover === coverFrom.cover);
     }
     widen();
   }
 
-  // Ticked, the offered cover is the one the book gets when saved; unticked, it is left.
-  function tick(on) {
-    ticked = on;
-    offer(on ? coverFrom : null);
-  }
-
-  // Fills in the form from a match. Its series join the rows already there; a series that is
-  // already listed takes the match's number. Its cover is offered too, ticked when the book has
-  // none and none was chosen by hand, unless a cover was taken with "Cover only".
+  // Fills in the title, author and series from a match; the cover stays as it is. Its series join the
+  // rows already there; a series that is already listed takes the match's number.
   function useMatch(m) {
     filled = m;
     form.elements.title.value = m.title;
@@ -1600,21 +1574,15 @@ function lookUpOnline(root, form, { book, mayTick, offer }) {
       if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
       if (s.position != null) row.querySelector('[name="series-no"]').value = numberIn(s);
     }
-    if (!coverOnly) {
-      coverFrom = m.cover && m.coverId ? m : null;
-      tick(!!coverFrom && mayTick());
-    }
     showPicked();
     picked.scrollIntoView({ block: 'nearest' });
   }
 
-  // Takes only a match's cover, ticked: the details stay as they are.
-  function useCover(m) {
+  // Takes only a match's cover, which shows in the cover's place: the details stay as they are.
+  function takeCover(m) {
     coverFrom = m;
-    coverOnly = true;
-    tick(true);
+    matchCover(m);
     showPicked();
-    picked.scrollIntoView({ block: 'nearest' });
   }
 
   // Shows or hides the other covers of the match in `row`.
@@ -1626,29 +1594,23 @@ function lookUpOnline(root, form, { book, mayTick, offer }) {
 
   form.querySelector('.lookup').addEventListener('click', (ev) => {
     if (ev.target.closest('[data-lookup]')) { lookUp(); return; }
-    const coverButton = ev.target.closest('[data-cover-only]');
+    const coverButton = ev.target.closest('[data-take-cover]');
     const moreButton = ev.target.closest('[data-more-covers]');
     const choice = ev.target.closest('[data-cover-choice]');
     const match = ev.target.closest('[data-match]');
     const m = match && found[Number(match.dataset.match)];
-    if (coverButton) useCover(found[Number(coverButton.dataset.coverOnly)]);
+    if (coverButton) takeCover(found[Number(coverButton.dataset.takeCover)]);
     else if (moreButton) toggleCovers(match, moreButton);
-    // One of its other covers is taken like its own with "Cover only".
-    else if (choice) useCover({ ...m, ...m.covers[Number(choice.dataset.coverChoice)] });
+    // One of its other covers is taken like its own with "Use cover".
+    else if (choice) takeCover({ ...m, ...m.covers[Number(choice.dataset.coverChoice)] });
     else if (match && !ev.target.closest('.more-covers')) useMatch(m);
   });
-  picked.addEventListener('change', (ev) => { if (ev.target.name === 'useCover') tick(ev.target.checked); });
 
-  function untick() {
-    tick(false);
-    showPicked();
-  }
   return {
-    untick,
-    // A cover chosen by hand, or the one the book had, takes the place of the offered one and ends "Cover only".
+    // A cover chosen by hand, or the one the book had, takes the place of the one taken from a match.
     leave() {
-      coverOnly = false;
-      untick();
+      coverFrom = null;
+      showPicked();
     },
   };
 }
