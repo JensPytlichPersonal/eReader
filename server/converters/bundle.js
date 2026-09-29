@@ -2,8 +2,9 @@
 //   <booksDir>/<id>/book.json, sections/N.html, images/*, styles.css, cover.<ext>
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { chunkNodes, collectHeadings, serialize, textLength, isTag } from './html.js';
+import { chunkNodes, collectHeadings, serialize, textLength, isTag, removeCreditLines } from './html.js';
 import { stripWatermarks } from './watermarks.js';
+import { seriesFromFileTitle } from './series.js';
 import { DomUtils } from 'htmlparser2';
 
 export const SECTION_BUDGET = 40000;
@@ -23,6 +24,8 @@ export const SECTION_BUDGET = 40000;
  * @param {Array<{title:string, key?:string, id?:string, section?:number, children?:any[]}>} [opts.toc]
  */
 export function assembleSections(chapters, opts = {}) {
+  // Every format comes through here with the whole book, so this is where its start is known.
+  removeCreditLines(chapters.map((ch) => ch.root));
   const sections = [];
   const keyToSection = new Map(); // chapter key -> first section index
   const idToSection = new Map(); // "key#id" -> section index; also "#id" for global ids
@@ -186,10 +189,50 @@ export async function writeBundle(dir, book) {
   return manifest;
 }
 
-/** Utility for converters: guess a title from a filename. */
-export function titleFromFilename(name) {
-  const title = path.basename(name).replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ');
-  return stripWatermarks(title).replace(/\s+/g, ' ').trim() || 'Untitled';
+// A file name as a title: without its folder, extension, underscores and download-site watermarks. An
+// underscore standing for an apostrophe comes back ("Magician_s Gambit"), and a copy's version mark goes ("(v2)").
+function titleFromFilename(name) {
+  const title = path.basename(name).replace(/\.[^.]+$/, '')
+    .replace(/(\p{Ll})_(s|t|d|m|ll|re|ve)(?=[\s_]|$)/gu, "$1'$2").replace(/[_]+/g, ' ');
+  return stripWatermarks(title).replace(/\s*[([](?:v|ver\.?|version)\s*\d+(?:\.\d+)?[)\]]/gi, '')
+    .replace(/\s+/g, ' ').trim() || 'Untitled';
+}
+
+/**
+ * The title and series a file name gives, for a book that names no title of its own. A number in front is
+ * the book's place in a series: "01 - The Belgariad - Pawn Of Prophecy" is Pawn of Prophecy in The
+ * Belgariad, #1, and "03 - Dune" is just Dune (see seriesFromFileTitle). Capitals set on every word are tidied.
+ * @returns {{title: string, series: Array<{name: string, position: number, positionEnd?: number}>}}
+ */
+export function detailsFromFilename(filename) {
+  const { title, name, ...place } = seriesFromFileTitle(titleFromFilename(filename));
+  return { title: tidyCapitals(title) || 'Untitled', series: name ? [{ name: tidyCapitals(name), ...place }] : [] };
+}
+
+// English words that stay lower case inside a title.
+const SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'into', 'of', 'on', 'or', 'the', 'to', 'with']);
+// Where a title starts again: after a colon or a bracket, or a dash standing for a colon.
+const TITLE_BREAK = /[:;()[\]]|\s[-–—]\s/;
+
+/**
+ * Capitals set on every word, as file names often have them, tidied: "Pawn Of Prophecy" is "Pawn of
+ * Prophecy". Small words go lower case, except first and last and where the title starts again. A title
+ * in any other shape (all lower case, all capitals, or mixed) is left as it is.
+ */
+function tidyCapitals(text) {
+  const words = [...text.matchAll(/\p{L}[\p{L}\p{M}'’]*/gu)];
+  if (!/\p{Ll}/u.test(text) || !words.every((m) => /^\p{Lu}/u.test(m[0]))) return text;
+  let out = '';
+  let at = 0;
+  words.forEach((m, i) => {
+    const end = m.index + m[0].length;
+    const next = words[i + 1];
+    const before = text.slice(at, m.index);
+    const edge = i === 0 || !next || TITLE_BREAK.test(before) || TITLE_BREAK.test(text.slice(end, next.index));
+    out += before + (!edge && SMALL_WORDS.has(m[0].toLowerCase()) ? m[0].toLowerCase() : m[0]);
+    at = end;
+  });
+  return out + text.slice(at);
 }
 
 /** The type of an image from its first bytes: 'jpg', 'png', 'gif', 'bmp', 'webp' or 'svg', or null when it is none of these. */

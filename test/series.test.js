@@ -4,7 +4,8 @@ import { makeEpub } from './helpers/make-epub.mjs';
 import { makeMobi, fixtureMobiHtml } from './helpers/make-mobi.mjs';
 import { makePdf } from './helpers/make-pdf.mjs';
 import { seriesFromTitle, withTitleSeries, parsePosition, parsePlace, uniqueSeries, seriesKey, seriesFromXmp, cleanSeriesName } from '../server/converters/series.js';
-import { convert, readMetadata } from '../server/converters/index.js';
+import { convert, readMetadata, withOpfDetails } from '../server/converters/index.js';
+import { detailsFromFilename } from '../server/converters/bundle.js';
 import { convertEpub } from '../server/converters/epub.js';
 import { convertMarkdown } from '../server/converters/markdown.js';
 import { convertPdf } from '../server/converters/pdf.js';
@@ -161,4 +162,74 @@ test('reading details without converting', async () => {
   assert.deepEqual([md.title, md.series], ['Birds', [{ name: 'Field Guides', position: 3 }]]);
   const txt = await readMetadata(Buffer.from('Hello'), { filename: 'The Expanse 05 - Nemesis Games.txt' });
   assert.equal(withTitleSeries(txt).title, 'Nemesis Games');
+});
+
+test('titles from file names: a number in front is a place in a series, and capitals set on every word are tidied', () => {
+  const road = (position) => [{ name: 'The Glass Road', position }];
+  const cases = [
+    ['01 - The Glass Road - Keeper Of The Gate.PDF', 'Keeper of the Gate', road(1)],
+    ['07. The Glass Road - A Song For The Tide.epub', 'A Song for the Tide', road(7)],
+    ['12.The Glass Road – Salt And Iron.txt', 'Salt and Iron', road(12)],
+    ['2.5 - The Glass Road - Between The Books.pdf', 'Between the Books', road(2.5)],
+    ['_OceanofPDF.com_04_-_The_Glass_Road_-_Keeper_Of_The_Gate.pdf', 'Keeper of the Gate', road(4)],
+    // Without a series name the number just goes.
+    ['03 - Salt And Iron.txt', 'Salt and Iron', []],
+    ['05 - Keeper Of The Gate (The Glass Road Book 5).mobi', 'Keeper of the Gate', road(5)],
+    // The forms a book's own title may have work as before.
+    ['The Glass Road 03 - Keeper Of The Gate.txt', 'Keeper of the Gate', road(3)],
+    ['Keeper Of The Gate (The Glass Road Book 2).mobi', 'Keeper of the Gate', road(2)],
+    // Four digits are a year, and part of the title.
+    ['1984 - Some Author.pdf', '1984 - Some Author', []],
+    ['1-3 The Glass Road.pdf', '1-3 The Glass Road', []],
+    // Small words stay capitals first and last and where the title starts again; other shapes are left alone.
+    ['Of Mice And Men: A Tale Of The Road.txt', 'Of Mice and Men: A Tale of the Road', []],
+    ['A Thing To Think Of.txt', 'A Thing to Think Of', []],
+    ['Mother-In-Law Of The Year.txt', 'Mother-in-Law of the Year', []],
+    ['keeper of the gate.txt', 'keeper of the gate', []],
+    ['KEEPER OF THE GATE.txt', 'KEEPER OF THE GATE', []],
+    ['Keeper of The Gate.txt', 'Keeper of The Gate', []],
+    ['.txt', 'Untitled', []],
+    // An underscore for an apostrophe comes back, and a copy's version mark goes.
+    ['03 - The Glass Road - Keeper_s Gate.PDF', "Keeper's Gate", road(3)],
+    ['Don_t Look Back_s Way.txt', "Don't Look Back's Way", []],
+    ['_OceanofPDF.com_The_Keeper_s_Gate.pdf', "The Keeper's Gate", []],
+    ['01 - The Glass Road - Keeper Of The Gate (v2).pdf', 'Keeper of the Gate', road(1)],
+    ['Salt And Iron [Version 1.1].epub', 'Salt and Iron', []],
+  ];
+  for (const [filename, title, series] of cases) assert.deepEqual(detailsFromFilename(filename), { title, series }, filename);
+});
+
+test('a book without a title of its own takes it from the file name, in every format, converted or read', async () => {
+  const filename = (ext) => `04 - The Glass Road - Keeper Of The Gate.${ext}`;
+  const books = [
+    ['epub', makeEpub({ titleXml: '' })],
+    ['mobi', makeMobi({ html: fixtureMobiHtml(), title: '' })],
+    ['pdf', makePdf([['Some text on the only page.']])],
+    ['md', Buffer.from('Some text, and no heading.')],
+    ['txt', Buffer.from('Some text.')],
+  ];
+  for (const [ext, buf] of books) {
+    const book = await convert(buf, { filename: filename(ext) });
+    const read = await readMetadata(buf, { filename: filename(ext) });
+    for (const meta of [book.meta, read]) {
+      assert.deepEqual([meta.title, meta.series], ['Keeper of the Gate', [{ name: 'The Glass Road', position: 4 }]], ext);
+    }
+  }
+});
+
+test('only a title from the file name loses its number, and the series the book records wins', async () => {
+  // A book's own title is left as it is: there a number in front is too often part of it.
+  const epub = await convert(makeEpub({ title: '01 - The Glass Road - Keeper Of The Gate' }), { filename: '01 - The Glass Road - Keeper Of The Gate.epub' });
+  assert.deepEqual([epub.meta.title, epub.meta.series], ['01 - The Glass Road - Keeper Of The Gate', []]);
+  const pdf = await readMetadata(makePdf([['Text.']], { title: '03 - Salt And Iron' }), { filename: '03 - Salt And Iron.pdf' });
+  assert.deepEqual([pdf.title, pdf.series], ['03 - Salt And Iron', []]);
+  // The file name gives the place in the series the book records without one; another series it records wins.
+  const same = await convert(makePdf([['Text.']], { xmp: calibreXmp('Glass Road', '') }), { filename: '04 - The Glass Road - Keeper Of The Gate.pdf' });
+  assert.deepEqual([same.meta.title, same.meta.series], ['Keeper of the Gate', [{ name: 'Glass Road', position: 4 }]]);
+  const other = await convert(makePdf([['Text.']], { xmp: calibreXmp('Harbour Lights', '2') }), { filename: '04 - The Glass Road - Keeper Of The Gate.pdf' });
+  assert.deepEqual([other.meta.title, other.meta.series], ['Keeper of the Gate', [{ name: 'Harbour Lights', position: 2 }]]);
+  // An OPF file that came with the book still wins.
+  const opf = { title: 'The Gatekeeper', author: '', language: '', series: [{ name: 'Glass Road Saga', position: 1 }], isbns: [] };
+  assert.equal(withOpfDetails(same.meta, opf).title, 'The Gatekeeper');
+  assert.deepEqual(withOpfDetails(same.meta, opf).series, [{ name: 'Glass Road Saga', position: 1 }]);
 });

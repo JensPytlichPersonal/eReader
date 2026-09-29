@@ -2,7 +2,7 @@
 import { parseDocument, DomUtils, ElementType } from 'htmlparser2';
 import render from 'dom-serializer';
 import { filterInlineStyle } from './css.js';
-import { hasWatermark, stripWatermarks, isWatermarkLink } from './watermarks.js';
+import { hasWatermark, stripWatermarks, isWatermarkLink, isCreditLine, CREDIT_REACH } from './watermarks.js';
 
 const { isTag, isText, textContent, removeElement, replaceElement, getElementsByTagName, findOne } = DomUtils;
 
@@ -19,6 +19,16 @@ const WRAPPER_TAGS = new Set(['div', 'section', 'article', 'main', 'body', 'bloc
 const KEEP_ATTRS = new Set(['id', 'class', 'alt', 'title', 'colspan', 'rowspan', 'lang', 'dir', 'start', 'reversed', 'type', 'value', 'role', 'span', 'headers', 'scope', 'datetime', 'cite']);
 
 const HEADING_RE = /^h[1-6]$/;
+// Blocks that hold a paragraph of their own, and may be taken for a scene break or a credit line.
+const PARAGRAPH_TAGS = new Set(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+const NOT_PARAGRAPHS = new Set(['br', 'hr', 'img']);
+const holdsBlocks = (el) => el.children.some((c) => isTag(c) && BLOCK_TAGS.has(c.name) && !NOT_PARAGRAPHS.has(c.name));
+
+// A paragraph holding nothing but a mark such as "* * *", "***", "#" or "~" is a break between scenes, as are
+// three or more dots or bullets ("• • •"; one alone is a bullet). Every format gives this one element for it.
+const SCENE_BREAK_RE = /^(?:[*#~⁂]\s*)+$|^(?:[•·]\s*){3,}$/u;
+export const SCENE_BREAK = '<hr class="scene-break"/>';
+export const isSceneBreak = (text) => SCENE_BREAK_RE.test(text.trim());
 
 function isEmptyNode(node) {
   if (isText(node)) return /^\s*$/.test(node.data);
@@ -51,6 +61,7 @@ export function normalizeDocument(html, opts = {}) {
   const state = { images: new Set(), idCounter: 0, opts, ids: new Set() };
   cleanNode(container, state);
   removeWatermarks(container);
+  markSceneBreaks(container);
   // Drop leading/trailing empty nodes
   while (container.children.length && isEmptyNode(container.children[0])) container.children.shift();
   while (container.children.length && isEmptyNode(container.children[container.children.length - 1])) container.children.pop();
@@ -158,6 +169,54 @@ function removeWatermarks(root) {
       removeElement(node);
       node = parent;
     }
+  }
+}
+
+/**
+ * Paragraphs that are only a scene-break mark (see isSceneBreak) become the scene-break element, keeping
+ * their id for links. One that holds a link, a note marker, a picture or an id further in stays as it is.
+ */
+function markSceneBreaks(node) {
+  const keep = (e) => e.name === 'a' || e.name === 'sup' || e.name === 'img' || !!e.attribs.id;
+  for (const child of node.children) {
+    if (!isTag(child)) continue;
+    if (PARAGRAPH_TAGS.has(child.name) && !holdsBlocks(child) && isSceneBreak(textContent(child)) && !findOne(keep, child.children, true)) {
+      child.name = 'hr';
+      child.attribs = { class: 'scene-break', ...(child.attribs.id ? { id: child.attribs.id } : {}) };
+      child.children = [];
+    } else markSceneBreaks(child);
+  }
+}
+
+/**
+ * Take out the credit lines of scanners and download sites (see isCreditLine in watermarks.js): whole
+ * paragraphs among the first CREDIT_REACH of a book, whose chapters `roots` are in reading order. Only the
+ * whole book tells where it starts, so this runs as the sections are assembled. A paragraph holding an id,
+ * such as a PDF page marker or a link target, stays.
+ */
+export function removeCreditLines(roots) {
+  let seen = 0;
+  const visit = (root, node) => {
+    for (const child of [...node.children]) {
+      if (seen >= CREDIT_REACH) return;
+      if (!isTag(child) || !BLOCK_TAGS.has(child.name) || NOT_PARAGRAPHS.has(child.name)) continue;
+      if (holdsBlocks(child)) { visit(root, child); continue; }
+      const text = textContent(child);
+      if (!text.trim()) continue;
+      seen++;
+      if (!PARAGRAPH_TAGS.has(child.name) || !isCreditLine(text) || child.attribs.id || findOne((e) => !!e.attribs.id || e.name === 'img', child.children, true)) continue;
+      let parent = child.parent;
+      removeElement(child);
+      while (parent !== root && parent.parent && isEmptyNode(parent)) {
+        const up = parent.parent;
+        removeElement(parent);
+        parent = up;
+      }
+    }
+  };
+  for (const root of roots) {
+    if (seen >= CREDIT_REACH) break;
+    visit(root, root);
   }
 }
 

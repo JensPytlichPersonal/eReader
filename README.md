@@ -272,8 +272,12 @@ so they do not count as edited by hand, and converting the book again can still 
 | EPUB 2 and 3 | Chapters, images, table of contents (nav or NCX), footnote links. Publisher CSS is reduced to a few typographic hints so every book follows your settings. |
 | MOBI, PRC, AZW, AZW3/KF8 | PalmDOC and HUFF/CDIC compression, images, table of contents from the NCX index, hybrid MOBI7+KF8 files. DRM-protected files are rejected. |
 | PDF | Text is extracted per page and merged into normal-sized sections, so wide screens fill both columns. Running headers and footers repeated across pages or carrying the page number, page numbers and line-break hyphenation are removed; bulleted lists, italic/bold runs and embedded images are kept, and footnotes are collected at the end of each section with links from the markers and back. Each top-level heading starts a new section. Invisible page markers tie the reflowed text to the *Original pages* view, so both views share the same position, and each PDF opens in the view last used for it on the device. In the dark theme the page view inverts the page, scans included, but leaves photographs and colour plates as printed. See below for scanned books. |
-| Markdown | CommonMark + GitHub tables, YAML front matter for title/author, headings become the table of contents. |
+| Markdown | CommonMark + GitHub tables, YAML front matter for title/author, headings become the table of contents. A break of asterisks (`* * *` or `***`) is a scene break; one of dashes or underscores (`---`) stays a plain rule. |
 | Text | Paragraph and heading detection, including hard-wrapped Gutenberg-style text; UTF-8, UTF-16 and Latin-1. |
+
+In every format, a paragraph holding only a mark such as `*`, `* * *`, `#` or `~` is a break between scenes, and
+shows as three spaced asterisks. In a PDF a lone `*` line counts too, while `* item`, `- item` and `• item` lines
+stay list items.
 
 **Scanned books.** A PDF of page images, such as a book from the Internet Archive, opens in the *Original pages*
 view, which draws the JBIG2, CCITT fax and JPEG 2000 images scans are usually stored as. Most scans also carry the
@@ -285,8 +289,13 @@ even when the engine misread their page number. Mistakes in the words themselves
 
 Books from OceanofPDF have an "OceanofPDF.com" link stamped into every chapter (or onto the pages
 of a PDF) and the site's name at the start of the file name. Conversion removes the stamp in every
-format and keeps the site's name out of titles taken from the file name. The uploaded original is
-kept as it is, so a PDF's *Original pages* view still shows the stamp.
+format and keeps the site's name out of titles taken from the file name. Scanners and download sites
+also put a credit line at the start of a book, such as "Formatted by ... Exclusively for Demonoid.com"
+or "Scanned & proofed by ...". Such a line goes too when it is a whole paragraph of under 200 characters
+among the first 20 of the book, and starts with Scanned, Proofed, Proofread, Formatted, Converted or
+Uploaded "by", or names Demonoid, Z-Library or Library Genesis. Lines such as "Translated by" or "Edited
+by" stay, as does anything further in. The uploaded original is kept as it is, so a PDF's *Original
+pages* view still shows the stamp.
 
 Converted books are stored as small HTML sections under `data/books/<id>/`. If a book converts
 badly, choose *Convert again* from its menu, or re-run every book with `npm run reprocess` after an
@@ -338,7 +347,8 @@ Where the series comes from:
 | EPUB metadata | calibre's series and series index, EPUB 3 collections (`belongs-to-collection` with `group-position`; sets become collections), EPUB 3 collection titles |
 | PDF metadata | calibre's series in the XMP metadata |
 | Markdown front matter | `series: The Expanse` with `series_index: 3` (or `volume: 3`); `collection:` works too |
-| The title | "Leviathan Wakes (The Expanse Book 1)", "Caliban's War (The Expanse, #2)", "A Game of Thrones: A Song of Ice and Fire: Book One", "Kvinden i buret (Afdeling Q, bind 1)", "The Expanse 03 - Abaddon's Gate", and for an omnibus "Box Set (The Expanse, #1-3)" or "(The Expanse, Books 1–3)". This is the only place MOBI and text files carry a series. Only explicit forms count (a `#`, or a word such as Book, Volume, Part, Bind or Band before the number), so a title like "Windows 10" is left alone. The series part is removed from the title. |
+| The title | "Leviathan Wakes (The Expanse Book 1)", "Caliban's War (The Expanse, #2)", "A Game of Thrones: A Song of Ice and Fire: Book One", "Kvinden i buret (Afdeling Q, bind 1)", "The Expanse 03 - Abaddon's Gate", and for an omnibus "Box Set (The Expanse, #1-3)" or "(The Expanse, Books 1–3)". This is the only place MOBI files carry a series. Only explicit forms count (a `#`, or a word such as Book, Volume, Part, Bind or Band before the number), so a title like "Windows 10" is left alone. The series part is removed from the title. |
+| The file name | For a book that names no title of its own, such as a text file or a PDF without details, the title comes from the file name, and so can the series: "01 - The Belgariad - Pawn Of Prophecy" is *Pawn of Prophecy* in The Belgariad, #1, and the forms above count too. Without a series name the number in front just goes ("03 - Dune" is *Dune*); a year such as "1984 - ..." stays. An underscore standing for an apostrophe comes back ("Magician_s Gambit" is *Magician's Gambit*), and a version mark such as "(v2)" goes. Capitals set on every word are tidied: small words such as "of" and "the" go lower case, except first and last. A title the book names itself keeps a number in front, as it is often part of the title. The file name's series is taken when the book records none, or gives the number in the one it records. |
 
 Series names are matched regardless of case, spacing and quote style, so books from different
 sources end up together. To add books to a series or collection by hand, or to fix one, use
@@ -524,7 +534,7 @@ npm test         # converter unit tests and API integration tests
 Layout of the code:
 
 - `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, and `genres.js`, which keeps the books' genres
-- `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and watermark patterns, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
+- `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and the patterns for watermarks and credit lines, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
 - `public/` the web app: library (`js/library.js`, which places the books a series lacks with `js/missing.js` and sorts books into sections by author or genre with `js/groups.js`), reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)
 

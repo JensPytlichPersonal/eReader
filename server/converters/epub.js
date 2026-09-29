@@ -3,7 +3,7 @@ import { ZipReader } from './zip.js';
 import { parseXml, findAllLocal, findFirstLocal, attr, text, children, localName } from './xml.js';
 import { normalizeDocument } from './html.js';
 import { filterStylesheet } from './css.js';
-import { assembleSections, imageExt, titleFromFilename } from './bundle.js';
+import { assembleSections, imageExt } from './bundle.js';
 import { opfTitleAndSeries } from './series.js';
 import { uniqueIsbns } from './isbn.js';
 
@@ -50,10 +50,9 @@ function packageDetails(opf) {
   return { title, author: creators.join(', '), language, series, isbns };
 }
 
-/** Title, author, language, series and ISBNs from the package's <metadata>. */
-function packageMetadata(opf, filename) {
-  const details = packageDetails(opf);
-  return { ...details, title: details.title || titleFromFilename(filename), format: 'epub' };
+/** Title, author, language, series and ISBNs from the package's <metadata>, the title '' when it names none. */
+function packageMetadata(opf) {
+  return { ...packageDetails(opf), format: 'epub' };
 }
 
 /**
@@ -68,18 +67,18 @@ export function readOpfDetails(data) {
 }
 
 /** Reads only the book's details, without converting it. */
-export async function readEpubMetadata(buffer, { filename }) {
-  return packageMetadata(openPackage(new ZipReader(buffer)).opf, filename);
+export async function readEpubMetadata(buffer) {
+  return packageMetadata(openPackage(new ZipReader(buffer)).opf);
 }
 
-export async function convertEpub(buffer, { filename }) {
+export async function convertEpub(buffer) {
   const zip = new ZipReader(buffer);
   // 1. container -> OPF
   const { opf, opfPath } = openPackage(zip);
   const abs = (href) => resolvePath(opfPath, href);
 
   // 2. metadata
-  const meta = packageMetadata(opf, filename);
+  const meta = packageMetadata(opf);
   const metaCoverId = findAllLocal(findFirstLocal(opf, 'metadata') || opf, 'meta').find((m) => (attr(m, 'name') || '').toLowerCase() === 'cover');
 
   // 3. manifest
