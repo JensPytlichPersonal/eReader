@@ -489,6 +489,12 @@ test('a paragraph holding only a mark such as "* * *" is a scene break in every 
   const epub = await convertEpub(makeEpub({ chapters: [{ id: 'c', file: 'c.xhtml', title: 'C', body: '<p>One.</p><p class="calibre5">* * *</p><p>Two.</p>' }] }));
   assert.match(serialize(epub.sections[0].nodes), /<p>One\.<\/p><hr class="scene-break" \/><p>Two\.<\/p>/);
 
+  // Markdown: a break of asterisks is a scene break, one of dashes or underscores a plain rule.
+  const md = await convertMarkdown(Buffer.from('One.\n\n* * *\n\nTwo.\n\n***\n\nThree.\n\n---\n\nFour.\n\n___\n\nFive.'));
+  const mdHtml = serialize(md.sections[0].nodes);
+  assert.equal((mdHtml.match(/<hr class="scene-break" \/>/g) || []).length, 2, mdHtml);
+  assert.equal((mdHtml.match(/<hr \/>/g) || []).length, 2, mdHtml);
+
   // Text: a centred mark is not preformatted text, and a mark stands alone between wrapped lines.
   const text = textToHtml('The first scene ends.\n\n            * * *\n\nThe second scene.\n\n#\n\nThe third.\n\n* one item\n* another item');
   assert.equal(text, '<p>The first scene ends.</p>\n<hr class="scene-break"/>\n<p>The second scene.</p>\n<hr class="scene-break"/>\n<p>The third.</p>\n<p>* one item</p>\n<p>* another item</p>');

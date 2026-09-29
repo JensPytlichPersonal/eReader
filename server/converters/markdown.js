@@ -1,5 +1,5 @@
 import { Marked } from 'marked';
-import { normalizeDocument } from './html.js';
+import { normalizeDocument, SCENE_BREAK } from './html.js';
 import { assembleSections } from './bundle.js';
 import { decodeText } from './text.js';
 import { seriesFromFrontMatter } from './series.js';
@@ -32,6 +32,10 @@ function createMarked() {
         seen.set(slug, n + 1);
         if (n) slug = `${slug}-${n}`;
         return `<h${depth} id="${slug}">${text}</h${depth}>\n`;
+      },
+      // "* * *" or "***" marks a break between scenes, as in the other formats; "---" stays a plain rule.
+      hr({ raw }) {
+        return raw.trim().startsWith('*') ? `${SCENE_BREAK}\n` : '<hr/>\n';
       },
     },
   });
