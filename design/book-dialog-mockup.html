@@ -1,0 +1,1468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Book dialog mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400..700&display=swap">
+<style>
+/* Layout: a design board. Frames of the app at real size, scaled down to fit the page, each with a
+   caption; the notes follow in one readable column. The board's own rules all start with .bd, so
+   they stay out of the frames, and the app's rules are scoped to .app-root, so they stay in them. */
+:root {
+  --board-bg: #E7E4DE; --board-fg: #2B2724; --board-muted: #6A645E; --board-line: #D3CEC5; --board-card: #F5F3EF;
+  --board-chip: #D8D4CC; --board-chip-on: #FFFFFF; --board-code: #DDD8CF; --board-accent: #94503A;
+  --bezel: #1E1C1A; --bezel-edge: rgba(255,255,255,.2); --bezel-eink: #D6D2CB; --bezel-eink-edge: #A9A49B;
+  --chrome: #2A2724; --chrome-fg: #A09A93; --chrome-field: #3A3632; --frame-shadow: rgba(40,30,20,.55);
+  --board-serif: Literata, Georgia, "Iowan Old Style", serif;
+  --board-ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --board-mono: ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --board-bg: #171615; --board-fg: #E8E3DB; --board-muted: #A59E95; --board-line: #35312D; --board-card: #211F1D;
+    --board-chip: #2C2926; --board-chip-on: #4A453F; --board-code: #2F2B28; --board-accent: #DA9B7E;
+    --bezel: #0C0B0A; --bezel-edge: rgba(255,255,255,.14); --bezel-eink: #8F8A82; --bezel-eink-edge: #6B665F;
+    --chrome: #0F0E0D; --chrome-fg: #8E877F; --chrome-field: #262320; --frame-shadow: rgba(0,0,0,.8);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --board-bg: #171615; --board-fg: #E8E3DB; --board-muted: #A59E95; --board-line: #35312D; --board-card: #211F1D;
+  --board-chip: #2C2926; --board-chip-on: #4A453F; --board-code: #2F2B28; --board-accent: #DA9B7E;
+  --bezel: #0C0B0A; --bezel-edge: rgba(255,255,255,.14); --bezel-eink: #8F8A82; --bezel-eink-edge: #6B665F;
+  --chrome: #0F0E0D; --chrome-fg: #8E877F; --chrome-field: #262320; --frame-shadow: rgba(0,0,0,.8);
+  color-scheme: dark;
+}
+body { margin: 0; background: var(--board-bg); color: var(--board-fg); font: 15px/1.5 var(--board-ui); -webkit-font-smoothing: antialiased; }
+.bd, .bd *, .bd *::before, .bd *::after { box-sizing: border-box; }
+.bd { max-width: 1280px; margin: 0 auto; padding-block: 36px 96px; padding-inline: clamp(16px, 3vw, 32px); }
+.bd-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px 40px; margin-bottom: 18px; }
+.bd-head > div { min-width: 0; }
+.bd-eyebrow { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--board-muted); }
+.bd-head h1 { margin: 0 0 10px; font: 600 clamp(28px, 4vw, 36px)/1.15 var(--board-serif); letter-spacing: -.01em; text-wrap: balance; }
+.bd-lead { max-width: 68ch; margin: 0 0 8px; color: var(--board-muted); }
+.bd-lead b { color: var(--board-fg); font-weight: 600; }
+.bd-switch { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--board-muted); }
+.bd-seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 999px; background: var(--board-chip); }
+.bd-seg button { padding: 9px 14px; border: 0; border-radius: 999px; background: none; color: var(--board-muted); font: 600 13px/1 var(--board-ui); cursor: pointer; }
+.bd-seg button[aria-pressed="true"] { background: var(--board-chip-on); color: var(--board-fg); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.bd-seg button:focus-visible, .bd-toc a:focus-visible { outline: 2px solid var(--board-accent); outline-offset: 2px; }
+.bd-toc { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0 0 44px; padding-top: 14px; border-top: 1px solid var(--board-line); font-size: 13px; }
+.bd-toc a { padding: 4px 0; color: var(--board-muted); text-decoration: none; border-bottom: 1px solid transparent; }
+.bd-toc a:hover { color: var(--board-fg); border-color: currentColor; }
+.bd-chapter { margin: 0 0 76px; }
+.bd-chapter > h2 { margin: 0 0 8px; font: 600 26px/1.2 var(--board-serif); letter-spacing: -.01em; text-wrap: balance; }
+.bd-chapter > .bd-lead { margin-bottom: 26px; }
+.bd-frames { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 36px 32px; }
+.bd-fig { flex: 0 1 auto; min-width: 0; max-width: 100%; margin: 0; }
+.bd-fig.full { flex: 1 1 100%; }
+.bd-fig figcaption { max-width: 62ch; margin: 14px 4px 0; font-size: 13px; color: var(--board-muted); }
+.bd-fig figcaption b { color: var(--board-fg); font-weight: 600; }
+/* A frame is laid out at its real size and scaled to the room there is (see fit() in the script) */
+.bd-fit { position: relative; max-width: 100%; }
+.bd-dev { position: relative; transform-origin: 0 0; }
+.bd-dev.phone { width: 410px; padding: 10px; border-radius: 54px; background: var(--bezel); box-shadow: 0 40px 70px -40px var(--frame-shadow), inset 0 1px 0 var(--bezel-edge); }
+.bd-dev.phone .bd-screen { height: 844px; border-radius: 44px; }
+.bd-dev.phone .bd-island { position: absolute; top: 21px; left: 50%; z-index: 60; width: 116px; height: 32px; border-radius: 20px; background: #0B0A09; transform: translateX(-50%); }
+.bd-dev.phone .bd-home { position: absolute; bottom: 18px; left: 50%; z-index: 60; width: 134px; height: 5px; border-radius: 3px; background: #8C857D; transform: translateX(-50%); pointer-events: none; }
+.bd-dev.reader { width: 592px; padding: 28px 28px 52px; border-radius: 22px; background: var(--bezel-eink); box-shadow: 0 40px 70px -40px var(--frame-shadow), inset 0 0 0 1px var(--bezel-eink-edge); }
+.bd-dev.reader .bd-screen { height: 724px; border-radius: 2px; box-shadow: 0 0 0 1px #6F6A63; }
+.bd-dev.laptop { width: 1196px; padding: 0 8px 8px; border-radius: 14px; background: var(--chrome); box-shadow: 0 40px 70px -40px var(--frame-shadow), inset 0 1px 0 var(--bezel-edge); }
+.bd-dev.laptop .bd-screen { height: 900px; border-radius: 8px; }
+.bd-chrome { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 8px; color: var(--chrome-fg); font-size: 12px; }
+.bd-chrome i { width: 11px; height: 11px; border-radius: 50%; background: #5B5651; }
+.bd-chrome span { min-width: 260px; margin: 0 auto; padding: 5px 14px; border-radius: 6px; background: var(--chrome-field); text-align: center; }
+.bd-screen { position: relative; overflow: hidden; }
+.bd-status { position: absolute; top: 0; left: 0; right: 0; z-index: 59; display: flex; justify-content: space-between; align-items: center; height: 54px; padding: 14px 34px 0; font: 600 15px/1 var(--board-ui); pointer-events: none; }
+.bd-status svg { width: 58px; height: 18px; }
+/* Notes */
+.bd-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 28px; align-items: start; }
+.bd-note { padding: 18px 22px; border: 1px solid var(--board-line); border-radius: 12px; background: var(--board-card); }
+.bd-note h3 { margin: 0 0 8px; font: 600 15px/1.3 var(--board-ui); }
+.bd-note ul { margin: 6px 0 0; padding-left: 20px; }
+.bd-note li { margin: 6px 0; }
+.bd-note code, .bd-tbl code { padding: 1px 5px; border-radius: 4px; background: var(--board-code); font: 12.5px/1.4 var(--board-mono); }
+.bd-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--board-line); border-radius: 12px; background: var(--board-card); }
+.bd-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.bd-tbl th, .bd-tbl td { padding: 10px 14px; border-bottom: 1px solid var(--board-line); text-align: left; vertical-align: top; }
+.bd-tbl th { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--board-muted); }
+.bd-tbl tr:last-child td { border-bottom: 0; }
+.bd-tbl td:first-child { font-weight: 600; }
+.bd-tbl td:last-child { color: var(--board-muted); }
+.bd-tbl td b { color: var(--board-fg); font-weight: 600; }
+
+/* The app inside a frame: .app-root stands for <html>, .app-body for <body>. It is a container, so
+   the app's width rules (written for the window) answer to the width of the frame. */
+.app-root { position: relative; width: 100%; height: 100%; overflow: hidden; container: app / size; contain: layout paint; text-align: left; }
+.app-body { min-height: 100%; }
+.app-root a { cursor: pointer; }
+
+/* ==== The app's own stylesheets (app.css, soft.css) with the new rules for the dialog, scoped to the frames ==== */
+.app-root { --bg: #ffffff; --fg: #111111; --muted: #555555; --line: #cfcfcf; --panel: #f4f4f4; --accent: #1a1a1a; --accent-fg: #ffffff; --danger: #a11; --radius: 6px; --ctl: 44px; --ctl-menu: 40px; --cover-ratio: 5 / 8; --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-left: env(safe-area-inset-left, 0px); --safe-right: env(safe-area-inset-right, 0px); --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color-scheme: light; }
+.app-root[data-theme="dark"] { --bg: #121212; --fg: #e6e6e6; --muted: #a5a5a5; --line: #3a3a3a; --panel: #1e1e1e; --accent: #e6e6e6; --accent-fg: #121212; --danger: #ff7b7b; color-scheme: dark; }
+.app-root[data-theme="sepia"] { --bg: #f6ecd9; --fg: #4a3b2a; --muted: #7a6a55; --line: #d9c9ad; --panel: #efe2c8; --accent: #4a3b2a; --accent-fg: #f6ecd9; }
+.app-root[data-eink="1"] { --bg: #ffffff; --fg: #000000; --muted: #000000; --line: #000000; --panel: #ffffff; --accent: #000000; --accent-fg: #ffffff; }
+.app-root[data-eink="1"][data-theme="dark"] { --bg: #000000; --fg: #ffffff; --muted: #ffffff; --line: #ffffff; --panel: #000000; --accent: #ffffff; --accent-fg: #000000; }
+.app-root { --sheet: 2px; --sheet-edge: 2px; --cover-edge: drop-shadow(2px 0 0 var(--line)) drop-shadow(-2px 0 0 var(--line)) drop-shadow(0 2px 0 var(--line)) drop-shadow(0 -2px 0 var(--line)); --cover-ring: drop-shadow(3px 0 0 var(--fg)) drop-shadow(-3px 0 0 var(--fg)) drop-shadow(0 3px 0 var(--fg)) drop-shadow(0 -3px 0 var(--fg)); }
+:where(.app-root) * { box-sizing: border-box; }
+.app-root, :where(.app-root) .app-body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+:where(.app-root) .app-body { font-family: var(--ui-font); font-size: 16px; line-height: 1.4; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+:where(.app-root) a { color: inherit; }
+:where(.app-root) button, :where(.app-root) input, :where(.app-root) select, :where(.app-root) textarea { font: inherit; color: inherit; }
+:where(.app-root) button { cursor: pointer; }
+:where(.app-root) img { max-width: 100%; }
+:where(.app-root) .hidden { display: none !important; }
+:where(.app-root) .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+:where(.app-root) .btn { display: inline-flex; align-items: center; justify-content: center; gap: .4em; min-height: var(--ctl); padding: 0 16px; border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); text-decoration: none; font-weight: 600; white-space: nowrap; }
+:where(.app-root) .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+:where(.app-root) .btn.danger { border-color: var(--danger); color: var(--danger); }
+:where(.app-root) .btn.small { min-height: 36px; padding: 0 12px; font-size: 14px; }
+:where(.app-root) .btn.icon { min-width: 44px; padding: 0 10px; }
+:where(.app-root) .btn:disabled { opacity: .5; cursor: default; }
+:where(.app-root) .btn:focus-visible, :where(.app-root) input:focus-visible, :where(.app-root) select:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+:where(.app-root) .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+:where(.app-root) .field label { font-weight: 600; font-size: 14px; }
+:where(.app-root) .field input, :where(.app-root) .field select, :where(.app-root) .field textarea { min-height: var(--ctl); padding: 8px 12px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); width: 100%; }
+:where(.app-root) .field input:not([type="checkbox"]):not([type="radio"]), :where(.app-root) .field select, :where(.app-root) .series-row input { height: var(--ctl); }
+:where(.app-root) .field input:focus, :where(.app-root) .field select:focus { border-color: var(--fg); outline: none; }
+:where(.app-root) .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+:where(.app-root) .row.between { justify-content: space-between; }
+:where(.app-root) .muted { color: var(--muted); }
+:where(.app-root) .error { color: var(--danger); font-weight: 600; }
+:where(.app-root) .notice { padding: 10px 14px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--panel); margin: 10px 0; }
+:where(.app-root) .app-header { display: flex; align-items: center; gap: 12px; padding: calc(10px + var(--safe-top)) calc(16px + var(--safe-right)) 10px calc(16px + var(--safe-left)); border-bottom: 2px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 5; }
+:where(.app-root) .app-header .brand { font-weight: 800; font-size: 20px; text-decoration: none; letter-spacing: .5px; }
+:where(.app-root) .app-header .spacer { flex: 1; }
+:where(.app-root) .app-header nav { display: flex; gap: 8px; flex-wrap: wrap; }
+:where(.app-root) main.page { padding: 16px calc(16px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(16px + var(--safe-left)); max-width: 1200px; margin: 0 auto; }
+:where(.app-root) main.narrow { max-width: 480px; }
+:where(.app-root) h1, :where(.app-root) h2, :where(.app-root) h3 { line-height: 1.2; }
+:where(.app-root) h1 { font-size: 24px; margin: 8px 0 16px; }
+:where(.app-root) h2 { font-size: 20px; margin: 20px 0 10px; }
+:where(.app-root) .tabs { display: flex; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 2px solid var(--line); }
+:where(.app-root) .tabs button { min-height: 44px; padding: 0 14px; margin-bottom: -2px; border: 0; border-bottom: 4px solid transparent; background: none; color: var(--muted); font-weight: 700; }
+:where(.app-root) .tabs button[aria-pressed="true"] { color: var(--fg); border-bottom-color: var(--fg); }
+:where(.app-root) .tabs .n { margin-left: 6px; font-weight: 500; }
+:where(.app-root) .tabs .n:empty { display: none; }
+:where(.app-root) .tabs button:focus-visible { outline: 3px solid var(--fg); outline-offset: -3px; }
+:where(.app-root) .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+:where(.app-root) .toolbar .control { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+:where(.app-root) .toolbar .control > span { padding-left: 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); line-height: 1.2; }
+:where(.app-root) .toolbar .control select { width: 100%; }
+:where(.app-root) .toolbar .control.search { flex: 1 1 200px; min-width: 0; }
+@container app (min-width: 600px) {
+:where(.app-root) .toolbar::after { content: ""; flex-basis: 100%; height: 0; order: 1; }
+:where(.app-root) .toolbar .control { order: 2; }
+:where(.app-root) .toolbar .control.search { order: 0; }
+}
+:where(.app-root) .toolbar input[type="search"] { width: 100%; height: var(--ctl); padding: 8px 12px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+:where(.app-root) .toolbar select { height: var(--ctl-menu); padding: 4px 10px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+:where(.app-root) .series-open .toolbar, :where(.app-root) .series-open .dropzone:not(.active) { display: none; }
+:where(.app-root) .dropzone { border: 2px dashed var(--line); border-radius: var(--radius); padding: 14px; text-align: center; margin-bottom: 16px; color: var(--muted); }
+:where(.app-root) .dropzone.active { border-color: var(--fg); color: var(--fg); background: var(--panel); }
+:where(.app-root) .dropzone .btn { margin-left: 8px; vertical-align: middle; }
+:where(.app-root) .uploads { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+:where(.app-root) .uploads .item { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; border: 2px solid var(--line); border-radius: var(--radius); font-size: 14px; overflow-wrap: anywhere; }
+:where(.app-root) .uploads .summary { align-items: center; border-color: var(--fg); font-weight: 600; }
+:where(.app-root) .uploads .summary .btn { flex: none; }
+:where(.app-root) .upload-lines { display: flex; flex-direction: column; gap: 6px; max-height: 40cqh; overflow-y: auto; }
+:where(.app-root) .upload-lines > div { display: flex; flex-direction: column; gap: 6px; }
+:where(.app-root) .upload-lines:empty, :where(.app-root) .upload-lines > div:empty { display: none; }
+:where(.app-root) .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-min, 170px), 1fr)); gap: var(--grid-gap, 16px); }
+:where(.app-root) #library.cols-2 { --card-min: 230px; --shelf-min: 150px; }
+:where(.app-root) #library.cols-4 { --card-min: 125px; --shelf-min: 88px; --grid-gap: 12px; --edge: 6px; --sheet: 1px; --sheet-edge: 2px; --card-title: 12px; --card-text: 11px; --card-meta: 11px; --card-pad: 6px 6px 5px; --menu-size: 28px; --menu-inset: 4px; --tag-size: 11px; --ph-title: 12px; }
+:where(.app-root) #library.cols-4 .card .author, :where(.app-root) #library.cols-4 .card .series-line, :where(.app-root) #library.cols-4 .card .dup-flag, :where(.app-root) #library.cols-4 .card:not(.group) .meta, :where(.app-root) #library.cols-4 .card .cover.placeholder .a { display: none; }
+:where(.app-root) #library.cols-4 .card.group .info > .title { order: -2; }
+:where(.app-root) #library.cols-4 .card.group .info > .meta { order: -1; margin-top: auto; }
+:where(.app-root) #library.cols-4 .card.group .info > .progress { order: 0; margin-top: 0; }
+:where(.app-root) #library.cols-4 .card .cover.placeholder { justify-content: flex-start; padding: 6px 5px calc(var(--menu-size) + 2 * var(--menu-inset)); }
+@container app (max-width: 599px) {
+:where(.app-root) #library.cols-2 { --cols: 2; }
+:where(.app-root) #library.cols-3 { --cols: 3; --grid-gap: 10px; --card-title: 12.5px; --card-text: 11.5px; --card-meta: 11px; --card-pad: 7px 7px 6px; --menu-size: 32px; --menu-inset: 5px; --tag-size: 12px; --ph-title: 13px; }
+:where(.app-root) #library.cols-3 .card .meta .badge { display: none; }
+:where(.app-root) #library.cols-4 { --cols: 4; --grid-gap: 8px; }
+:where(.app-root) #library .grid, :where(.app-root) #library .shelf-row { grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: var(--grid-gap, 12px); }
+}
+:where(.app-root) .card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(var(--count-line, 0px), auto) auto minmax(0, 1fr); border: 2px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); text-decoration: none; }
+:where(.app-root) .card::before { content: ""; grid-row: 2 / 3; grid-column: 1 / 2; aspect-ratio: var(--cover-ratio); }
+:where(.app-root) .card > .count { grid-row: 1 / 2; grid-column: 1 / 2; }
+:where(.app-root) .card > .cover, :where(.app-root) .card > .stack { grid-row: 2 / 3; grid-column: 1 / 2; align-self: end; width: 100%; }
+:where(.app-root) .card > .info { grid-row: 3 / 4; grid-column: 1 / 2; }
+:where(.app-root) .card > .cover-tag, :where(.app-root) .card > .menu-btn, :where(.app-root) .card > .check, :where(.app-root) .card > .status { grid-row: 2 / 3; grid-column: 1 / 2; }
+:where(.app-root) .card:focus-within, :where(.app-root) .card:hover { border-color: var(--fg); }
+:where(.app-root) .card.unavailable, :where(.app-root) .list-row.unavailable { opacity: .4; }
+:where(.app-root) .card .cover { display: block; width: 100%; }
+:where(.app-root) .card > img.cover { aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; filter: var(--cover-edge); }
+:where(.app-root) .card > .cover.placeholder { aspect-ratio: 2 / 3; height: auto; background: var(--panel); border-bottom: 2px solid var(--line); }
+:where(.app-root) .card .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 12px; gap: 6px; font-weight: 700; }
+:where(.app-root) .card .cover.placeholder .t { font-size: var(--ph-title, 16px); line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
+:where(.app-root) .card .cover.placeholder .a { font-size: calc(var(--ph-title, 16px) * .75); font-weight: 500; color: var(--muted); }
+:where(.app-root) .card .info { padding: var(--card-pad, 10px 10px 8px); display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+:where(.app-root) .card .title { font-weight: 700; font-size: var(--card-title, 14px); line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+:where(.app-root) .card .author { font-size: var(--card-text, 13px); color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+:where(.app-root) .card .meta { display: flex; justify-content: space-between; align-items: center; gap: 4px; font-size: var(--card-meta, 12px); color: var(--muted); margin-top: auto; }
+:where(.app-root) .card .info > .progress { margin-top: auto; }
+:where(.app-root) .card .info > .progress + .meta { margin-top: 0; }
+:where(.app-root) .card .meta > span:first-child { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:where(.app-root) .badge { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+:where(.app-root) .progress { height: 8px; border: 1px solid var(--fg); border-radius: 4px; overflow: hidden; background: var(--bg); }
+:where(.app-root) .progress > div { height: 100%; background: var(--fg); }
+:where(.app-root) .card .menu-btn { position: absolute; top: auto; bottom: var(--menu-inset, 6px); right: var(--menu-inset, 6px); width: var(--menu-size, 40px); height: var(--menu-size, 40px); padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: calc(var(--menu-size, 40px) * .45); line-height: 1; }
+:where(.app-root) .card .status { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-weight: 700; font-size: var(--card-title, 16px); background: var(--bg); padding: 8px; border-top: 2px solid var(--fg); border-bottom: 2px solid var(--fg); }
+:where(.app-root) .card .status.err { color: var(--danger); }
+:where(.app-root) .card .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+:where(.app-root) .card .series-line { font-size: var(--card-text, 13px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+:where(.app-root) .card .series-line a { position: relative; z-index: 1; font-weight: 600; }
+:where(.app-root) .dup-flag { position: relative; z-index: 1; align-self: flex-start; padding: 0; border: 0; background: none; color: var(--fg); font-size: var(--card-text, 13px); font-weight: 700; text-align: left; text-decoration: underline dashed; text-underline-offset: 3px; }
+:where(.app-root) .dup-flag:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+:where(.app-root) .list-row .dup-flag { font-size: 12px; white-space: nowrap; }
+:where(.app-root) .dup-group .grid { padding-bottom: 18px; border-bottom: 2px solid var(--line); }
+:where(.app-root) .card .cover-tag, :where(.app-root) .shelf-book .cover-tag { position: absolute; top: auto; bottom: var(--menu-inset, 6px); left: var(--menu-inset, 6px); padding: 2px calc(var(--tag-size, 14px) * .55); border: 2px solid var(--fg); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-weight: 800; font-size: var(--tag-size, 14px); }
+:where(.app-root) .card .count { display: none; }
+:where(.app-root) .stack { position: relative; isolation: isolate; padding: var(--edge, 8px) var(--edge, 8px) 0 0; --cover-sheets: drop-shadow(var(--sheet) calc(-1 * var(--sheet)) 0 var(--bg)) drop-shadow(var(--sheet-edge) calc(-1 * var(--sheet-edge)) 0 var(--muted)) drop-shadow(var(--sheet) calc(-1 * var(--sheet)) 0 var(--bg)) drop-shadow(var(--sheet-edge) calc(-1 * var(--sheet-edge)) 0 var(--muted)); }
+:where(.app-root) .stack img.cover { position: relative; z-index: 1; display: block; width: 100%; aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; filter: var(--cover-edge) var(--cover-sheets); }
+:where(.app-root) .stack .cover.placeholder { position: relative; z-index: 1; width: 100%; aspect-ratio: 2 / 3; height: auto; background: var(--panel); border: 2px solid var(--line); filter: var(--cover-sheets); }
+:where(.app-root) .card .meta .place { font-weight: 700; color: var(--fg); }
+:where(.app-root) .shelf { margin: 22px 0 8px; }
+:where(.app-root) .shelf-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin-bottom: 10px; }
+:where(.app-root) .shelf-head h2, :where(.app-root) .shelf-head h3 { margin: 0; font-size: 20px; }
+:where(.app-root) .shelf-head a { text-decoration: none; }
+:where(.app-root) .shelf-head a::after { content: " \203A"; }
+:where(.app-root) .shelf-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--shelf-min, 112px), 1fr)); gap: 16px 12px; padding-bottom: 18px; border-bottom: 2px solid var(--line); }
+:where(.app-root) .shelf .list { margin-bottom: 18px; }
+:where(.app-root) .shelf-book { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); gap: 4px 0; min-width: 0; }
+:where(.app-root) .shelf-book::before { content: ""; grid-row: 1 / 2; grid-column: 1 / 2; aspect-ratio: var(--cover-ratio); }
+:where(.app-root) .shelf-book > .cover { grid-row: 1 / 2; grid-column: 1 / 2; align-self: end; display: block; width: 100%; }
+:where(.app-root) .shelf-book > img.cover { aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; filter: var(--cover-edge); }
+:where(.app-root) .shelf-book > .cover.placeholder { aspect-ratio: 2 / 3; height: auto; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
+:where(.app-root) .shelf-book > .cover-tag, :where(.app-root) .shelf-book > .check { grid-row: 1 / 2; grid-column: 1 / 2; }
+:where(.app-root) .shelf-book > .title { grid-row: 2 / 3; }
+:where(.app-root) .shelf-book > .progress { grid-row: 3 / 4; }
+:where(.app-root) .shelf-book > .state { grid-row: 4 / 5; align-self: end; }
+:where(.app-root) .shelf-book .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 8px; text-align: center; overflow: hidden; }
+:where(.app-root) .shelf-book .cover.placeholder .t { font-weight: 700; font-size: 13px; line-height: 1.2; }
+:where(.app-root) .shelf-book .cover.placeholder .a { font-size: 11px; color: var(--muted); }
+:where(.app-root) .shelf-book.current img.cover { filter: var(--cover-ring); }
+:where(.app-root) .shelf-book.current .cover.placeholder { border-color: var(--fg); outline: 3px solid var(--fg); outline-offset: 2px; }
+:where(.app-root) .shelf-book:hover .cover.placeholder, :where(.app-root) .shelf-book:focus-within .cover.placeholder { border-color: var(--fg); }
+:where(.app-root) .shelf-book .title { font-weight: 700; font-size: 13px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+:where(.app-root) .shelf-book .state { font-size: 12px; color: var(--muted); margin-top: auto; }
+:where(.app-root) .shelf-book .progress { margin-top: auto; }
+:where(.app-root) .shelf-book .progress + .state { margin-top: 0; }
+:where(.app-root) .shelf-book .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+:where(.app-root) .list { display: flex; flex-direction: column; border-top: 2px solid var(--line); }
+:where(.app-root) .list-row { position: relative; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 4px; border-bottom: 2px solid var(--line); }
+:where(.app-root) .list-row:hover, :where(.app-root) .list-row:focus-within { background: var(--panel); }
+:where(.app-root) .list-row.current { box-shadow: inset 5px 0 0 var(--fg); padding-left: 14px; }
+:where(.app-root) .list-row .thumb { width: 48px; }
+:where(.app-root) .list-row .stack { --edge: 4px; --sheet: 1px; --sheet-edge: 1px; }
+:where(.app-root) .list-row .cover { display: block; width: 100%; }
+:where(.app-root) .list-row img.cover { aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; border-radius: 0; filter: var(--cover-edge); }
+:where(.app-root) .list-row .cover.placeholder { aspect-ratio: 2 / 3; height: auto; background: var(--panel); border: 2px solid var(--line); border-radius: 3px; }
+:where(.app-root) .list-row .stack img.cover { filter: var(--cover-edge) var(--cover-sheets); }
+:where(.app-root) .list-row .cover.placeholder > * { display: none; }
+:where(.app-root) .list-row .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+:where(.app-root) .list-row .title { font-weight: 700; font-size: 15px; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+:where(.app-root) .list-row .title .no { color: var(--muted); }
+:where(.app-root) .list-row .about { font-size: 13px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+:where(.app-root) .list-row .about a { position: relative; z-index: 1; font-weight: 600; color: var(--fg); }
+:where(.app-root) .list-row .meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+:where(.app-root) .list-row .meta .progress { width: 64px; flex: none; }
+:where(.app-root) .list-row .meta .place { font-weight: 700; color: var(--fg); }
+:where(.app-root) .list-row .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+:where(.app-root) .list-row .menu-btn { position: relative; z-index: 1; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 18px; line-height: 1; }
+:where(.app-root) .list-row .chevron { padding: 0 12px; font-size: 26px; font-weight: 700; }
+:where(.app-root) .card.missing { border-style: dashed; background: none; }
+:where(.app-root) .card.missing .cover { border-bottom-style: dashed; }
+:where(.app-root) .card.missing .meta { flex-wrap: wrap; }
+:where(.app-root) .shelf-book.missing .cover, :where(.app-root) .list-row.missing .cover { border-style: dashed; }
+:where(.app-root) .missing .cover, :where(.app-root) .missing .cover.placeholder { background: none; }
+:where(.app-root) .missing .cover.placeholder, :where(.app-root) .missing .title { color: var(--muted); }
+:where(.app-root) .series-head { margin-bottom: 18px; }
+:where(.app-root) .series-head h1 { margin: 14px 0 4px; }
+:where(.app-root) .series-head .row { margin-top: 12px; }
+:where(.app-root) .series-head .btn.primary { white-space: normal; text-align: left; padding-top: 6px; padding-bottom: 6px; }
+:where(.app-root) .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+:where(.app-root) .section-title { display: flex; align-items: baseline; gap: 10px; margin: 20px 0 10px; }
+:where(.app-root) .group-section { margin: 28px 0 8px; }
+:where(.app-root) .group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding-top: 10px; margin-bottom: 12px; border-top: 3px solid var(--fg); }
+:where(.app-root) .group-head h2 { margin: 0; font-size: 22px; }
+:where(.app-root) .group-section .shelf { margin: 16px 0 8px; }
+:where(.app-root) .group-section .shelf-head h3 { font-size: 17px; }
+:where(.app-root) .group-section .section-title { margin: 16px 0 10px; }
+:where(.app-root) .group-section .section-title h3 { font-size: 16px; }
+:where(.app-root) .group-head .btn, :where(.app-root) .shelf-head .btn { margin-left: auto; align-self: center; }
+:where(.app-root) .pick { margin: 0; padding: 0; border: 0; background: none; cursor: pointer; }
+:where(.app-root) .pick:focus-visible { outline: 3px solid var(--fg); outline-offset: -3px; }
+:where(.app-root) .selecting .menu-btn, :where(.app-root) .selecting .list-row .chevron { display: none; }
+:where(.app-root) .selecting .card .series-line a, :where(.app-root) .selecting .list-row .about a, :where(.app-root) .selecting .dup-flag { pointer-events: none; }
+:where(.app-root) .library .check { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 2px solid var(--fg); border-radius: 50%; background: var(--bg); color: var(--fg); font-weight: 800; font-size: 20px; line-height: 1; pointer-events: none; }
+:where(.app-root) .card .check { position: absolute; top: auto; bottom: var(--menu-inset, 6px); right: var(--menu-inset, 6px); width: var(--menu-size, 40px); height: var(--menu-size, 40px); font-size: calc(var(--menu-size, 40px) * .5); }
+:where(.app-root) .card .stack .check { top: auto; bottom: var(--menu-inset, 6px); right: calc(var(--edge, 8px) + var(--menu-inset, 6px)); z-index: 2; }
+:where(.app-root) .shelf-book .check { position: absolute; top: auto; bottom: 5px; right: 5px; width: 30px; height: 30px; font-size: 16px; }
+:where(.app-root) .list-row .check { grid-column: 3; grid-row: 1; }
+:where(.app-root) .selected .check, :where(.app-root) .part-selected .check { background: var(--fg); color: var(--bg); }
+:where(.app-root) .selected .check::after { content: "\2713"; }
+:where(.app-root) .part-selected .check::after { content: ""; width: 40%; height: 3px; background: currentColor; }
+:where(.app-root) .card.selected, :where(.app-root) .card.part-selected { border-color: var(--fg); }
+:where(.app-root) .card.selected { box-shadow: 0 0 0 2px var(--fg); }
+:where(.app-root) .list-row.selected { box-shadow: inset 0 0 0 3px var(--fg); }
+:where(.app-root) .shelf-book.selected img.cover { filter: var(--cover-ring); }
+:where(.app-root) .shelf-book.selected .cover.placeholder { border-color: var(--fg); outline: 3px solid var(--fg); outline-offset: 2px; }
+:where(.app-root) #btn-select[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+:where(.app-root) .select-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px max(calc(16px + var(--safe-right)), calc((100% - 1168px) / 2)) calc(10px + var(--safe-bottom)) max(calc(16px + var(--safe-left)), calc((100% - 1168px) / 2)); background: var(--bg); border-top: 2px solid var(--fg); }
+:where(.app-root) .select-bar .count { flex: 1 1 auto; font-weight: 700; }
+:where(.app-root) .selecting main.page { padding-bottom: calc(90px + var(--safe-bottom)); }
+:where(.app-root) .selecting .toast { bottom: calc(80px + var(--safe-bottom)); }
+@container app (max-width: 599px) {
+:where(.app-root) .select-bar .count { flex-basis: 100%; }
+:where(.app-root) .selecting main.page { padding-bottom: calc(130px + var(--safe-bottom)); }
+:where(.app-root) .selecting .toast { bottom: calc(120px + var(--safe-bottom)); }
+}
+:where(.app-root) .menu-toggle, :where(.app-root) .section-name, :where(.app-root) .active-filters { display: none; }
+@container app (max-width: 599px) {
+:where(.app-root) .library .app-header { flex-wrap: wrap; gap: 8px 12px; padding-top: calc(6px + var(--safe-top)); padding-bottom: 6px; }
+:where(.app-root) .library .menu-toggle { display: inline-flex; font-size: 22px; }
+:where(.app-root) .library .app-header .brand { display: none; }
+:where(.app-root) .library .section-name { display: block; font-weight: 800; font-size: 18px; }
+:where(.app-root) .library .app-header nav { display: none; flex-basis: 100%; }
+:where(.app-root) .library.menu-open .app-header nav { display: flex; }
+:where(.app-root) .library:not(.menu-open) #library-controls { display: none; }
+:where(.app-root) .library .dropzone { display: none; }
+:where(.app-root) .library:not(.series-open) .toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+:where(.app-root) .library .toolbar .control.search, :where(.app-root) .library .toolbar .btn.primary { grid-column: 1 / -1; }
+:where(.app-root) .library .toolbar select { width: 100%; min-width: 0; }
+:where(.app-root) .library main.page { padding-top: 10px; }
+:where(.app-root) .library .section-title { margin: 12px 0 8px; }
+:where(.app-root) .library .section-title h2 { font-size: 17px; }
+:where(.app-root) .library:not(.menu-open) .active-filters { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-weight: 600; }
+}
+:where(.app-root) .sheet-backdrop { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,.35); z-index: 20; }
+:where(.app-root) .sheet { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92cqw, 420px); max-height: 90cqh; overflow: auto; background: var(--bg); color: var(--fg); border: 2px solid var(--fg); border-radius: var(--radius); padding: 18px; z-index: 21; }
+:where(.app-root) .sheet h2 { margin-top: 0; }
+:where(.app-root) .menu { display: flex; flex-direction: column; gap: 8px; }
+:where(.app-root) .menu .btn { justify-content: flex-start; }
+:where(.app-root) .sheet hr { border: 0; border-top: 2px solid var(--line); margin: 18px 0; }
+:where(.app-root) .sheet .hint { font-size: 13px; margin: 6px 0 0; }
+:where(.app-root) .field > .hint { margin: 0; }
+:where(.app-root) .sheet .series-links a { font-weight: 600; }
+:where(.app-root) .sheet fieldset.field { border: 0; padding: 0; margin: 0 0 14px; min-width: 0; }
+:where(.app-root) .sheet fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
+:where(.app-root) .series-row { display: flex; gap: 6px; margin-bottom: 6px; }
+:where(.app-root) .field .series-row input { width: auto; min-width: 0; }
+:where(.app-root) .field .series-row input[name="series-name"] { flex: 1 1 auto; }
+:where(.app-root) .field .series-row input[name="series-no"] { flex: 0 0 80px; text-align: center; }
+:where(.app-root) .series-row .btn.icon { flex: none; }
+:where(.app-root) .genre-choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+:where(.app-root) .genre-choices .btn { white-space: normal; }
+:where(.app-root) .genre-choices .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+:where(.app-root) .lookup { margin: -4px 0 14px; }
+:where(.app-root) .lookup .hint a { font-weight: 600; }
+:where(.app-root) .matches { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+:where(.app-root) .match { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; min-height: 60px; padding: 6px 8px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); cursor: pointer; }
+:where(.app-root) .match.chosen { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+:where(.app-root.fine) .match:hover { border-color: var(--fg); }
+:where(.app-root) .match .pick { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 0; border: 0; background: none; text-align: left; }
+:where(.app-root) .match .pick:focus-visible { outline: 3px solid var(--fg); outline-offset: 4px; }
+:where(.app-root) .match .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+:where(.app-root) .match .btn.chosen { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+:where(.app-root) .match .cover { display: block; width: 40px; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
+:where(.app-root) .match .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+:where(.app-root) .match .title { font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+:where(.app-root) .match .about { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+:where(.app-root) .more-covers { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; cursor: default; }
+:where(.app-root) .cover-choice { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 72px; padding: 3px; border: 0; border-radius: var(--radius); background: none; color: var(--fg); cursor: pointer; }
+:where(.app-root) .cover-choice img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
+:where(.app-root) .match .cover-choice .about { font-size: 12px; white-space: nowrap; }
+:where(.app-root) .cover-choice.chosen { background: var(--accent); }
+:where(.app-root) .match .cover-choice.chosen .about { color: var(--accent-fg); }
+:where(.app-root) .cover-choice:focus-visible { outline: 3px solid var(--fg); outline-offset: 1px; }
+:where(.app-root.fine) .cover-choice:hover img { border-color: var(--fg); }
+:where(.app-root) .use-cover { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-weight: 600; cursor: pointer; }
+:where(.app-root) .use-cover input { flex: none; width: 22px; height: 22px; margin: 0; }
+:where(.app-root) .use-cover .cover { flex: none; width: 40px; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
+:where(.app-root) .use-cover > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+:where(.app-root) .use-cover .about { font-size: 13px; font-weight: 400; color: var(--muted); }
+@container app (min-width: 900px) {
+:where(.app-root) .sheet.wide { width: min(94cqw, 980px); }
+:where(.app-root) .sheet.wide .details { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: repeat(7, auto) 1fr; column-gap: 28px; align-items: start; }
+:where(.app-root) .sheet.wide .details > * { grid-column: 1; }
+:where(.app-root) .sheet.wide .lookup { display: contents; }
+:where(.app-root) .sheet.wide .lookup > .btn { grid-column: 1; justify-self: start; margin: -4px 0 14px; }
+:where(.app-root) .sheet.wide .found { grid-column: 2; grid-row: 1 / -1; }
+:where(.app-root) .sheet.wide .match { grid-template-columns: 72px minmax(0, 1fr); }
+:where(.app-root) .sheet.wide .match .cover, :where(.app-root) .sheet.wide .use-cover .cover { width: 72px; }
+}
+:where(.app-root) .sheet.compare { width: min(92cqw, 500px); }
+:where(.app-root) .copies { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 16px; }
+:where(.app-root) .copy { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px 12px; padding: 10px; border: 2px solid var(--line); border-radius: var(--radius); }
+:where(.app-root) .copy:first-child { border-color: var(--fg); }
+:where(.app-root) .copy .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
+:where(.app-root) .copy .cover.placeholder > * { display: none; }
+:where(.app-root) .copy .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+:where(.app-root) .copy .title { font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+:where(.app-root) .copy .about { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+:where(.app-root) .copy .about.why { color: var(--fg); font-weight: 600; }
+:where(.app-root) .copy > .row { grid-column: 1 / -1; gap: 6px; }
+:where(.app-root) .cover-edit { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+:where(.app-root) .cover-preview { flex: 0 0 110px; }
+:where(.app-root) .cover-preview .cover { display: block; width: 100%; }
+:where(.app-root) .cover-preview img.cover { aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; filter: var(--cover-edge); }
+:where(.app-root) .cover-preview .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 8px; aspect-ratio: 2 / 3; height: auto; text-align: center; overflow: hidden; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
+:where(.app-root) .cover-preview .cover.placeholder .t { font-weight: 700; font-size: 14px; line-height: 1.2; }
+:where(.app-root) .cover-preview .cover.placeholder .a { font-size: 12px; color: var(--muted); }
+:where(.app-root) .cover-edit .menu { flex: 1 1 210px; min-width: 0; }
+:where(.app-root) .cover-edit .menu > .btn { white-space: normal; text-align: left; padding-top: 6px; padding-bottom: 6px; }
+:where(.app-root) .cover-page { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+:where(.app-root) .cover-page input { width: 76px; height: var(--ctl); padding: 8px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); text-align: center; }
+:where(.app-root) table.list { width: 100%; border-collapse: collapse; }
+:where(.app-root) table.list th, :where(.app-root) table.list td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+:where(.app-root) table.list th { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+:where(.app-root) .toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: var(--radius); z-index: 50; max-width: 90cqw; text-align: center; font-weight: 600; }
+:where(.app-root) .sheet.book { --pad: 18px; padding: 0; }
+:where(.app-root) .sheet.book.editable { width: min(92cqw, 460px); }
+:where(.app-root) .sheet-bar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px var(--pad); background: var(--bg); border-bottom: 2px solid var(--fg); }
+:where(.app-root) .sheet-bar .btn { min-width: 92px; }
+:where(.app-root) .sheet-bar > :only-child { margin-left: auto; }
+:where(.app-root) .book-head { display: flex; align-items: flex-start; gap: 14px; padding: 16px var(--pad); }
+:where(.app-root) .book-head .cover-preview { flex: 0 0 84px; }
+:where(.app-root) .book-head .about { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+:where(.app-root) .book-head h2, :where(.app-root) .book-head p { margin: 0; overflow-wrap: anywhere; }
+:where(.app-root) .area-name { margin: 0 0 10px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; line-height: 1.2; color: var(--muted); }
+:where(.app-root) .book-edit { padding: 16px var(--pad) var(--pad); border-top: 2px solid var(--line); }
+:where(.app-root) .book-edit .cover-edit { flex-wrap: nowrap; margin-bottom: 18px; }
+:where(.app-root) .cover-preview .size { margin: 6px 0 0; font-size: 12px; line-height: 1.3; color: var(--muted); text-align: center; }
+:where(.app-root) .cover-actions { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+:where(.app-root) .cover-actions .btn { justify-content: flex-start; white-space: normal; text-align: left; line-height: 1.2; padding-top: 4px; padding-bottom: 4px; }
+:where(.app-root) .cover-actions .cover-page { gap: 6px; }
+:where(.app-root) .cover-actions .cover-page .btn { flex: 1 1 auto; }
+:where(.app-root) .cover-page .page-no { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 14px; }
+:where(.app-root) .cover-actions .cover-page input { width: 60px; height: 36px; }
+:where(.app-root) .cover-note { margin: 0; font-size: 13px; font-weight: 700; }
+:where(.app-root) .book-edit .save { margin-top: 4px; }
+:where(.app-root) .book-edit .save .hint { margin: 0; }
+:where(.app-root) .book-foot { padding: 14px var(--pad) 18px; border-top: 2px solid var(--fg); background: var(--panel); }
+:where(.app-root) .book-foot .facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px 28px; margin-bottom: 14px; font-size: 14px; }
+:where(.app-root) .book-foot .facts p { margin: 0; overflow-wrap: anywhere; }
+:where(.app-root) .book-foot .area-name { margin-bottom: 8px; }
+:where(.app-root) .reader-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+:where(.app-root) .reader-list li { display: grid; grid-template-columns: minmax(0, 1fr) 64px 40px 58px; gap: 10px; align-items: center; }
+:where(.app-root) .reader-list .who { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+:where(.app-root) .reader-list .pct, :where(.app-root) .reader-list .when { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+:where(.app-root) .reader-list .when { color: var(--muted); }
+:where(.app-root) .readers .btn { margin-top: 10px; }
+:where(.app-root) .file-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+:where(.app-root) .file-actions .btn { white-space: normal; text-align: center; line-height: 1.2; padding: 4px 6px; }
+:where(.app-root) .file-actions > :only-child { grid-column: 1 / -1; justify-self: start; padding-left: 12px; padding-right: 12px; }
+@container app (min-width: 700px) {
+:where(.app-root) .sheet.book { --pad: 22px; }
+:where(.app-root) .sheet.book.editable { width: min(92cqw, 680px); }
+:where(.app-root) .book-head .about { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
+:where(.app-root) .book-head .about > .error, :where(.app-root) .book-head .about > .flag { flex-basis: 100%; }
+:where(.app-root) .book-edit { display: grid; grid-template-columns: 154px minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: repeat(8, auto) 1fr; column-gap: 14px; align-items: start; }
+:where(.app-root) .book-edit > * { grid-column: 2 / 4; }
+:where(.app-root) .book-edit > .area-name { grid-column: 1 / -1; grid-row: 1; }
+:where(.app-root) .book-edit > .cover-edit { grid-column: 1; grid-row: 2 / -1; flex-direction: column; align-items: stretch; margin: 0 14px 0 0; }
+:where(.app-root) .book-edit > .f-author { grid-column: 2; grid-row: 3; }
+:where(.app-root) .book-edit > .f-genre { grid-column: 3; grid-row: 3; }
+:where(.app-root) .book-edit .cover-preview, :where(.app-root) .book-edit .cover-actions { flex: none; }
+:where(.app-root) .book-foot .facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@container app (min-width: 900px) {
+:where(.app-root) .sheet.book.wide { width: min(94cqw, 1040px); }
+:where(.app-root) .sheet.book.wide .book-edit { grid-template-columns: 140px minmax(0, 5fr) minmax(0, 6fr); column-gap: 28px; }
+:where(.app-root) .sheet.book.wide .book-edit > * { grid-column: 2; grid-row: auto; }
+:where(.app-root) .sheet.book.wide .book-edit > .area-name { grid-column: 1 / -1; grid-row: 1; }
+:where(.app-root) .sheet.book.wide .book-edit > .cover-edit { grid-column: 1; grid-row: 2 / -1; margin-right: 0; }
+:where(.app-root) .sheet.book.wide .lookup { display: contents; }
+:where(.app-root) .sheet.book.wide .lookup > .btn { grid-column: 2; justify-self: start; margin: -4px 0 14px; }
+:where(.app-root) .sheet.book.wide .found { grid-column: 3; grid-row: 2 / -1; }
+}
+.app-root[data-skin="soft"] { --bg: #F4EFE6; --surface: #FBF8F2; --surface-2: #ECE5D8; --surface-3: #E1D9CA; --panel: var(--surface-2); --fg: #2B2521; --muted: #6B6258; --line: #DCD3C5; --line-2: #CBC1B0; --accent: #A65B3F; --accent-ink: #94503A; --accent-fg: #FFFFFF; --accent-soft: #F0DDD2; --ok: #56704F; --danger: #A8433A; --glass: rgba(251,248,242,.86); --scrim: rgba(43,37,33,.30); --tag-bg: rgba(43,37,33,.70); --tag-fg: #F7F2EA; --cover-drop: drop-shadow(0 1px 1px rgba(60,40,20,.18)) drop-shadow(0 8px 8px rgba(60,40,20,.22)); --cover-drop-hover: drop-shadow(0 2px 2px rgba(60,40,20,.2)) drop-shadow(0 14px 12px rgba(60,40,20,.28)); --sheet: 5px; --cover-edge: none; --cover-ring: drop-shadow(2px 0 0 var(--accent)) drop-shadow(-2px 0 0 var(--accent)) drop-shadow(0 2px 0 var(--accent)) drop-shadow(0 -2px 0 var(--accent)); --pop-shadow: 0 18px 50px -14px rgba(50,35,20,.40), 0 0 0 1px rgba(60,40,20,.06); --radius: 10px; --serif: Literata, Georgia, "Iowan Old Style", serif; --ctl: 44px; --ctl-menu: 40px; --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B6258' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); --search-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B6258' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E"); }
+.app-root[data-skin="soft"][data-theme="sepia"] { --bg: #EFE3CF; --surface: #F7EEDD; --surface-2: #E5D7BF; --surface-3: #D8C8A9; --fg: #3B2F24; --muted: #6E5E49; --line: #D6C6A8; --line-2: #C4B08A; --accent: #9A5232; --accent-ink: #88472A; --accent-soft: #EAD3C2; --ok: #55704B; --danger: #9E3E33; --glass: rgba(247,238,221,.86); --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236E5E49' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); --search-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236E5E49' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E"); }
+.app-root[data-skin="soft"][data-theme="dark"] { --bg: #1C1A18; --surface: #252220; --surface-2: #2E2A27; --surface-3: #3A3531; --fg: #E9E2D8; --muted: #A69C91; --line: #3B3632; --line-2: #4B453F; --accent: #D18A6A; --accent-ink: #DA9B7E; --accent-fg: #1C1A18; --accent-soft: #3D2C24; --ok: #8FAA8C; --danger: #E08A80; --glass: rgba(37,34,32,.84); --scrim: rgba(0,0,0,.5); --tag-bg: rgba(20,18,16,.72); --tag-fg: #F0EAE0; --cover-drop: drop-shadow(0 1px 1px rgba(0,0,0,.5)) drop-shadow(0 8px 10px rgba(0,0,0,.55)); --cover-drop-hover: drop-shadow(0 2px 2px rgba(0,0,0,.5)) drop-shadow(0 14px 14px rgba(0,0,0,.6)); --pop-shadow: 0 20px 60px -14px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.06); --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A69C91' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); --search-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A69C91' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E"); }
+.app-root:where(.fine)[data-skin="soft"] { --ctl: 38px; --ctl-menu: 32px; }
+.app-root[data-skin="soft"] .app-body { font-size: 15px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+.app-root[data-skin="soft"] :is(h1, h2, h3):not(.book-content *), .app-root[data-skin="soft"] .app-header .brand, .app-root[data-skin="soft"] .section-title h2, .app-root[data-skin="soft"] .section-title h3, .app-root[data-skin="soft"] .group-head h2, .app-root[data-skin="soft"] .shelf-head h2, .app-root[data-skin="soft"] .shelf-head h3, .app-root[data-skin="soft"] .series-head h1, .app-root[data-skin="soft"] .sheet h2, .app-root[data-skin="soft"] .panel header, .app-root[data-skin="soft"] .library .section-name { font-family: var(--serif); font-weight: 600; letter-spacing: -.005em; }
+.app-root[data-skin="soft"] h1:not(.book-content *) { font-size: 28px; }
+.app-root[data-skin="soft"] h2:not(.book-content *) { font-size: 21px; }
+.app-root[data-skin="soft"] .series-head h1 { font-size: 32px; letter-spacing: -.015em; }
+.app-root[data-skin="soft"] .group-head h2 { font-size: 22px; }
+.app-root[data-skin="soft"] .shelf-head h2, .app-root[data-skin="soft"] .shelf-head h3 { font-size: 20px; }
+.app-root[data-skin="soft"] .group-section .shelf-head h3 { font-size: 17px; }
+.app-root[data-skin="soft"] .section-title h2 { font-size: 21px; }
+.app-root[data-skin="soft"] .sheet h2 { font-size: 21px; }
+.app-root[data-skin="soft"] .panel header { font-size: 18px; }
+.app-root[data-skin="soft"] .panel header .btn { font-family: var(--ui-font); }
+.app-root[data-skin="soft"] :is(.btn, button, input, select, a, .pick, .cover-choice, .dup-flag, .match .pick, .tabs button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app-root[data-skin="soft"] input[type="checkbox"], .app-root[data-skin="soft"] input[type="radio"] { accent-color: var(--accent); }
+.app-root[data-skin="soft"] .menu-btn { transition: opacity .15s; }
+.app-root[data-skin="soft"] .list-row { transition: background-color .15s; }
+@media (prefers-reduced-motion: reduce) {
+.app-root[data-skin="soft"] *, .app-root[data-skin="soft"] *::before, .app-root[data-skin="soft"] *::after { transition: none !important; }
+}
+.app-root[data-skin="soft"] .btn { min-height: var(--ctl); padding: 0 16px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface); color: var(--fg); font-weight: 600; font-size: 14px; transition: background-color .15s, border-color .15s, color .15s; }
+.app-root[data-skin="soft"] .btn.danger { color: var(--danger); border-color: var(--line-2); }
+.app-root[data-skin="soft"] .btn:hover { border-color: var(--muted); }
+.app-root[data-skin="soft"] .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.app-root[data-skin="soft"] .btn.small { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.app-root:where(.touch)[data-skin="soft"] .btn.small { min-height: 40px; }
+.app-root[data-skin="soft"] .btn.icon { min-width: var(--ctl); padding: 0 10px; }
+.app-root[data-skin="soft"] .app-header nav .btn, .app-root[data-skin="soft"] .bar .btn, .app-root[data-skin="soft"] .panel header .btn.small, .app-root[data-skin="soft"] .series-head > .btn.small, .app-root[data-skin="soft"] .active-filters .btn.small, .app-root[data-skin="soft"] .dropzone .btn.small, .app-root[data-skin="soft"] .library .menu-toggle { border-color: transparent; background: transparent; color: var(--muted); }
+.app-root[data-skin="soft"] .app-header nav .btn:hover, .app-root[data-skin="soft"] .bar .btn:hover, .app-root[data-skin="soft"] .panel header .btn.small:hover, .app-root[data-skin="soft"] .series-head > .btn.small:hover, .app-root[data-skin="soft"] .active-filters .btn.small:hover, .app-root[data-skin="soft"] .dropzone .btn.small:hover, .app-root[data-skin="soft"] .library .menu-toggle:hover { border-color: transparent; background: var(--surface-2); color: var(--fg); }
+.app-root[data-skin="soft"] .bar .btn { color: var(--fg); }
+.app-root[data-skin="soft"] .bar .btn.icon { font-size: 18px; }
+.app-root[data-skin="soft"] #btn-select[aria-pressed="true"], .app-root[data-skin="soft"] .genre-choices .btn[aria-pressed="true"], .app-root[data-skin="soft"] .match .btn.chosen { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+.app-root[data-skin="soft"] .field input:not([type="checkbox"]), .app-root[data-skin="soft"] .field select, .app-root[data-skin="soft"] .field textarea, .app-root[data-skin="soft"] .settings select, .app-root[data-skin="soft"] .settings input[type="text"], .app-root[data-skin="soft"] .cover-page input, .app-root[data-skin="soft"] .series-row input { padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius); background-color: var(--bg); color: var(--fg); font-size: 14px; }
+.app-root[data-skin="soft"] .toolbar input[type="search"], .app-root[data-skin="soft"] .toolbar select { height: var(--ctl); border: 1px solid var(--line); border-radius: var(--radius); background-color: var(--surface); font-size: 14px; }
+.app-root[data-skin="soft"] .toolbar select { height: var(--ctl-menu); }
+.app-root[data-skin="soft"] .toolbar input[type="search"] { padding-left: 36px; -webkit-appearance: none; appearance: none; background-image: var(--search-icon); background-repeat: no-repeat; background-position: 12px center; background-size: 18px 18px; }
+.app-root[data-skin="soft"] .toolbar input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
+.app-root[data-skin="soft"] select, .app-root[data-skin="soft"] :is(.field, .toolbar, .settings) select { -webkit-appearance: none; appearance: none; padding-right: 32px; background-image: var(--select-arrow); background-repeat: no-repeat; background-position: right 10px center; background-size: 16px 16px; }
+.app-root[data-skin="soft"] :is(.field input:not([type="checkbox"]), .field select, .field textarea, .settings select, .settings input[type="text"], .cover-page input, .series-row input, .toolbar input[type="search"], .toolbar select):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+.app-root[data-skin="soft"] .app-header { gap: 18px; border-bottom: 0; }
+.app-root[data-skin="soft"] .app-header .brand { display: flex; align-items: center; gap: 10px; font-size: 21px; letter-spacing: -.01em; }
+.app-root[data-skin="soft"] .app-header .brand::before { --mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z'/%3E%3Cpath d='M4 20.5V5.5'/%3E%3Cpath d='M9 8h7M9 11.5h5'/%3E%3C/svg%3E"); content: ""; flex: none; width: 22px; height: 22px; background: var(--accent); -webkit-mask: var(--mark) center / contain no-repeat; mask: var(--mark) center / contain no-repeat; }
+@container app (min-width: 600px) {
+.app-root[data-skin="soft"] .app-header { padding: calc(14px + var(--safe-top)) calc(28px + var(--safe-right)) 8px calc(28px + var(--safe-left)); }
+.app-root[data-skin="soft"] main.page { padding: 4px calc(28px + var(--safe-right)) 40px calc(28px + var(--safe-left)); }
+.app-root[data-skin="soft"] .selecting main.page { padding-bottom: calc(90px + var(--safe-bottom)); }
+.app-root[data-skin="soft"] .grid { gap: 28px 20px; }
+}
+.app-root[data-skin="soft"] .tabs { gap: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
+.app-root[data-skin="soft"] .tabs button { position: relative; min-height: 0; padding: 10px 8px 12px; margin-bottom: -1px; border: 0; color: var(--muted); font-weight: 600; font-size: 15px; }
+.app-root[data-skin="soft"] .tabs button[aria-pressed="true"] { color: var(--fg); }
+.app-root[data-skin="soft"] .tabs button[aria-pressed="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+.app-root[data-skin="soft"] .tabs .n { margin-left: 7px; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-weight: 600; font-size: 11.5px; vertical-align: 1px; }
+.app-root[data-skin="soft"] .toolbar { gap: 10px; margin-bottom: 6px; }
+.app-root[data-skin="soft"] .toolbar .control.search { flex: 1 1 160px; }
+.app-root[data-skin="soft"] .toolbar .control > span { padding-left: 13px; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.app-root[data-skin="soft"] .dropzone:not(.active) { margin: 4px 0 14px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12.5px; text-align: left; }
+.app-root[data-skin="soft"] .dropzone .btn.small { min-height: 0; padding: 0 4px; margin-left: 2px; color: var(--accent-ink); font-size: 12.5px; vertical-align: baseline; }
+.app-root[data-skin="soft"] .dropzone.active { padding: 14px; border: 1.5px dashed var(--accent); border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); text-align: center; }
+.app-root[data-skin="soft"] .uploads .item { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.app-root[data-skin="soft"] .uploads .summary { border-color: var(--line-2); }
+.app-root[data-skin="soft"] .notice { border: 0; border-radius: 12px; background: var(--surface-2); }
+.app-root[data-skin="soft"] .active-filters { color: var(--muted); font-weight: 500; }
+@container app (max-width: 599px) {
+.app-root[data-skin="soft"] .library .app-header { flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; padding: calc(14px + var(--safe-top)) calc(20px + var(--safe-right)) 6px calc(20px + var(--safe-left)); }
+.app-root[data-skin="soft"] .library .app-header .brand, .app-root[data-skin="soft"] .library .app-header .spacer { display: none; }
+.app-root[data-skin="soft"] .library .section-name { order: 1; flex: 1; font-size: 28px; line-height: 1.1; letter-spacing: -.015em; }
+.app-root[data-skin="soft"] .library .menu-toggle { order: 2; width: 44px; color: var(--muted); font-size: 22px; font-weight: 400; }
+.app-root[data-skin="soft"] .library .app-header nav { order: 3; }
+.app-root[data-skin="soft"] .library main.page { padding-top: 4px; }
+.app-root[data-skin="soft"] .library .section-title { margin: 18px 0 12px; }
+.app-root[data-skin="soft"] .library .section-title h2 { font-size: 19px; }
+}
+.app-root[data-skin="soft"] .card { row-gap: 0; border: 0; border-radius: 0; overflow: visible; background: none; }
+.app-root[data-skin="soft"] .card > .count { margin-bottom: 10px; }
+.app-root[data-skin="soft"] .card > .info { margin-top: 10px; }
+.app-root[data-skin="soft"] .card:hover, .app-root[data-skin="soft"] .card:focus-within { border-color: transparent; }
+.app-root[data-skin="soft"] .card .cover { border: 0; border-radius: 0; box-shadow: none; transition: transform .15s, filter .15s; }
+.app-root[data-skin="soft"] .card > img.cover { filter: var(--cover-drop); }
+.app-root[data-skin="soft"] .card .stack { border-bottom: 0; transition: transform .15s; }
+.app-root[data-skin="soft"] .stack { --cover-sheets: drop-shadow(var(--sheet) calc(-1 * var(--sheet)) 0 var(--surface-3)) drop-shadow(var(--sheet) calc(-1 * var(--sheet)) 0 var(--surface-2)); }
+.app-root[data-skin="soft"] #library.cols-4 { --sheet: 3px; }
+.app-root[data-skin="soft"] .list-row .stack { --sheet: 2px; }
+.app-root[data-skin="soft"] .stack .cover.placeholder { border: 0; filter: var(--cover-sheets) var(--cover-drop); }
+.app-root[data-skin="soft"] .stack img.cover { border: 0; border-radius: 0; filter: var(--cover-sheets) var(--cover-drop); }
+.app-root[data-skin="soft"] .card .cover.placeholder, .app-root[data-skin="soft"] .shelf-book .cover.placeholder { background: linear-gradient(160deg, var(--surface-2), var(--surface-3)); color: var(--fg); }
+.app-root[data-skin="soft"] .cover.placeholder .t { font-family: var(--serif); }
+.app-root:where(.fine)[data-skin="soft"] .card:hover > .cover, .app-root:where(.fine)[data-skin="soft"] .card:hover > .stack, .app-root:where(.fine)[data-skin="soft"] .card:focus-within > .cover, .app-root:where(.fine)[data-skin="soft"] .card:focus-within > .stack { transform: translateY(-2px); }
+.app-root:where(.fine)[data-skin="soft"] .card:hover > img.cover, .app-root:where(.fine)[data-skin="soft"] .card:focus-within > img.cover { filter: var(--cover-drop-hover); }
+.app-root:where(.fine)[data-skin="soft"] .card:hover > .stack > img.cover, .app-root:where(.fine)[data-skin="soft"] .card:focus-within > .stack > img.cover { filter: var(--cover-sheets) var(--cover-drop-hover); }
+.app-root[data-skin="soft"] .card .info { gap: 3px; padding: 0 2px; }
+.app-root[data-skin="soft"] .card .title { font-weight: 600; line-height: 1.3; }
+.app-root[data-skin="soft"] .card .author { color: var(--muted); }
+.app-root[data-skin="soft"] .card .series-line a { color: var(--accent-ink); font-weight: 500; }
+.app-root[data-skin="soft"] .card .series-line a, .app-root[data-skin="soft"] .list-row .about a, .app-root[data-skin="soft"] .sheet .series-links a { text-decoration: none; }
+.app-root[data-skin="soft"] .card .meta .place, .app-root[data-skin="soft"] .list-row .meta .place { color: var(--accent-ink); font-weight: 600; }
+.app-root[data-skin="soft"] .progress { height: 3px; margin-top: 5px; border: 0; border-radius: 3px; background: var(--surface-3); }
+.app-root[data-skin="soft"] .progress > div { border-radius: 3px; background: var(--accent); }
+.app-root[data-skin="soft"] .list-row .meta .progress { margin-top: 0; }
+.app-root[data-skin="soft"] .card .info > .progress, .app-root[data-skin="soft"] .shelf-book .progress { margin-top: auto; }
+.app-root[data-skin="soft"] .badge { padding: 2px 6px; border: 0; border-radius: 4px; background: var(--surface-2); color: var(--muted); font-weight: 600; font-size: 10.5px; letter-spacing: .06em; }
+.app-root[data-skin="soft"] .dup-flag { color: var(--accent-ink); text-decoration-color: var(--accent-ink); }
+.app-root[data-skin="soft"] .card .status { margin: 0 10px; border: 0; border-radius: 8px; background: var(--glass); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: 0 1px 4px rgba(0,0,0,.15); font-weight: 600; }
+.app-root[data-skin="soft"] .card .menu-btn { z-index: 3; width: 40px; height: 40px; border: 0; background: var(--tag-bg); color: var(--tag-fg); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 0 0 1px rgba(255,255,255,.3), 0 2px 8px rgba(0,0,0,.35); font-weight: 700; font-size: 22px; line-height: 1; }
+.app-root:where(.fine)[data-skin="soft"] .card .menu-btn { opacity: 0; top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); }
+.app-root:where(.fine)[data-skin="soft"] .card:hover .menu-btn, .app-root:where(.fine)[data-skin="soft"] .card:focus-within .menu-btn, .app-root:where(.fine)[data-skin="soft"] .card .menu-btn:focus-visible { opacity: 1; }
+.app-root:where(.touch)[data-skin="soft"] .card .menu-btn { width: 36px; height: 36px; font-size: 20px; top: auto; bottom: 8px; right: 8px; }
+.app-root[data-skin="soft"] .card .cover-tag, .app-root[data-skin="soft"] .shelf-book .cover-tag { top: auto; bottom: 8px; left: 8px; padding: 3px 8px; border: 0; border-radius: 999px; background: var(--tag-bg); color: var(--tag-fg); font-weight: 600; font-size: 11.5px; letter-spacing: .02em; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.app-root[data-skin="soft"] #library.cols-4 .card .cover-tag { padding: 2px 7px; font-size: 10.5px; }
+.app-root[data-skin="soft"] .card .count { display: block; padding: 0 2px; font: 600 11px/18px var(--ui-font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-root[data-skin="soft"] .card.group .cover-tag { display: none; }
+.app-root[data-skin="soft"] .grid:has(.card.group) > .card:not(.group), .app-root[data-skin="soft"] .card.group { --count-line: 28px; }
+.app-root[data-skin="soft"] .card > .check { top: auto; bottom: 8px; }
+.app-root[data-skin="soft"] .card > .cover-tag { top: auto; bottom: 8px; }
+.app-root[data-skin="soft"] .shelf-head h2 a::after, .app-root[data-skin="soft"] .shelf-head h3 a::after { color: var(--muted); }
+.app-root[data-skin="soft"] .shelf-row { gap: 18px 16px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+.app-root[data-skin="soft"] .shelf-book img.cover { border-radius: 0; filter: var(--cover-drop); }
+.app-root[data-skin="soft"] .shelf-book .cover.placeholder { border: 0; border-radius: 0; box-shadow: none; }
+.app-root[data-skin="soft"] .shelf-book.current img.cover { filter: var(--cover-ring) var(--cover-drop); }
+.app-root[data-skin="soft"] .shelf-book.current .cover.placeholder { outline: 2px solid var(--accent); outline-offset: 3px; }
+.app-root[data-skin="soft"] .shelf-book > .cover-tag, .app-root[data-skin="soft"] .shelf-book > .check { top: auto; bottom: 6px; }
+.app-root[data-skin="soft"] .shelf-book:hover .cover, .app-root[data-skin="soft"] .shelf-book:focus-within .cover { border-color: transparent; }
+.app-root[data-skin="soft"] .shelf-book .title { font-weight: 600; line-height: 1.3; }
+.app-root[data-skin="soft"] .list { border-top: 0; }
+.app-root[data-skin="soft"] .list-row { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px; padding: 10px 8px; border-bottom: 1px solid var(--line); border-radius: 10px; }
+.app-root[data-skin="soft"] .list-row:hover, .app-root[data-skin="soft"] .list-row:focus-within { background: var(--surface); }
+.app-root[data-skin="soft"] .list-row.current { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+.app-root[data-skin="soft"] .list-row .thumb { width: 44px; }
+.app-root[data-skin="soft"] .list-row img.cover { border-radius: 0; filter: drop-shadow(0 1px 1px rgba(60,40,20,.3)); }
+.app-root[data-skin="soft"] .list-row .stack img.cover { filter: var(--cover-sheets) drop-shadow(0 1px 1px rgba(60,40,20,.3)); }
+.app-root[data-skin="soft"] .list-row .cover.placeholder { border: 0; border-radius: 0; box-shadow: 0 1px 2px rgba(60,40,20,.25); }
+.app-root[data-skin="soft"] .list-row .title { font-weight: 600; font-size: 14.5px; }
+.app-root[data-skin="soft"] .list-row .title .no { font-weight: 500; }
+.app-root[data-skin="soft"] .list-row .about a { color: var(--accent-ink); font-weight: 500; }
+.app-root[data-skin="soft"] .list-row .menu-btn { position: relative; top: auto; right: auto; bottom: auto; border: 0; background: none; color: var(--muted); box-shadow: none; opacity: 1; font-size: 18px; }
+.app-root[data-skin="soft"] .list-row .chevron { color: var(--muted); font-weight: 400; }
+.app-root[data-skin="soft"] .card.missing { border: 0; }
+.app-root[data-skin="soft"] .missing .cover.placeholder { border: 1.5px dashed var(--line-2); border-radius: 0; background: none; box-shadow: none; }
+.app-root[data-skin="soft"] .missing .cover-tag { border: 1px dashed var(--line-2); background: none; color: var(--muted); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.app-root[data-skin="soft"] .missing .title, .app-root[data-skin="soft"] .missing .cover.placeholder { color: var(--muted); }
+.app-root[data-skin="soft"] .check { border: 0; background: var(--tag-bg); color: var(--tag-fg); box-shadow: 0 0 0 1px rgba(255,255,255,.3), 0 2px 8px rgba(0,0,0,.35); }
+.app-root[data-skin="soft"] .selected .check, .app-root[data-skin="soft"] .part-selected .check { background: var(--accent); color: var(--accent-fg); }
+.app-root[data-skin="soft"] .card.selected, .app-root[data-skin="soft"] .card.part-selected { border-color: transparent; box-shadow: none; }
+.app-root[data-skin="soft"] .card.selected > img.cover, .app-root[data-skin="soft"] .card.part-selected > img.cover { filter: var(--cover-ring) var(--cover-drop); }
+.app-root[data-skin="soft"] .card.selected > .stack > img.cover, .app-root[data-skin="soft"] .card.part-selected > .stack > img.cover { filter: var(--cover-ring) var(--cover-sheets) var(--cover-drop); }
+.app-root[data-skin="soft"] .card.selected > .cover.placeholder, .app-root[data-skin="soft"] .card.part-selected > .cover.placeholder { outline: 2px solid var(--accent); outline-offset: 3px; }
+.app-root[data-skin="soft"] .list-row.selected { box-shadow: inset 0 0 0 2px var(--accent); }
+.app-root[data-skin="soft"] .shelf-book.selected img.cover { filter: var(--cover-ring) var(--cover-drop); }
+.app-root[data-skin="soft"] .shelf-book.selected .cover.placeholder { outline: 2px solid var(--accent); outline-offset: 3px; }
+.app-root[data-skin="soft"] .select-bar { border-top: 1px solid var(--line); background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: 0 -8px 24px -16px rgba(0,0,0,.25); }
+.app-root[data-skin="soft"] .section-title { margin: 28px 0 14px; }
+.app-root[data-skin="soft"] .section-title .muted { font-size: 13px; }
+.app-root[data-skin="soft"] .group-head { margin: 36px 0 14px; padding-top: 18px; border-top: 1px solid var(--line); }
+.app-root[data-skin="soft"] .dup-group .grid { border-bottom: 1px solid var(--line); }
+.app-root[data-skin="soft"] .series-head .btn.primary { border-radius: 999px; padding-top: 6px; padding-bottom: 6px; }
+.app-root[data-skin="soft"] .empty { color: var(--muted); }
+.app-root[data-skin="soft"] .sheet-backdrop { background: var(--scrim); }
+.app-root[data-skin="soft"] .sheet { padding: 22px; border: 0; border-radius: 18px; background: var(--surface); box-shadow: var(--pop-shadow); }
+.app-root[data-skin="soft"] .sheet hr { margin: 14px 0; border-top: 1px solid var(--line); }
+.app-root[data-skin="soft"] .sheet .hint { color: var(--muted); }
+.app-root[data-skin="soft"] .menu { gap: 2px; margin: 0 -10px; }
+.app-root[data-skin="soft"] .menu .btn { min-height: 42px; padding: 0 12px; border: 0; border-radius: 10px; background: none; font-weight: 500; font-size: 14.5px; }
+.app-root[data-skin="soft"] .menu .btn:hover { background: var(--surface-2); }
+.app-root[data-skin="soft"] .menu .btn.danger { color: var(--danger); }
+.app-root[data-skin="soft"] .cover-edit .menu > .btn { padding-top: 6px; padding-bottom: 6px; }
+.app-root[data-skin="soft"] .match { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.app-root[data-skin="soft"] .match.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.app-root:where(.fine)[data-skin="soft"] .match:hover { border-color: var(--line-2); }
+.app-root[data-skin="soft"] .match .cover, .app-root[data-skin="soft"] .use-cover .cover, .app-root[data-skin="soft"] .cover-choice img, .app-root[data-skin="soft"] .copy .cover { border: 0; border-radius: 3px; box-shadow: 0 1px 2px rgba(60,40,20,.25); }
+.app-root[data-skin="soft"] .cover-choice.chosen { background: var(--accent-soft); }
+.app-root[data-skin="soft"] .match .cover-choice.chosen .about { color: var(--accent-ink); }
+.app-root[data-skin="soft"] .copy { border: 1px solid var(--line); border-radius: 12px; }
+.app-root[data-skin="soft"] .copy:first-child { border-color: var(--accent); }
+.app-root[data-skin="soft"] .cover-preview img.cover { border-radius: 0; filter: var(--cover-drop); }
+.app-root[data-skin="soft"] .cover-preview .cover.placeholder { border: 0; border-radius: 0; }
+.app-root[data-skin="soft"] .genre-choices .btn { border-radius: 999px; }
+.app-root[data-skin="soft"] table.list th, .app-root[data-skin="soft"] table.list td { border-bottom: 1px solid var(--line); }
+.app-root[data-skin="soft"] .toast { padding: 12px 18px; border-radius: 12px; box-shadow: var(--pop-shadow); font-weight: 500; }
+.app-root[data-skin="soft"] main.narrow { margin: 24px auto; padding: 26px; border-radius: 18px; background: var(--surface); box-shadow: var(--pop-shadow); }
+@container app (max-width: 599px) {
+.app-root[data-skin="soft"] main.narrow { margin: 8px 12px; padding: 20px 18px; }
+}
+.app-root[data-skin="soft"] main.narrow h1 { margin-top: 0; }
+.app-root[data-skin="soft"] .field label { font-size: 13px; }
+.app-root[data-skin="soft"] .bar { gap: 4px; padding-left: calc(12px + var(--safe-left)); padding-right: calc(12px + var(--safe-right)); border-color: var(--line); background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.app-root[data-skin="soft"] #topbar { border-bottom-width: 1px; }
+.app-root[data-skin="soft"] #topbar .title { padding: 0 6px; font-family: var(--serif); font-weight: 600; font-size: 15px; }
+.app-root[data-skin="soft"] #bottombar { gap: 4px; padding-left: calc(20px + var(--safe-left)); padding-right: calc(20px + var(--safe-right)); border-top-width: 1px; }
+.app-root[data-skin="soft"] #bottombar .row .pos { color: var(--muted); font-size: 13px; text-align: center; }
+.app-root[data-skin="soft"] #slider { height: 24px; margin: 0; background: none; -webkit-appearance: none; appearance: none; }
+.app-root[data-skin="soft"] #slider::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(var(--accent), var(--accent)) 0 0 / var(--pct, 0%) 100% no-repeat var(--surface-3); }
+.app-root[data-skin="soft"] #slider::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7px; border: 2px solid var(--accent); border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.2); -webkit-appearance: none; }
+.app-root[data-skin="soft"] #slider::-moz-range-track { height: 4px; border-radius: 4px; background: var(--surface-3); }
+.app-root[data-skin="soft"] #slider::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--accent); }
+.app-root[data-skin="soft"] #slider::-moz-range-thumb { width: 14px; height: 14px; border: 2px solid var(--accent); border-radius: 50%; background: var(--surface); }
+.app-root[data-skin="soft"] #statusline { font-size: 12px; letter-spacing: .01em; }
+.app-root[data-skin="soft"] .panel-backdrop { background: var(--scrim); }
+.app-root[data-skin="soft"] .panel { top: calc(12px + var(--safe-top)); right: 12px; bottom: calc(12px + var(--safe-bottom)); width: min(92cqw, 380px); padding-top: 0; padding-bottom: 0; overflow: hidden; border-left: 0; border-radius: 18px; background: var(--surface); box-shadow: var(--pop-shadow); }
+.app-root[data-skin="soft"] .panel header { padding: 14px 12px 8px 20px; border-bottom: 0; }
+.app-root[data-skin="soft"] .panel .body { padding: 0 12px 20px; }
+@container app (max-width: 599px) {
+.app-root[data-skin="soft"] .panel { top: auto; right: 0; bottom: 0; left: 0; width: auto; max-height: 86%; padding-bottom: var(--safe-bottom); border-radius: 22px 22px 0 0; }
+.app-root[data-skin="soft"] .panel::before { content: ""; display: block; flex: none; width: 36px; height: 5px; margin: 8px auto 0; border-radius: 3px; background: var(--line-2); }
+}
+.app-root[data-skin="soft"] .toc button { padding-top: 10px; padding-right: 10px; padding-bottom: 10px; border-bottom: 0; border-radius: 8px; }
+.app-root[data-skin="soft"] .toc .lvl0 > button { padding-left: 10px; font-size: 14.5px; }
+.app-root[data-skin="soft"] .toc button.current { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.app-root[data-skin="soft"] .settings .group > label:not(.check), .app-root[data-skin="soft"] .settings .group > .lbl { margin-bottom: 9px; font-size: 11.5px; letter-spacing: .1em; }
+.app-root[data-skin="soft"] .seg { gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2); }
+.app-root[data-skin="soft"] .seg button { flex: 1 1 auto; min-height: 34px; padding: 0 8px; border: 0; border-radius: 8px; background: none; color: var(--muted); font-weight: 600; font-size: 13px; }
+.app-root[data-skin="soft"] .seg button.on { border: 0; background: var(--surface); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.14); }
+.app-root[data-skin="soft"][data-theme="dark"] .seg button.on { background: var(--surface-3); }
+.app-root[data-skin="soft"] #theme-seg button::before { content: ""; display: inline-block; width: 13px; height: 13px; margin-right: 6px; border: 1px solid rgba(0,0,0,.15); border-radius: 50%; vertical-align: -2px; }
+.app-root[data-skin="soft"] #theme-seg button[data-v="light"]::before { background: #F4EFE6; }
+.app-root[data-skin="soft"] #theme-seg button[data-v="sepia"]::before { background: #EFE3CF; }
+.app-root[data-skin="soft"] #theme-seg button[data-v="dark"]::before { background: #1C1A18; }
+.app-root[data-skin="soft"] #theme-seg button[data-v="auto"]::before { background: linear-gradient(90deg, #F4EFE6 50%, #1C1A18 50%); }
+.app-root[data-skin="soft"] .stepper button { width: 44px; height: 36px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); font-weight: 600; font-size: 18px; }
+.app-root[data-skin="soft"] .stepper output { font-weight: 600; }
+.app-root[data-skin="soft"] .settings label.check { display: flex; flex-direction: row-reverse; justify-content: space-between; width: auto; height: auto; margin-bottom: 0; border: 0; border-radius: 0; background: none; box-shadow: none; pointer-events: auto; color: var(--fg); font-weight: 500; font-size: 14px; line-height: inherit; text-transform: none; letter-spacing: normal; }
+.app-root[data-skin="soft"] .settings .check input { position: relative; flex: none; width: 42px; height: 26px; margin: 0; border-radius: 13px; background: var(--surface-3); -webkit-appearance: none; appearance: none; transition: background-color .15s; }
+.app-root[data-skin="soft"] .settings .check input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.app-root[data-skin="soft"] .settings .check input:checked { background: var(--accent); }
+.app-root[data-skin="soft"] .settings .check input:checked::after { transform: translateX(16px); }
+.app-root[data-skin="soft"] .bookmarks .bm { border-bottom: 1px solid var(--line); }
+.app-root[data-skin="soft"] #tap-hint div { border: 1.5px dashed var(--line-2); border-radius: 12px; }
+.app-root[data-skin="soft"] #tap-hint div span { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.app-root[data-skin="soft"] #pdfview canvas { box-shadow: 0 1px 2px rgba(0,0,0,.2), 0 12px 24px -12px rgba(0,0,0,.4); }
+.app-root[data-skin="soft"] #loading { color: var(--muted); }
+.app-root[data-skin="soft"] .sheet.book { --pad: 22px; padding: 0; }
+.app-root[data-skin="soft"] .sheet-bar { border-bottom: 1px solid var(--line); background: var(--surface); }
+.app-root[data-skin="soft"] .sheet .area-name { font-family: var(--ui-font); font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.app-root[data-skin="soft"] .book-edit { border-top: 1px solid var(--line); }
+.app-root[data-skin="soft"] .cover-actions .btn, .app-root[data-skin="soft"] .file-actions .btn { border-radius: var(--radius); }
+.app-root[data-skin="soft"] .file-actions .btn { padding: 4px 6px; }
+.app-root[data-skin="soft"] .file-actions > :only-child { padding-left: 12px; padding-right: 12px; }
+.app-root[data-skin="soft"] .cover-page .page-no { font-size: 13px; }
+.app-root[data-skin="soft"] .cover-actions .cover-page input { height: 34px; }
+.app-root[data-skin="soft"] .cover-note { color: var(--accent-ink); font-weight: 600; }
+.app-root[data-skin="soft"] .cover-preview .size { font-size: 12px; }
+.app-root[data-skin="soft"] .book-head .cover-preview img.cover { filter: drop-shadow(0 1px 1px rgba(60,40,20,.3)); }
+.app-root[data-skin="soft"] .book-foot { border-top: 1px solid var(--line); background: var(--surface-2); }
+.app-root[data-skin="soft"] .book-foot .facts { font-size: 13.5px; }
+.app-root[data-skin="soft"] .reader-list .pct { color: var(--accent-ink); font-weight: 600; }
+.app-root[data-skin="soft"] .reader-list .progress { margin-top: 0; }
+.app-root:where(.touch)[data-skin="soft"] .cover-actions .cover-page input { height: 40px; }
+</style>
+</head>
+<body>
+<div class="bd">
+<header class="bd-head">
+  <div>
+    <p class="bd-eyebrow">eReader design board</p>
+    <h1>The book dialog</h1>
+    <p class="bd-lead">One dialog in place of three. <b>Open</b> and <b>Close</b> sit in a bar at the top. The <b>details and the cover</b> are one form in the middle, open from the start and saved together. <b>Who is reading</b> the book, its <b>file</b> and what can be done with the file sit at the foot.</p>
+    <p class="bd-lead">The frames work. Try <b>Look up online</b>, <b>Choose an image</b>, <b>Close</b>, and the options button on another book. The books, readers and matches are examples.</p>
+  </div>
+  <div class="bd-switch">
+    <span id="bd-theme-label">Show the Soft frames in</span>
+    <div class="bd-seg" id="bd-theme" role="group" aria-labelledby="bd-theme-label">
+      <button type="button" id="bd-theme-auto" aria-pressed="true" data-v="auto">As designed</button>
+      <button type="button" id="bd-theme-light" aria-pressed="false" data-v="light">Light</button>
+      <button type="button" id="bd-theme-sepia" aria-pressed="false" data-v="sepia">Sepia</button>
+      <button type="button" id="bd-theme-dark" aria-pressed="false" data-v="dark">Dark</button>
+    </div>
+  </div>
+</header>
+<nav class="bd-toc" aria-label="On this board">
+  <a href="#phone">On a phone</a><a href="#laptop">On a laptop</a><a href="#eink">On an e-ink reader</a><a href="#cases">Other cases</a><a href="#moved">Where everything went</a>
+</nav>
+
+<section class="bd-chapter" id="phone">
+  <h2>On a phone</h2>
+  <p class="bd-lead">The Soft look in the dark theme, as in the screenshot. The sheet is as wide as today. The cover stands beside the ways to change it, the details follow, and one Save keeps both.</p>
+  <div class="bd-frames">
+    <figure class="bd-fig">
+      <div class="bd-fit" data-frame="phone-top" data-device="phone" data-skin="soft" data-theme="dark" data-user="jens" data-book="skeleton"></div>
+      <figcaption><b>As it opens.</b> Open is the one filled button. The bar stays in place while the sheet scrolls, so Close is always in reach.</figcaption>
+    </figure>
+    <figure class="bd-fig">
+      <div class="bd-fit" data-frame="phone-foot" data-device="phone" data-skin="soft" data-theme="dark" data-user="jens" data-book="skeleton" data-scroll="foot"></div>
+      <figcaption><b>Scrolled to the foot.</b> Who is reading shows without a tap. Download is on the left, Convert again in the middle, Delete on the right.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="bd-chapter" id="laptop">
+  <h2>On a laptop</h2>
+  <p class="bd-lead">From 700 px the cover gets a column of its own beside the details, and the author stands beside the genre. After Look up online the sheet grows and the matches stand in a column of their own, as they do beside the form today.</p>
+  <div class="bd-frames">
+    <figure class="bd-fig full">
+      <div class="bd-fit" data-frame="laptop" data-device="laptop" data-skin="soft" data-theme="light" data-user="jens" data-book="skeleton"></div>
+      <figcaption><b>As it opens.</b> 1180 by 900 px. On a window at least 900 px high the whole dialog shows. On a lower one the form still shows whole, and the foot is a short scroll away.</figcaption>
+    </figure>
+    <figure class="bd-fig full">
+      <div class="bd-fit" data-frame="laptop-found" data-device="laptop" data-skin="soft" data-theme="light" data-user="jens" data-book="skeleton" data-lookup="done"></div>
+      <figcaption><b>After Look up online.</b> The first match filled in the series. Its cover was taken with Cover only, so it shows in the cover's place, marked as not saved yet.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="bd-chapter" id="eink">
+  <h2>On an e-ink reader</h2>
+  <p class="bd-lead">The E-ink look with high contrast on, at the size of a Boox Go 6. The same markup: black lines part the three areas where Soft uses hairlines and a tint. Nothing moves and nothing depends on a pointer.</p>
+  <div class="bd-frames">
+    <figure class="bd-fig">
+      <div class="bd-fit" data-frame="eink-top" data-device="reader" data-skin="eink" data-eink="1" data-theme="light" data-user="jens" data-book="skeleton"></div>
+      <figcaption><b>As it opens.</b></figcaption>
+    </figure>
+    <figure class="bd-fig">
+      <div class="bd-fit" data-frame="eink-foot" data-device="reader" data-skin="eink" data-eink="1" data-theme="light" data-user="jens" data-book="skeleton" data-scroll="foot"></div>
+      <figcaption><b>Scrolled to the foot.</b></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="bd-chapter" id="cases">
+  <h2>Other cases</h2>
+  <p class="bd-lead">A reader who did not add the book and is not an admin cannot change it, so the middle shows the book instead of a form. A PDF without a cover offers one of its pages.</p>
+  <div class="bd-frames">
+    <figure class="bd-fig">
+      <div class="bd-fit" data-frame="phone-reader" data-device="phone" data-skin="soft" data-theme="light" data-user="anna" data-book="skeleton"></div>
+      <figcaption><b>Signed in as anna.</b> The bar, the book and the foot. Download is the only thing to do with the file.</figcaption>
+    </figure>
+    <figure class="bd-fig">
+      <div class="bd-fit" data-frame="phone-pdf" data-device="phone" data-skin="soft" data-theme="sepia" data-user="jens" data-book="sapiens"></div>
+      <figcaption><b>A PDF without a cover.</b> The title stands in for the picture. Use page takes a page of the PDF, the first by default.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="bd-chapter" id="moved">
+  <h2>Where everything went</h2>
+  <p class="bd-lead">Every entry of today's menu has a place. Nothing is removed.</p>
+  <div class="bd-cols">
+    <div class="bd-scroll">
+      <table class="bd-tbl">
+        <tr><th>Today, in the menu</th><th>In the new dialog</th></tr>
+        <tr><td>Open</td><td><b>Top left</b>, the one filled button</td></tr>
+        <tr><td>Close</td><td><b>Top right</b>, in view while the sheet scrolls</td></tr>
+        <tr><td>Edit details and series</td><td><b>Middle</b>, the form itself, open from the start</td></tr>
+        <tr><td>Change cover, Add a cover</td><td><b>Middle</b>, beside the form, saved with it</td></tr>
+        <tr><td>Who is reading this</td><td><b>Foot</b>, listed without a tap</td></tr>
+        <tr><td>Reset my reading position</td><td><b>Foot</b>, under the readers, when you have a position</td></tr>
+        <tr><td>Download original file</td><td><b>Foot, left</b></td></tr>
+        <tr><td>Convert again</td><td><b>Foot, middle</b></td></tr>
+        <tr><td>Delete from library</td><td><b>Foot, right</b>, still asks first</td></tr>
+        <tr><td>Compare with possible duplicates</td><td>A line under the title, on a book that is flagged</td></tr>
+      </table>
+    </div>
+    <div class="bd-note">
+      <h3>What changes in how it works</h3>
+      <ul>
+        <li><b>One Save.</b> A cover that is chosen, pasted, dropped, taken from a page of the PDF or from a match shows at once in the dialog, marked as not saved yet, and is kept together with the details. Today each change of cover is saved at once.</li>
+        <li><b>Close leaves without saving</b>, like Cancel today.</li>
+        <li><b>Paste and drop</b> of an image work whenever the dialog is open, not only in the cover dialog.</li>
+        <li><b>Look up online</b> works as today. A cover taken from a match shows in the cover's place.</li>
+        <li><b>The server gains one thing:</b> it can show the cover in the book's file while the library shows another, so Use the original cover can be seen before it is saved. Save sends the same two requests as today, the cover and then the details.</li>
+      </ul>
+    </div>
+    <div class="bd-note">
+      <h3>Decided</h3>
+      <ul>
+        <li><b>One Save for the cover too.</b> Nothing about a book changes until Save.</li>
+        <li><b>Readers are listed at the foot</b>, without a button to ask for them.</li>
+        <li><b>Delete sits at the foot on the right</b>, opposite Download, and still asks first.</li>
+        <li><b>Save sends only what was changed.</b> A new cover alone leaves the details as the book's file has them, so converting the book again can still bring them up to date.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+</div>
+<script>
+(() => {
+  'use strict';
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  /* ---------------- Covers, drawn as pictures so they behave like the real ones ---------------- */
+  const SERIF = "Georgia, 'Times New Roman', serif";
+  const SANS = 'Helvetica, Arial, sans-serif';
+  const text = (x, y, size, fill, s, o = {}) => `<text x="${x}" y="${y}" font-family="${o.sans ? SANS : SERIF}" font-weight="${o.weight || 700}" font-size="${size}" fill="${fill}"${o.anchor ? ` text-anchor="${o.anchor}"` : ''}${o.spacing ? ` letter-spacing="${o.spacing}"` : ''}${o.opacity ? ` opacity="${o.opacity}"` : ''}>${esc(s)}</text>`;
+  const titleSize = (lines, room, most) => Math.min(most, Math.floor(room / (Math.max(...lines.map((l) => l.length)) * 0.56)));
+  const ART = {
+    planet(c, W, H) {
+      const r = W * 0.5;
+      const cx = W * 0.64;
+      const cy = H - r * 0.92;
+      const size = titleSize(c.lines, W - 72, 50);
+      const bands = [-0.82, -0.5, -0.24, 0.06, 0.34, 0.62].map((t, i) => `<rect x="${cx - r}" y="${cy + t * r}" width="${2 * r}" height="${r * (i % 2 ? 0.1 : 0.17)}" fill="${i % 2 ? c.p2 : c.p3}"/>`).join('');
+      const stars = [[52, 300], [118, 372], [338, 150], [300, 64], [44, 470], [196, 250], [366, 300], [86, 590], [250, 330]].map(([x, y], i) => `<circle cx="${x}" cy="${y * H / 640}" r="${i % 3 ? 1.5 : 2.4}" fill="#FFFFFF" opacity=".75"/>`).join('');
+      return `${stars}<clipPath id="p"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath>
+        <radialGradient id="s" cx=".3" cy=".3" r=".9"><stop offset=".35" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".7"/></radialGradient>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="${c.p1}"/><g clip-path="url(#p)">${bands}<ellipse cx="${cx + r * 0.3}" cy="${cy + r * 0.2}" rx="${r * 0.2}" ry="${r * 0.09}" fill="${c.p2}"/></g>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#s)"/>
+        ${c.lines.map((l, i) => text(36, 84 + i * size * 1.06, size, c.ink, l)).join('')}
+        ${text(36, 84 + c.lines.length * size * 1.06 + 4, 15, c.ink, c.author.toUpperCase(), { sans: true, spacing: 2.5, opacity: 0.85 })}`;
+    },
+    band(c, W, H) {
+      const size = titleSize(c.lines, W - 64, 46);
+      const top = H * 0.56;
+      const tall = c.lines.length * size * 1.1 + 40;
+      return `<rect y="${top}" width="${W}" height="${tall}" fill="${c.p1}"/>
+        ${c.lines.map((l, i) => text(32, top + 26 + size * 0.8 + i * size * 1.1, size, c.p2, l.toUpperCase(), { spacing: 2 })).join('')}
+        ${text(32, 58, 16, c.ink, c.author.toUpperCase(), { sans: true, spacing: 2.5, opacity: 0.9 })}`;
+    },
+    frame(c, W, H) {
+      const size = titleSize(c.lines, W - 110, 44);
+      return `<rect x="24" y="24" width="${W - 48}" height="${H - 48}" fill="none" stroke="${c.ink}" stroke-width="2" opacity=".5"/>
+        <rect x="32" y="32" width="${W - 64}" height="${H - 64}" fill="none" stroke="${c.ink}" stroke-width="1" opacity=".35"/>
+        ${c.lines.map((l, i) => text(W / 2, H * 0.36 + i * size * 1.12, size, c.ink, l, { anchor: 'middle' })).join('')}
+        ${text(W / 2, H - 70, 15, c.ink, c.author.toUpperCase(), { sans: true, spacing: 2.5, anchor: 'middle', opacity: 0.85 })}`;
+    },
+    sun(c, W, H) {
+      const size = titleSize(c.lines, W - 80, 46);
+      return `<radialGradient id="s"><stop offset="0" stop-color="${c.p1}"/><stop offset=".6" stop-color="${c.p1}" stop-opacity=".4"/><stop offset="1" stop-color="${c.p1}" stop-opacity="0"/></radialGradient>
+        <circle cx="${W / 2}" cy="${H * 0.36}" r="${W * 0.36}" fill="url(#s)"/>
+        ${c.lines.map((l, i) => text(W / 2, H * 0.7 + i * size * 1.1, size, c.ink, l, { anchor: 'middle' })).join('')}
+        ${text(W / 2, H - 44, 15, c.ink, c.author.toUpperCase(), { sans: true, spacing: 2.5, anchor: 'middle', opacity: 0.85 })}`;
+    },
+    // A page of a PDF: a title page, black on white
+    page(c, W, H) {
+      const size = titleSize(c.lines, W - 120, 34);
+      const lines = Array.from({ length: 7 }, (x, i) => `<rect x="${W * 0.24}" y="${H * 0.62 + i * 16}" width="${W * (i === 6 ? 0.3 : 0.52)}" height="4" fill="#B9B4AB"/>`).join('');
+      return `${c.lines.map((l, i) => text(W / 2, H * 0.26 + i * size * 1.15, size, '#1B1815', l, { anchor: 'middle' })).join('')}
+        ${text(W / 2, H * 0.26 + c.lines.length * size * 1.15 + 18, 16, '#4A453F', c.author, { anchor: 'middle', weight: 400 })}${lines}
+        ${text(W / 2, H - 36, 13, '#6B665F', c.foot || '', { anchor: 'middle', sans: true, weight: 400 })}`;
+    },
+  };
+  /** A cover as an image address. `w` and `h` are its size in pixels, as the dialog reads it from the picture. */
+  function cover(c) {
+    const W = 400;
+    const H = Math.round(W * c.h / c.w);
+    const spine = c.art === 'page' ? '' : `<rect width="12" height="${H}" fill="#000" opacity=".16"/><rect x="12" width="3" height="${H}" fill="#FFF" opacity=".08"/>`;
+    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${c.w}" height="${c.h}"><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c.c1}"/><stop offset="1" stop-color="${c.c2}"/></linearGradient><rect width="${W}" height="${H}" fill="url(#g)"/>${ART[c.art](c, W, H).replace(/\s+/g, ' ')}${spine}</svg>`)}`;
+  }
+
+  /* ---------------- The example library ---------------- */
+  const ERB = 'Edgar Rice Burroughs';
+  const jupiter = { art: 'planet', c1: '#1B3553', c2: '#08121F', ink: '#F4E7C8', p1: '#C98B4F', p2: '#8E4E2B', p3: '#E6C08A', lines: ['Skeleton', 'Men of', 'Jupiter'], author: ERB };
+  const mars = (lines, c1, c2) => ({ art: 'planet', w: 1600, h: 2400, c1, c2, ink: '#F6E6D2', p1: '#B5482E', p2: '#7C2A1C', p3: '#D9764A', lines, author: ERB });
+  const BOOKS = [
+    { id: 'skeleton', title: 'Skeleton Men of Jupiter', author: ERB, format: 'epub', size: '0.1', addedBy: 'jens', addedAt: '28 Sep', originalName: 'Skeleton Men of Jupiter - Edgar Rice Burroughs.epub',
+      series: [], genre: '', coverSource: 'custom', cover: cover({ ...jupiter, w: 750, h: 1200 }),
+      fileCover: cover({ art: 'frame', w: 400, h: 600, c1: '#E9DFC6', c2: '#D3C39C', ink: '#2A2118', lines: ['Skeleton Men', 'of Jupiter'], author: ERB }),
+      readers: [{ name: 'jens', pct: 12, when: '28 Sep' }, { name: 'anna', pct: 64, when: '09:12' }] },
+    { id: 'dune', title: 'Dune', author: 'Frank Herbert', format: 'epub', size: '1.4', addedBy: 'jens', addedAt: '2 Sep', originalName: 'Dune.epub', series: [], genre: 'Science fiction', coverSource: 'file',
+      cover: cover({ art: 'band', w: 1600, h: 2400, c1: '#D8B27A', c2: '#B98A4E', ink: '#2A1A0E', p1: '#5E351A', p2: '#EBD3A4', lines: ['Dune'], author: 'Frank Herbert' }),
+      readers: [{ name: 'jens', pct: 62, when: '27 Sep' }] },
+    { id: 'kvinden', title: 'Kvinden i buret', author: 'Jussi Adler-Olsen', format: 'epub', size: '0.9', addedBy: 'anna', addedAt: '2 Sep', originalName: 'Kvinden i buret (Afdeling Q, bind 1).epub', series: [{ id: 2, name: 'Afdeling Q', position: 1 }], genre: 'Crime', coverSource: 'file',
+      cover: cover({ art: 'sun', w: 1600, h: 2560, c1: '#2F3A4A', c2: '#11161E', ink: '#E4E8EE', p1: '#9FB4CC', lines: ['Kvinden', 'i buret'], author: 'Jussi Adler-Olsen' }),
+      readers: [{ name: 'jens', pct: 18, when: '26 Sep' }, { name: 'anna', pct: 100, when: '14 Sep' }] },
+    { id: 'princess', title: 'A Princess of Mars', author: ERB, format: 'epub', size: '0.3', addedBy: 'jens', addedAt: '28 Sep', originalName: 'A Princess of Mars.epub', series: [{ id: 1, name: 'Barsoom', position: 1 }], genre: 'Science fiction', coverSource: 'file',
+      cover: cover(mars(['A Princess', 'of Mars'], '#4A1F17', '#1C0B08')), readers: [{ name: 'anna', pct: 100, when: '30 Aug' }] },
+    { id: 'gods', title: 'The Gods of Mars', author: ERB, format: 'epub', size: '0.3', addedBy: 'jens', addedAt: '28 Sep', originalName: 'The Gods of Mars.epub', series: [{ id: 1, name: 'Barsoom', position: 2 }], genre: 'Science fiction', coverSource: 'file',
+      cover: cover(mars(['The Gods', 'of Mars'], '#3B2A45', '#140D1A')), readers: [] },
+    { id: 'warlord', title: 'The Warlord of Mars', author: ERB, format: 'epub', size: '0.2', addedBy: 'jens', addedAt: '28 Sep', originalName: 'The Warlord of Mars.epub', series: [{ id: 1, name: 'Barsoom', position: 3 }], genre: 'Science fiction', coverSource: 'file',
+      cover: cover(mars(['The Warlord', 'of Mars'], '#1F3B3A', '#0A1716')), readers: [] },
+    { id: 'sapiens', title: 'Sapiens', author: 'Yuval Noah Harari', format: 'pdf', size: '14.2', addedBy: 'jens', addedAt: '25 Sep', originalName: 'Sapiens - A Brief History of Humankind.pdf', pageCount: 498, series: [], genre: 'History', coverSource: 'file',
+      cover: null, readers: [{ name: 'jens', pct: 81, when: '25 Sep' }] },
+    { id: 'leviathan', title: 'Leviathan Wakes', author: 'James S. A. Corey', format: 'epub', size: '1.2', addedBy: 'jens', addedAt: '14 Aug', originalName: 'Leviathan Wakes (The Expanse Book 1).epub', series: [{ id: 3, name: 'The Expanse', position: 1 }], genre: 'Science fiction', coverSource: 'file',
+      cover: cover({ art: 'planet', w: 1600, h: 2560, c1: '#1E3541', c2: '#0B161C', ink: '#E6EEF1', p1: '#5E8797', p2: '#2F5362', p3: '#9DBFCB', lines: ['Leviathan', 'Wakes'], author: 'James S. A. Corey' }), readers: [{ name: 'anna', pct: 37, when: '21 Sep' }] },
+    { id: 'goodomens', title: 'Good Omens', author: 'Terry Pratchett, Neil Gaiman', format: 'epub', size: '0.8', addedBy: 'anna', addedAt: '19 Jul', originalName: 'Good Omens.epub', series: [], genre: 'Fantasy', coverSource: 'file',
+      cover: cover({ art: 'frame', w: 1000, h: 1500, c1: '#F1E9D6', c2: '#DFD0AE', ink: '#1E1A16', lines: ['Good', 'Omens'], author: 'Pratchett and Gaiman' }), readers: [] },
+    { id: 'lefthand', title: 'The Left Hand of Darkness', author: 'Ursula K. Le Guin', format: 'mobi', size: '0.6', addedBy: 'jens', addedAt: '30 Aug', originalName: 'The Left Hand of Darkness.mobi', series: [], genre: 'Science fiction', coverSource: 'file',
+      cover: cover({ art: 'sun', w: 1000, h: 1500, c1: '#C9D3D8', c2: '#8FA2AC', ink: '#1F2A30', p1: '#FFFFFF', lines: ['The Left Hand', 'of Darkness'], author: 'Ursula K. Le Guin' }), readers: [] },
+    { id: 'hailmary', title: 'Project Hail Mary', author: 'Andy Weir', format: 'epub', size: '1.9', addedBy: 'jens', addedAt: '18 Aug', originalName: 'Project Hail Mary.epub', series: [], genre: 'Science fiction', coverSource: 'file',
+      cover: cover({ art: 'band', w: 1600, h: 2560, c1: '#1B2440', c2: '#0B1020', ink: '#F2E9D6', p1: '#E9B04A', p2: '#1B2440', lines: ['Project', 'Hail Mary'], author: 'Andy Weir' }), readers: [] },
+    { id: 'piranesi', title: 'Piranesi', author: 'Susanna Clarke', format: 'epub', size: '0.5', addedBy: 'anna', addedAt: '20 Sep', originalName: 'Piranesi.epub', series: [], genre: 'Fantasy', coverSource: 'file',
+      cover: cover({ art: 'frame', w: 1000, h: 1500, c1: '#B99A5E', c2: '#7A6236', ink: '#1F1A10', lines: ['Piranesi'], author: 'Susanna Clarke' }), readers: [] },
+  ];
+  const USERS = { jens: { name: 'jens', isAdmin: true }, anna: { name: 'anna', isAdmin: false } };
+  const CATALOGUES = { hardcover: 'Hardcover', openlibrary: 'Open Library' };
+  const barsoom = [{ name: 'Barsoom', position: 11 }];
+  // What Look up online finds for the example book
+  const MATCHES = [
+    { title: 'Skeleton Men of Jupiter', author: ERB, year: 1943, source: 'hardcover', series: barsoom, byIsbn: false, coverId: 1,
+      cover: cover({ ...jupiter, w: 1524, h: 2339, c1: '#3A1D2E', c2: '#12080F', p1: '#D9A15B', p2: '#9A5A2E', p3: '#F0D49C' }),
+      covers: [
+        { coverId: 2, cover: cover({ art: 'frame', w: 1000, h: 1500, c1: '#20324A', c2: '#0C1420', ink: '#EAD9A8', lines: ['Skeleton Men', 'of Jupiter'], author: ERB }) },
+        { coverId: 3, cover: cover({ art: 'sun', w: 500, h: 800, c1: '#51301F', c2: '#1F110A', ink: '#F4E3C3', p1: '#F2B45C', lines: ['Skeleton Men', 'of Jupiter'], author: ERB }) },
+        { coverId: 4, cover: cover({ art: 'band', w: 1650, h: 2550, c1: '#C9B68A', c2: '#A38D5C', ink: '#231A0F', p1: '#2B2118', p2: '#E9D9AE', lines: ['Skeleton Men', 'of Jupiter'], author: ERB }) },
+      ] },
+    { title: 'John Carter of Mars', author: ERB, year: 1964, source: 'hardcover', series: barsoom, byIsbn: false, coverId: 5, covers: [],
+      cover: cover(mars(['John Carter', 'of Mars'], '#4A2A17', '#1C0F08')) },
+    { title: 'Skeleton Men of Jupiter', author: ERB, year: 2011, source: 'openlibrary', series: [], byIsbn: false, coverId: 6, covers: [],
+      cover: cover({ art: 'frame', w: 300, h: 450, c1: '#E4E0D6', c2: '#C9C3B4', ink: '#22201C', lines: ['Skeleton Men', 'of Jupiter'], author: ERB }) },
+  ];
+
+  /* ---------------- The library behind the dialog. The markup is the app's (library.js). ---------------- */
+  const numberIn = (s) => (s.position == null ? null : String(s.position));
+  const seriesLabel = (s) => (s.position != null ? `${s.name} #${numberIn(s)}` : s.name);
+  const seriesLink = (s) => `<a data-series="${s.id ?? ''}">${esc(seriesLabel(s))}</a>`;
+  const coverHtml = (b, src = b.cover) => (src
+    ? `<img class="cover" alt="" src="${src}">`
+    : `<div class="cover placeholder"><div class="t">${esc(b.title)}</div><div class="a">${esc(b.author)}</div></div>`);
+  const mine = (b, f) => b.readers.find((r) => r.name === f.user.name);
+
+  function card(b, f) {
+    const p = mine(b, f);
+    return `<div class="card" data-id="${b.id}">
+      ${coverHtml(b)}<a class="link" aria-label="Read ${esc(b.title)}"></a>
+      <div class="info">
+        <div class="title">${esc(b.title)}</div>
+        <div class="author">${esc(b.author)}</div>
+        ${b.series.length ? `<div class="series-line">${b.series.map(seriesLink).join(', ')}</div>` : ''}
+        ${p ? `<div class="progress" title="${p.pct}%"><div style="width:${p.pct}%"></div></div>` : ''}
+        <div class="meta"><span>${p ? `${p.pct}% Read ${p.when}` : `Added ${b.addedAt}`}</span><span class="badge">${b.format}</span></div>
+      </div>
+      <button class="menu-btn" aria-label="Options for ${esc(b.title)}" data-menu="${b.id}">&#8943;</button>
+    </div>`;
+  }
+
+  function renderLibrary(f) {
+    const reading = f.books.filter((b) => mine(b, f) && mine(b, f).pct < 100);
+    const heading = (name, n) => `<div class="section-title"><h2 style="margin:0">${name}</h2><span class="muted">${n}</span></div>`;
+    const few = f.device === 'laptop' ? 6 : 3;
+    f.library.innerHTML = `${heading('Continue reading', reading.length)}<div class="grid">${reading.slice(0, few).map((b) => card(b, f)).join('')}</div>
+      ${heading('All books', f.books.length)}<div class="grid">${f.books.map((b) => card(b, f)).join('')}</div>`;
+  }
+
+  const SIGNAL = '<svg viewBox="0 0 60 18" fill="currentColor" aria-hidden="true"><rect x="0" y="10" width="3" height="6" rx="1"/><rect x="5" y="7.5" width="3" height="8.5" rx="1"/><rect x="10" y="5" width="3" height="11" rx="1"/><rect x="15" y="2" width="3" height="14" rx="1"/><path d="M28 6.5a8.5 8.5 0 0 1 9.2 0l-1.3 1.6a6.5 6.5 0 0 0-6.6 0zM30 9.4a5 5 0 0 1 5.2 0l-1.3 1.7a3 3 0 0 0-2.6 0zM32.6 13.4l1.4-1.6-1.4-1.7-1.4 1.7z"/><rect x="42" y="3" width="15" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".5"/><rect x="43.5" y="4.5" width="11" height="9" rx="2"/></svg>';
+  const select = (label, options) => `<label class="control"><span>${label}</span><select aria-label="${label}">${options.map((o) => `<option>${o}</option>`).join('')}</select></label>`;
+
+  function frameHtml(f) {
+    const phone = f.device === 'phone';
+    const safe = phone ? ' style="--safe-top: 50px; --safe-bottom: 26px"' : '';
+    const app = `<div class="app-root ${f.pointer}" data-skin="${f.skin}" data-theme="${f.theme}"${f.eink ? ' data-eink="1"' : ''}${safe}>
+      ${phone ? `<div class="bd-status" style="color: var(--fg)"><span>9:41</span>${SIGNAL}</div>` : ''}
+      <div class="app-body library">
+        <header class="app-header">
+          <button type="button" class="btn icon menu-toggle" aria-label="Menu">&#9776;</button>
+          <a class="brand">eReader</a>
+          <span class="section-name">Books</span>
+          <span class="spacer"></span>
+          <nav>${f.user.isAdmin ? '<a class="btn small">Users</a>' : ''}<a class="btn small">Settings</a><button type="button" class="btn small">Sign out</button></nav>
+        </header>
+        <main class="page">
+          <div id="library-controls">
+            <div class="tabs"><button type="button" aria-pressed="true">Books<span class="n">${f.books.length}</span></button><button type="button" aria-pressed="false">Series &amp; collections<span class="n">3</span></button></div>
+            <div class="toolbar">
+              <label class="control search"><span>Search</span><input type="search" placeholder="Title, author, series or genre" aria-label="Search"></label>
+              ${select('Filter', ['All books'])}${select('Sort by', ['Recently read'])}${select('Group by', ['No grouping'])}${select('Library view', ['Every book separately'])}${select('Book view', ['Cards'])}
+              <button type="button" class="btn" id="btn-select" aria-pressed="false">Select</button>
+              <button type="button" class="btn primary">Upload books</button>
+            </div>
+            <div class="dropzone">Drop EPUB, MOBI, PDF, Markdown or text files, or folders of them, here to add them to the library <button type="button" class="btn small">Upload a folder</button></div>
+          </div>
+          <div id="library" class="cols-3"></div>
+        </main>
+        <div class="dialog-root"></div>
+      </div>
+    </div>`;
+    if (phone) return `<div class="bd-dev phone"><div class="bd-island"></div><div class="bd-screen">${app}</div><div class="bd-home"></div></div>`;
+    if (f.device === 'reader') return `<div class="bd-dev reader"><div class="bd-screen">${app}</div></div>`;
+    return `<div class="bd-dev laptop"><div class="bd-chrome"><i></i><i></i><i></i><span>books.pytlich.dk</span></div><div class="bd-screen">${app}</div></div>`;
+  }
+
+  function toast(f, message, ms = 3200) {
+    let el = f.body.querySelector('.toast');
+    if (!el) { el = document.createElement('div'); el.className = 'toast'; f.body.appendChild(el); }
+    el.textContent = message;
+    el.classList.remove('hidden');
+    clearTimeout(el.timer);
+    el.timer = setTimeout(() => el.classList.add('hidden'), ms);
+  }
+
+  /* ---------------- The dialog ---------------- */
+  const seriesRow = (s = { name: '', position: null }) => `<div class="series-row">
+      <input type="text" name="series-name" list="series-names" value="${esc(s.name)}" placeholder="Series or collection" aria-label="Series or collection" maxlength="200" autocomplete="off">
+      <input type="text" name="series-no" value="${numberIn(s) ?? ''}" placeholder="No." aria-label="Number in the series" maxlength="20" autocomplete="off">
+      <button type="button" class="btn icon" data-remove-row aria-label="Remove">&times;</button>
+    </div>`;
+
+  const matchRow = (m, i) => {
+    const about = [m.series.map(seriesLabel).join(', '), m.byIsbn ? 'Same ISBN as the file' : ''].filter(Boolean).join(' · ');
+    const buttons = [
+      m.cover && m.coverId ? `<button type="button" class="btn small" data-cover-only="${i}">Cover only</button>` : '',
+      m.covers.length ? `<button type="button" class="btn small" data-more-covers aria-expanded="false">More covers (${m.covers.length})</button>` : '',
+    ].join('');
+    return `<div class="match" data-match="${i}">
+      ${m.cover ? `<img class="cover" src="${m.cover}" alt="">` : '<span class="cover"></span>'}
+      <span class="body">
+        <button type="button" class="pick">
+          <span class="title">${esc(m.title)}</span>
+          <span class="about">${esc([m.author, m.year, CATALOGUES[m.source]].filter(Boolean).join(' · '))}</span>
+          ${about ? `<span class="about">${esc(about)}</span>` : ''}
+        </button>
+        ${m.cover ? '<span class="about" data-size>Cover loading…</span>' : ''}
+        ${buttons ? `<span class="buttons">${buttons}</span>` : ''}
+      </span>
+      ${m.covers.length ? `<span class="more-covers hidden">${m.covers.map((c, j) => `<button type="button" class="cover-choice" data-cover-choice="${j}">
+        <img src="${c.cover}" alt=""><span class="sr-only">Cover ${j + 1}: </span><span class="about" data-size></span></button>`).join('')}</span>` : ''}
+    </div>`;
+  };
+
+  function showSize(img, label, word) {
+    const show = () => { label.textContent = word(img.naturalWidth ? `${img.naturalWidth} × ${img.naturalHeight} pixels` : null); };
+    if (img.complete && img.naturalWidth) show();
+    else {
+      img.addEventListener('load', show, { once: true });
+      img.addEventListener('error', show, { once: true });
+    }
+  }
+
+  function closeBook(f) {
+    f.dialogRoot.innerHTML = '';
+    f.editor = null;
+  }
+
+  function openBook(f, id) {
+    const b = f.books.find((x) => x.id === id);
+    if (!b) return;
+    const me = f.user;
+    const canEdit = me.isAdmin || b.addedBy === me.name;
+    const k = f.key;
+    const names = [...new Set(f.books.flatMap((x) => x.series.map((s) => s.name)))].sort((x, y) => x.localeCompare(y));
+    const genres = [...new Set(f.books.map((x) => x.genre).filter(Boolean))].sort((x, y) => x.localeCompare(y));
+    const readers = b.readers.length
+      ? `<ul class="reader-list">${b.readers.map((r) => `<li><span class="who">${esc(r.name)}${r.name === me.name ? ' (you)' : ''}</span>
+          <div class="progress"><div style="width:${r.pct}%"></div></div><span class="pct">${r.pct}%</span><span class="when">${r.when}</span></li>`).join('')}</ul>`
+      : '<p class="muted">Nobody has started this book yet.</p>';
+    f.dialogRoot.innerHTML = `<div class="sheet-backdrop"></div>
+    <div class="sheet book${canEdit ? ' editable' : ''}" role="dialog" aria-labelledby="bk-title-${k}">
+      <div class="sheet-bar">
+        <a class="btn primary" data-act="open">Open</a>
+        <button type="button" class="btn" data-close>Close</button>
+      </div>
+      <header class="book-head">
+        ${canEdit ? '' : `<div class="cover-preview">${coverHtml(b)}</div>`}
+        <div class="about">
+          <h2 id="bk-title-${k}">${esc(b.title)}</h2>
+          ${b.author ? `<p class="muted">${esc(b.author)}</p>` : ''}
+          ${b.series.length ? `<p class="series-links">Part of ${b.series.map(seriesLink).join(', ')}</p>` : ''}
+          ${!canEdit && b.genre ? `<p class="muted">${esc(b.genre)}</p>` : ''}
+        </div>
+      </header>
+      ${canEdit ? `<form class="book-edit" novalidate>
+        <h3 class="area-name">Details and cover</h3>
+        <div class="cover-edit">
+          <div class="cover-preview"><div data-cover></div><p class="size" data-size></p></div>
+          <div class="cover-actions">
+            <p class="cover-note hidden" data-note aria-live="polite"></p>
+            <button type="button" class="btn small" data-pick>Choose an image</button>
+            ${b.format === 'pdf' ? `<div class="cover-page row">
+              <button type="button" class="btn small" data-page>Use page</button>
+              <span class="page-no"><input type="number" name="page" id="ed-page-${k}" value="1" min="1" max="${b.pageCount}" aria-label="Page of the PDF">
+                <span class="muted">of ${b.pageCount}</span></span>
+            </div>` : ''}
+            <button type="button" class="btn small" data-source="file">Use the original cover</button>
+            <button type="button" class="btn small" data-source="none">Remove cover</button>
+            <button type="button" class="btn small" data-undo>Keep the cover as it was</button>
+            ${f.pointer === 'fine' ? '<p class="muted hint">Or paste an image, or drop one on the page.</p>' : ''}
+          </div>
+        </div>
+        <div class="field f-title"><label for="ed-title-${k}">Title</label><input id="ed-title-${k}" name="title" value="${esc(b.title)}" maxlength="500"></div>
+        <div class="field f-author"><label for="ed-author-${k}">Author</label><input id="ed-author-${k}" name="author" value="${esc(b.author || '')}" maxlength="500"></div>
+        <div class="lookup">
+          <button type="button" class="btn small" data-lookup>Look up online</button>
+          <div class="found">
+            <div data-matches aria-live="polite"></div>
+            <div data-picked aria-live="polite"></div>
+          </div>
+        </div>
+        <fieldset class="field f-series">
+          <legend>Series and collections</legend>
+          <div class="series-rows">${(b.series.length ? b.series : [undefined]).map((s) => seriesRow(s)).join('')}</div>
+          <button type="button" class="btn small" data-add-row>Add to another</button>
+          <p class="muted hint">The number puts a series in order (1, 2, 2.5 …); a book holding several, such as an omnibus, takes a range (1-3). Leave it empty for a collection without an order.</p>
+        </fieldset>
+        <div class="field f-genre"><label for="ed-genre-${k}">Genre</label><input id="ed-genre-${k}" name="genre" list="genre-names" value="${esc(b.genre || '')}" maxlength="100" autocomplete="off"></div>
+        <p class="error hidden" data-error></p>
+        <div class="row save"><button class="btn primary" type="submit">Save</button><p class="muted hint">Nothing changes until you save.</p></div>
+        <input type="file" accept="image/*" class="hidden" data-file aria-label="Image for the cover">
+        <datalist id="series-names">${names.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist>
+        <datalist id="genre-names">${genres.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist>
+      </form>` : ''}
+      <footer class="book-foot">
+        <div class="facts">
+          <section class="readers">
+            <h3 class="area-name">Who is reading</h3>
+            ${readers}
+            ${mine(b, f) ? '<button type="button" class="btn small" data-act="reset">Reset my reading position</button>' : ''}
+          </section>
+          <section class="file">
+            <h3 class="area-name">File</h3>
+            <p>${b.format.toUpperCase()} · ${b.size} MB · added by ${esc(b.addedBy)} ${b.addedAt}</p>
+            <p class="muted">${esc(b.originalName)}</p>
+          </section>
+        </div>
+        <div class="file-actions">
+          <a class="btn small" data-act="download">Download original file</a>
+          ${canEdit ? '<button type="button" class="btn small" data-act="reprocess">Convert again</button>' : ''}
+          ${canEdit ? '<button type="button" class="btn small danger" data-act="delete">Delete from library</button>' : ''}
+        </div>
+      </footer>
+    </div>`;
+
+    const root = f.dialogRoot.querySelector('.sheet');
+    f.dialogRoot.querySelector('.sheet-backdrop').addEventListener('click', () => closeBook(f));
+    // What the buttons outside the form do in the app. Here a line says it.
+    const SAYS = {
+      open: 'Opens the book in the reader.',
+      download: `Downloads ${b.originalName}`,
+      reprocess: 'Converts the book again and closes the dialog.',
+      delete: `Asks first: Delete "${b.title}" for everyone? This cannot be undone.`,
+      reset: 'Asks first: Forget your reading position for this book?',
+    };
+    root.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-close]')) { closeBook(f); return; }
+      const act = ev.target.closest('[data-act]')?.dataset.act;
+      if (act) toast(f, SAYS[act]);
+      if (ev.target.closest('a[data-series]')) toast(f, 'Closes the dialog and opens the series.');
+    });
+    if (!canEdit) return;
+
+    const form = root.querySelector('form');
+    const rows = root.querySelector('.series-rows');
+    const error = root.querySelector('[data-error]');
+    const lookupBtn = root.querySelector('[data-lookup]');
+    const matches = root.querySelector('[data-matches]');
+    const picked = root.querySelector('[data-picked]');
+    const coverBox = root.querySelector('[data-cover]');
+    const sizeNote = root.querySelector('[data-size]');
+    const note = root.querySelector('[data-note]');
+    const fileInput = root.querySelector('[data-file]');
+    const fail = (message) => { error.textContent = message; error.classList.remove('hidden'); };
+    const addRow = () => { rows.insertAdjacentHTML('beforeend', seriesRow()); return rows.lastElementChild; };
+
+    // The cover the book gets when saved: null leaves it as it is.
+    let pending = null; // { src, source, says } with src null for no cover
+    const current = b.cover ? Object.assign(new Image(), { src: b.cover }) : null;
+    function showCover() {
+      const src = pending ? pending.src : b.cover;
+      const source = pending ? pending.source : b.coverSource;
+      coverBox.innerHTML = coverHtml({ ...b, title: form.elements.title.value, author: form.elements.author.value }, src);
+      sizeNote.textContent = '';
+      const img = coverBox.querySelector('img');
+      if (img) showSize(img, sizeNote, (size) => size ?? '');
+      note.textContent = pending ? `${pending.says}. Not saved yet.` : '';
+      note.classList.toggle('hidden', !pending);
+      root.querySelector('[data-source="file"]').classList.toggle('hidden', source === 'file' || !b.fileCover);
+      root.querySelector('[data-source="none"]').classList.toggle('hidden', !src);
+      root.querySelector('[data-undo]').classList.toggle('hidden', !pending);
+    }
+    const useImage = (src, says) => { pending = { src, source: 'custom', says }; if (form.elements.useCover) form.elements.useCover.checked = false; showCover(); };
+    const useFile = (file) => {
+      if (!file.type.startsWith('image/')) { fail(`"${file.name}" is not an image this browser can read. Try a JPEG or PNG.`); return; }
+      error.classList.add('hidden');
+      useImage(URL.createObjectURL(file), 'New cover');
+    };
+    f.editor = { root, useFile };
+    showCover();
+
+    let found = [];
+    let filled = null; // the match the form was filled in from
+    let coverFrom = null; // the match whose cover is offered
+    let coverOnly = false; // taken with "Cover only", so filling in from another match keeps it
+    const widen = () => root.classList.toggle('wide', found.length > 0 || !!filled || !!coverFrom);
+
+    function showMatches() {
+      found = b.id === 'skeleton' ? MATCHES : [];
+      matches.innerHTML = found.length
+        ? `<p class="muted hint">Choose the matching book to fill in the details, or take only its cover. Nothing changes until you save.</p>
+          ${current ? '<p class="muted hint" data-current></p>' : ''}<div class="matches">${found.map(matchRow).join('')}</div>`
+        : '<p class="muted hint">No match on Hardcover or Open Library. Try a shorter title, or leave out the author.</p>';
+      if (found.length && current) showSize(current, matches.querySelector('[data-current]'), (size) => (size ? `The current cover is ${size}.` : ''));
+      for (const row of matches.querySelectorAll('.match')) {
+        const img = row.querySelector('img.cover');
+        if (img) showSize(img, row.querySelector('[data-size]'), (size) => (size ? `Cover ${size}` : 'The cover could not be loaded'));
+      }
+      for (const choice of matches.querySelectorAll('.cover-choice')) {
+        showSize(choice.querySelector('img'), choice.querySelector('[data-size]'), (size) => (size ? size.replace(' pixels', '') : 'Not loaded'));
+      }
+      widen();
+    }
+    function lookUp() {
+      lookupBtn.disabled = true;
+      lookupBtn.textContent = 'Looking up…';
+      matches.innerHTML = '';
+      setTimeout(() => {
+        if (!root.isConnected) return;
+        showMatches();
+        lookupBtn.disabled = false;
+        lookupBtn.textContent = 'Look up online';
+      }, 500);
+    }
+
+    // What the form takes from the matches. A cover that is ticked shows in the cover's place.
+    function showPicked() {
+      const from = (m) => `<a>${CATALOGUES[m.source]}</a>`;
+      const ticked = coverOnly || !b.cover;
+      picked.innerHTML = `${filled ? `<p class="hint">Filled in from ${from(filled)}. Check the details, then save.</p>` : ''}
+        ${coverOnly ? `<p class="hint">Cover from ${from(coverFrom)}.</p>` : ''}
+        ${coverFrom ? `<label class="use-cover"><input type="checkbox" name="useCover"${ticked ? ' checked' : ''}>
+          <img class="cover" src="${coverFrom.cover}" alt="">
+          <span><span>${b.cover ? 'Use this cover instead of the current one' : 'Use this cover'}</span>
+            <span class="about"><span data-size></span>${current ? '<span data-current></span>' : ''}</span></span></label>` : ''}`;
+      if (coverFrom) {
+        showSize(picked.querySelector('.use-cover img'), picked.querySelector('[data-size]'), (size) => size ?? 'The cover could not be loaded');
+        if (current) showSize(current, picked.querySelector('[data-current]'), (size) => (size ? ` · now ${size}` : ''));
+        takeCover(ticked);
+      }
+      for (const row of matches.querySelectorAll('[data-match]')) row.classList.toggle('chosen', found[Number(row.dataset.match)] === filled);
+      for (const btn of matches.querySelectorAll('[data-cover-only]')) btn.classList.toggle('chosen', coverOnly && found[Number(btn.dataset.coverOnly)] === coverFrom);
+      for (const btn of matches.querySelectorAll('[data-cover-choice]')) {
+        const m = found[Number(btn.closest('[data-match]').dataset.match)];
+        btn.classList.toggle('chosen', coverOnly && m.covers[Number(btn.dataset.coverChoice)].cover === coverFrom.cover);
+      }
+      widen();
+    }
+    // The cover of a match, taken or left: taken, it is the cover the book gets when saved.
+    function takeCover(take) {
+      if (take) pending = { src: coverFrom.cover, source: 'custom', says: `Cover from ${CATALOGUES[coverFrom.source]}`, match: true };
+      else if (pending?.match) pending = null;
+      showCover();
+    }
+    function useMatch(m) {
+      filled = m;
+      form.elements.title.value = m.title;
+      if (m.author) form.elements.author.value = m.author;
+      const nameKey = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+      for (const s of m.series) {
+        const all = [...rows.querySelectorAll('.series-row')];
+        const nameOf = (row) => row.querySelector('[name="series-name"]');
+        const row = all.find((r) => nameKey(nameOf(r).value) === nameKey(s.name)) || all.find((r) => !nameOf(r).value.trim()) || addRow();
+        if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
+        if (s.position != null) row.querySelector('[name="series-no"]').value = numberIn(s);
+      }
+      if (!coverOnly) coverFrom = m.cover && m.coverId ? m : null;
+      showPicked();
+    }
+    function useCover(m) {
+      coverFrom = m;
+      coverOnly = true;
+      showPicked();
+    }
+    function toggleCovers(row, button) {
+      const hidden = row.querySelector('.more-covers').classList.toggle('hidden');
+      button.setAttribute('aria-expanded', String(!hidden));
+      button.textContent = hidden ? `More covers (${found[Number(row.dataset.match)].covers.length})` : 'Hide covers';
+    }
+
+    root.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-add-row]')) addRow().querySelector('input').focus();
+      const remove = ev.target.closest('[data-remove-row]');
+      if (remove) {
+        const row = remove.closest('.series-row');
+        if (rows.children.length > 1) row.remove(); else row.querySelectorAll('input').forEach((i) => { i.value = ''; });
+      }
+      if (ev.target.closest('[data-lookup]')) lookUp();
+      if (ev.target.closest('[data-pick]')) fileInput.click();
+      if (ev.target.closest('[data-undo]')) { pending = null; if (form.elements.useCover) form.elements.useCover.checked = false; coverOnly = false; showCover(); if (coverFrom) showPickedMarks(); }
+      const source = ev.target.closest('[data-source]')?.dataset.source;
+      if (source === 'file') { pending = b.coverSource === 'file' ? null : { src: b.fileCover, source: 'file', says: 'The original cover' }; showCover(); }
+      if (source === 'none') { pending = b.cover ? { src: null, source: 'none', says: 'No cover' } : null; showCover(); }
+      if (ev.target.closest('[data-page]')) {
+        const input = form.elements.page;
+        const page = Math.min(b.pageCount, Math.max(1, Number(input.value) || 1));
+        input.value = page;
+        useImage(cover({ art: 'page', w: 850, h: 1200, c1: '#FFFFFF', c2: '#F4F2EE', lines: page === 1 ? [b.title] : [`Page ${page}`], author: page === 1 ? b.author : b.title, foot: page === 1 ? '' : String(page) }), `Page ${page} of the PDF`);
+      }
+      const coverButton = ev.target.closest('[data-cover-only]');
+      const moreButton = ev.target.closest('[data-more-covers]');
+      const choice = ev.target.closest('[data-cover-choice]');
+      const match = ev.target.closest('[data-match]');
+      const m = match && found[Number(match.dataset.match)];
+      if (coverButton) useCover(found[Number(coverButton.dataset.coverOnly)]);
+      else if (moreButton) toggleCovers(match, moreButton);
+      else if (choice) useCover({ ...m, ...m.covers[Number(choice.dataset.coverChoice)] });
+      else if (match && !ev.target.closest('.more-covers')) useMatch(m);
+    });
+    // After "Keep the cover as it was" the marks on the matches follow
+    function showPickedMarks() {
+      for (const btn of matches.querySelectorAll('[data-cover-only], [data-cover-choice]')) btn.classList.remove('chosen');
+      const hint = [...picked.querySelectorAll('.hint')].find((p) => p.textContent.startsWith('Cover from'));
+      if (hint) hint.remove();
+    }
+    picked.addEventListener('change', (ev) => { if (ev.target.name === 'useCover') takeCover(ev.target.checked); });
+    fileInput.addEventListener('change', () => {
+      const [file] = fileInput.files;
+      fileInput.value = '';
+      if (file) useFile(file);
+    });
+    // The title tile of a book without a cover follows the title as it is typed
+    form.addEventListener('input', (ev) => { if (['title', 'author'].includes(ev.target.name) && !coverBox.querySelector('img')) showCover(); });
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const title = form.elements.title.value.trim();
+      const series = [...rows.querySelectorAll('.series-row')]
+        .map((r) => ({ name: r.querySelector('[name="series-name"]').value.trim(), position: r.querySelector('[name="series-no"]').value.trim() || null }))
+        .filter((s) => s.name);
+      const bad = series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?(\s*-\s*\d{1,5}([.,]\d+)?)?$/.test(s.position));
+      if (!title) return fail('The book needs a title.');
+      if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5, or a range for a book holding several, such as 1-3.`);
+      Object.assign(b, { title, author: form.elements.author.value.trim(), series, genre: form.elements.genre.value.trim() });
+      if (pending) Object.assign(b, { cover: pending.src, coverSource: pending.source });
+      closeBook(f);
+      renderLibrary(f);
+      toast(f, 'Saved. The options button on a book opens the dialog again.');
+      return undefined;
+    });
+
+    if (f.lookup === 'done') {
+      showMatches();
+      useMatch(found[0]);
+      useCover(found[0]);
+      f.lookup = '';
+    }
+  }
+
+  /* ---------------- The board ---------------- */
+  let lastFrame = null; // the frame last touched, which a pasted image goes to
+  const frames = [...document.querySelectorAll('.bd-fit[data-frame]')].map((el) => {
+    const d = el.dataset;
+    const f = {
+      key: d.frame, el, device: d.device, skin: d.skin, theme: d.theme, eink: d.eink === '1', pointer: d.device === 'laptop' ? 'fine' : 'touch',
+      user: USERS[d.user], books: BOOKS.map((b) => ({ ...b, series: b.series.map((s) => ({ ...s })), readers: b.readers.map((r) => ({ ...r })) })), scroll: d.scroll, lookup: d.lookup, editor: null,
+    };
+    el.innerHTML = frameHtml(f);
+    f.dev = el.firstElementChild;
+    f.root = el.querySelector('.app-root');
+    f.body = el.querySelector('.app-body');
+    f.library = el.querySelector('#library');
+    f.dialogRoot = el.querySelector('.dialog-root');
+    renderLibrary(f);
+    f.library.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-menu]');
+      if (btn) openBook(f, btn.dataset.menu);
+      else if (ev.target.closest('.card .link')) toast(f, 'Opens the book in the reader.');
+    });
+    // An image dropped on a frame while its dialog is open becomes the cover
+    for (const type of ['dragenter', 'dragover']) f.root.addEventListener(type, (ev) => { if (f.editor) ev.preventDefault(); });
+    f.root.addEventListener('drop', (ev) => {
+      const file = ev.dataTransfer?.files?.[0];
+      if (!f.editor || !file) return;
+      ev.preventDefault();
+      f.editor.useFile(file);
+    });
+    f.root.addEventListener('pointerdown', () => { lastFrame = f; });
+    openBook(f, d.book);
+    return f;
+  });
+  document.addEventListener('paste', (ev) => {
+    const file = [...(ev.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+    if (!file || !lastFrame?.editor?.root.isConnected) return;
+    ev.preventDefault();
+    lastFrame.editor.useFile(file);
+  });
+
+  // Frames are laid out at their real size and scaled to the room on the board
+  function fit() {
+    for (const f of frames) {
+      const room = f.el.closest('.bd-frames').clientWidth;
+      const scale = Math.min(1, room / f.dev.offsetWidth);
+      f.dev.style.transform = scale < 1 ? `scale(${scale})` : '';
+      f.el.style.width = `${Math.floor(f.dev.offsetWidth * scale)}px`;
+      f.el.style.height = `${Math.ceil(f.dev.offsetHeight * scale)}px`;
+    }
+  }
+  // The frames that show the foot of the dialog
+  function toFoot() {
+    for (const f of frames) {
+      const sheet = f.scroll === 'foot' && f.dialogRoot.querySelector('.sheet');
+      if (sheet) sheet.scrollTop = sheet.scrollHeight;
+    }
+  }
+  fit();
+  toFoot();
+  new ResizeObserver(fit).observe(document.querySelector('.bd'));
+  document.fonts?.ready.then(toFoot);
+  window.addEventListener('load', toFoot);
+
+  document.getElementById('bd-theme').addEventListener('click', (ev) => {
+    const chosen = ev.target.closest('button');
+    if (!chosen) return;
+    for (const btn of chosen.parentElement.children) btn.setAttribute('aria-pressed', String(btn === chosen));
+    for (const f of frames) if (f.skin === 'soft') f.root.dataset.theme = chosen.dataset.v === 'auto' ? f.theme : chosen.dataset.v;
+  });
+})();
+</script>
+</body>
+</html>
