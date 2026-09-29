@@ -2,8 +2,8 @@
 // (<span class="pg" id="pgN">) let the "original pages" view and the reflowed view share positions.
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { normalizeDocument } from './html.js';
-import { assembleSections, titleFromFilename } from './bundle.js';
+import { normalizeDocument, isSceneBreak, SCENE_BREAK } from './html.js';
+import { assembleSections } from './bundle.js';
 import { encodePng } from './png.js';
 import { isWatermark } from './watermarks.js';
 import { seriesFromXmp } from './series.js';
@@ -18,7 +18,7 @@ function loadPdfjs() {
 
 const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const BULLET_RE = /^([•·▪◦‣■□●○◆◇➢➤►▸-]|[-–—*]|\(?\d{1,3}[.)]|[a-zA-Z][.)]|[ivxIVX]{1,5}[.)])\s+\S/;
-const BULLET_ONLY_RE = /^([•·▪◦‣■□●○◆◇➢➤►▸]|[-–—*])$/;
+const BULLET_ONLY_RE = /^([•·▪◦‣■□●○◆◇➢➤►▸]|[-–—])$/; // a lone "*" is a scene break (see isSceneBreak)
 const LEADER_RE = /(\.\s?){4,}\s*[\divxlc]{1,5}\s*$/i; // "Chapter title ........ 123" (printed tables of contents)
 const SECTION_BUDGET = 40000;
 // Words that usually keep their hyphen when a line breaks after it ("self-", "four-", "non-").
@@ -397,6 +397,8 @@ export function linesToBlocks(lines, ctx = {}) {
     if (l.image) { flush(); blocks.push({ type: 'img', src: l.image, text: '' }); continue; }
     const prev = kept[i - 1] && !kept[i - 1].image ? kept[i - 1] : null;
     const inFoot = i >= footStart;
+    // A scene break stands on its own, whatever its size and the lines around it.
+    if (!inFoot && isSceneBreak(l.text)) { flush(); blocks.push({ type: 'break', text: '' }); continue; }
     const isHeading = !inFoot && l.size > bodySize * (ocr ? 1.1 : 1.15) && l.text.length < 120 && (!ocr || standsApart(l, i));
     const gap = prev ? prev.y - l.y : 0;
     const bigGap = !prev || gap > (ocr ? pitch * 1.4 : Math.max(prev.size, l.size) * 1.7);
@@ -476,6 +478,7 @@ function blockHtml(b) {
   if (b.type === 'fn') return `<p class="footnote"${b.id ? ` id="${b.id}"` : ''}>${b.html}</p>`;
   if (b.type === 'leader') return `<p class="leader">${b.html}</p>`;
   if (b.type === 'img') return `<figure><img src="${b.src}" alt=""/></figure>`;
+  if (b.type === 'break') return SCENE_BREAK;
   const cls = [b.cont ? 'cont' : '', b.bullet ? 'list-item' : ''].filter(Boolean).join(' ');
   return `<p${cls ? ` class="${cls}"` : ''}>${b.html}</p>`;
 }
@@ -710,8 +713,11 @@ async function openPdf(buffer) {
   }
 }
 
-/** Title and author from the document information, series from calibre's XMP metadata. */
-async function documentMetadata(doc, filename) {
+/**
+ * Title and author from the document information, series from calibre's XMP metadata. The title is ''
+ * when the document names none, or only a placeholder such as "Untitled" (see withFilenameDetails in index.js).
+ */
+async function documentMetadata(doc) {
   let title = '';
   let author = '';
   let series = [];
@@ -721,24 +727,24 @@ async function documentMetadata(doc, filename) {
     author = (meta.info?.Author || '').trim();
     series = seriesFromXmp(meta.metadata?.getRaw());
   } catch { /* ignore */ }
-  if (!title || /^(untitled|microsoft word|document)\b/i.test(title)) title = titleFromFilename(filename);
+  if (/^(untitled|microsoft word|document)\b/i.test(title)) title = '';
   return { title, author, series };
 }
 
 /** Reads only the book's details, without converting it. */
-export async function readPdfMetadata(buffer, { filename }) {
+export async function readPdfMetadata(buffer) {
   const { task, doc } = await openPdf(buffer);
   try {
-    return { ...(await documentMetadata(doc, filename)), language: '', format: 'pdf' };
+    return { ...(await documentMetadata(doc)), language: '', format: 'pdf' };
   } finally {
     await task.destroy();
   }
 }
 
-export async function convertPdf(buffer, { filename }) {
+export async function convertPdf(buffer) {
   const { OPS } = await loadPdfjs();
   const { task, doc } = await openPdf(buffer);
-  const { title, author, series } = await documentMetadata(doc, filename);
+  const { title, author, series } = await documentMetadata(doc);
 
   // Outline (bookmarks) -> toc, and the set of pages where chapters start.
   const outlineToc = [];

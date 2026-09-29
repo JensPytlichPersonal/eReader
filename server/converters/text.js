@@ -1,5 +1,5 @@
-import { normalizeDocument } from './html.js';
-import { assembleSections, titleFromFilename } from './bundle.js';
+import { normalizeDocument, isSceneBreak, SCENE_BREAK } from './html.js';
+import { assembleSections } from './bundle.js';
 
 const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -19,7 +19,7 @@ export function decodeText(buffer) {
   return utf8.replace(/^﻿/, '');
 }
 
-/** Converts plain text into paragraphs, detecting hard-wrapped text (e.g. Project Gutenberg). */
+/** Converts plain text into paragraphs, detecting hard-wrapped text (e.g. Project Gutenberg) and scene breaks. */
 export function textToHtml(text) {
   const norm = text.replace(/\r\n?/g, '\n').replace(/\t/g, '    ');
   const lines = norm.split('\n');
@@ -37,6 +37,8 @@ export function textToHtml(text) {
   };
   for (const line of lines) {
     if (!line.trim()) { flush(); continue; }
+    // A scene break stands on its own, even between wrapped lines.
+    if (isSceneBreak(line)) { flush(); para.push(line); flush(); continue; }
     if (!hardWrapped) { flush(); para.push(line); continue; }
     para.push(line);
   }
@@ -45,6 +47,8 @@ export function textToHtml(text) {
   for (const b of blocks) {
     const trimmed = b.trim();
     if (!trimmed) continue;
+    // Ahead of the rules below: a centred "* * *" is indented like preformatted text.
+    if (isSceneBreak(trimmed)) { html.push(SCENE_BREAK); continue; }
     const isHeading = trimmed.length < 80 && !/[.,;:]$/.test(trimmed) &&
       (/^(chapter|part|book|prologue|epilogue|section)\b/i.test(trimmed) || (/^[A-Z0-9 .,'"!?:;-]+$/.test(trimmed) && /[A-Z]{2}/.test(trimmed)));
     if (isHeading) html.push(`<h2>${escape(trimmed)}</h2>`);
@@ -54,12 +58,11 @@ export function textToHtml(text) {
   return html.join('\n');
 }
 
-export async function convertText(buffer, { filename }) {
+/** Plain text names no title of its own: convert() takes it from the file name (see withFilenameDetails in index.js). */
+export async function convertText(buffer) {
   const text = decodeText(buffer);
   const body = textToHtml(text);
   const { root } = normalizeDocument(`<body>${body}</body>`);
   const { sections, toc } = assembleSections([{ root, key: 'text' }]);
-  // First heading often is the title of the book.
-  const title = titleFromFilename(filename);
-  return { meta: { title, author: '', language: '', format: 'txt' }, sections, toc };
+  return { meta: { title: '', author: '', language: '', format: 'txt' }, sections, toc };
 }

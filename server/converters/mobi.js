@@ -2,7 +2,7 @@
 import { readPdb, palmdocDecompress, HuffCdic, trailingSize, readIndex, fromBase32 } from './mobi-codec.js';
 import { normalizeDocument } from './html.js';
 import { filterStylesheet } from './css.js';
-import { assembleSections, imageExt, titleFromFilename } from './bundle.js';
+import { assembleSections, imageExt } from './bundle.js';
 import { uniqueIsbns } from './isbn.js';
 
 const NONE = 0xffffffff;
@@ -216,8 +216,9 @@ function readImages(records, h) {
   return { resolve, images, cover };
 }
 
-function metaFrom(h, filename) {
-  const title = exthString(h, 503) || h.fullName || titleFromFilename(filename);
+// The title is '' when the book names none.
+function metaFrom(h) {
+  const title = exthString(h, 503) || h.fullName;
   const exthStrings = (type) => (h.exth.get(type) || []).map((b) => decodeText(b, h.encoding).replace(/\0+$/, '').trim()).filter(Boolean);
   const authors = exthStrings(100);
   const language = exthString(h, 524);
@@ -227,7 +228,7 @@ function metaFrom(h, filename) {
 }
 
 // ---------------- MOBI7 ----------------
-function convertMobi7(records, h, filename) {
+function convertMobi7(records, h) {
   const raw = extractText(records, h);
   const latin = raw.toString('latin1');
   const positions = [];
@@ -265,11 +266,11 @@ function convertMobi7(records, h, filename) {
   }).root).map((root) => ({ root, key: 'mobi' }));
 
   const { sections, toc: finalToc } = assembleSections(chapterRoots, { toc });
-  return { meta: metaFrom(h, filename), sections, toc: finalToc, images, cover: cover() };
+  return { meta: metaFrom(h), sections, toc: finalToc, images, cover: cover() };
 }
 
 // ---------------- KF8 ----------------
-function convertKf8(records, h, filename) {
+function convertKf8(records, h) {
   const raw = extractText(records, h);
   let flows = [raw];
   const fdstIdx = pickRecord(records, h, h.fdst, magic('FDST'));
@@ -368,18 +369,18 @@ function convertKf8(records, h, filename) {
   });
 
   const { sections, toc: finalToc } = assembleSections(chapters, { toc });
-  return { meta: metaFrom(h, filename), sections, toc: finalToc, images, cover: cover(), css: filterStylesheet(cssParts.join('\n'), '.book-content') };
+  return { meta: metaFrom(h), sections, toc: finalToc, images, cover: cover(), css: filterStylesheet(cssParts.join('\n'), '.book-content') };
 }
 
 /** Reads only the book's details, without converting it. MOBI has no series field; the title may name one. */
-export async function readMobiMetadata(buffer, { filename }) {
+export async function readMobiMetadata(buffer) {
   const pdb = readPdb(buffer);
   const h0 = parseHeader(pdb.records, 0);
-  if (!h0.isMobi) return { title: pdb.name || titleFromFilename(filename), author: '', language: '', format: 'mobi' };
-  return metaFrom(h0, filename);
+  if (!h0.isMobi) return { title: pdb.name, author: '', language: '', format: 'mobi' };
+  return metaFrom(h0);
 }
 
-export async function convertMobi(buffer, { filename }) {
+export async function convertMobi(buffer) {
   const pdb = readPdb(buffer);
   const records = pdb.records;
   if (pdb.type !== 'BOOK' && pdb.type !== 'TEXt') throw new Error('Not a Mobipocket file');
@@ -388,8 +389,8 @@ export async function convertMobi(buffer, { filename }) {
     // Plain PalmDOC text
     const raw = extractText(records, h0);
     const { convertText } = await import('./text.js');
-    const out = await convertText(raw, { filename });
-    out.meta.title = pdb.name || out.meta.title;
+    const out = await convertText(raw);
+    out.meta.title = pdb.name;
     out.meta.format = 'mobi';
     return out;
   }
@@ -404,11 +405,11 @@ export async function convertMobi(buffer, { filename }) {
   }
   if (kf8) {
     try {
-      const out = convertKf8(records, kf8, filename);
+      const out = convertKf8(records, kf8);
       if (out.sections.some((s) => s.chars > 0)) return out;
     } catch (err) {
       if (h0.version >= 8) throw err;
     }
   }
-  return convertMobi7(records, h0, filename);
+  return convertMobi7(records, h0);
 }

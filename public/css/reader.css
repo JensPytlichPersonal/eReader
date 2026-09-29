@@ -61,6 +61,9 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
 .book-content code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; }
 .book-content hr { border: 0; border-top: 1px solid var(--line); margin: 1.2em 20%; }
 .book-content hr.pagebreak { border: 0; margin: 0; break-after: column; }
+/* A break between scenes, as the converters mark it: three spaced asterisks, as print sets them */
+.book-content hr.scene-break { border: 0; height: auto; margin: 0.9em 0; overflow: visible; color: inherit; text-align: center; line-height: 1; }
+.book-content hr.scene-break::after { content: "*\2003*\2003*"; }
 .book-content img { max-width: 100%; max-height: calc(var(--page-h) - 1em); height: auto; display: block; margin: 0.5em auto; break-inside: avoid; object-fit: contain; }
 .book-content figure { margin: 0.8em 0; break-inside: avoid; text-align: center; }
 .book-content figcaption { font-size: 0.85em; color: var(--muted); margin-top: .3em; }

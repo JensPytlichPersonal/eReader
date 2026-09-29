@@ -9,8 +9,8 @@ import { buildZip, TINY_PNG } from './helpers/zipwriter.mjs';
 import { ZipReader } from '../server/converters/zip.js';
 import { palmdocDecompress, trailingSize, readVarint, fromBase32 } from '../server/converters/mobi-codec.js';
 import { filterStylesheet, filterInlineStyle } from '../server/converters/css.js';
-import { normalizeDocument, chunkNodes, serialize } from '../server/converters/html.js';
-import { textToHtml, convertText } from '../server/converters/text.js';
+import { normalizeDocument, chunkNodes, serialize, removeCreditLines } from '../server/converters/html.js';
+import { textToHtml } from '../server/converters/text.js';
 import { convertMarkdown } from '../server/converters/markdown.js';
 import { convertEpub } from '../server/converters/epub.js';
 import { convertMobi } from '../server/converters/mobi.js';
@@ -88,7 +88,7 @@ test('plain text: hard-wrapped paragraphs and headings', () => {
 });
 
 test('text conversion produces a bundle', async () => {
-  const book = await convertText(Buffer.from('Hello\n\nWorld & <friends>'), { filename: 'my_book.txt' });
+  const book = await convert(Buffer.from('Hello\n\nWorld & <friends>'), { filename: 'my_book.txt' });
   const m = await writeBundle(path.join(tmp, 'txt'), book);
   assert.equal(m.title, 'my book');
   assert.equal(m.format, 'txt');
@@ -306,7 +306,7 @@ test('pdf: OceanofPDF.com lines are dropped before paragraphs are built', async 
     ['runs across the page break like this.'],
     ['O c e a n o f P D F . c o m'],
   ]);
-  const book = await convertPdf(buf, { filename: '_OceanofPDF.com_Nineteen_Eighty-Four_-_George_Orwell.pdf' });
+  const book = await convert(buf, { filename: '_OceanofPDF.com_Nineteen_Eighty-Four_-_George_Orwell.pdf' });
   assert.equal(book.meta.title, 'Nineteen Eighty-Four - George Orwell');
   const html = book.sections.map((s) => serialize(s.nodes)).join('\n');
   assert.doesNotMatch(html, /OceanofPDF|O c e a n/i);
@@ -441,4 +441,70 @@ test('pdf: running heads carrying the page number, misread or not, and what OCR 
   assert.equal(lineKey({ text: '"I AM COLIN" 1 65' }), lineKey({ text: "'I AM COLIN 161" }));
   for (const noise of ['u', "''u", '7*.', ', . , m']) assert.equal(isOcrNoise(noise), true, noise);
   for (const kept of ['IV', '7', '* * *', 'No.', 'I am.']) assert.equal(isOcrNoise(kept), false, kept);
+});
+
+test('credit lines of scanners and download sites go at the start of a book, and only there', async () => {
+  const html = (body) => { const { root } = normalizeDocument(`<body>${body}</body>`); removeCreditLines([root]); return serialize(root.children); };
+  const credits = ['Formatted by Someone (someone42) Exclusively for Demonoid.com', 'Scanned by Nobody', 'Scanned &amp; proofed by The Group',
+    'Scanned and proofed by The Group', 'Scanned, proofed and formatted by X', '- Proofread by Y -', 'Uploaded by Z', 'Converted by Q', 'Downloaded from z-library.org'];
+  for (const line of credits) assert.equal(html(`<div class="title"><p class="c">${line}</p></div><p>Text.</p>`), '<p>Text.</p>', line);
+  // The people who made the book stay, as do such words in a longer paragraph and a paragraph links may point to.
+  const kept = ['Translated by A. Person', 'Edited by B. Person', 'Illustrated by C. Person', `Scanned by the harbour lights, ${'the boats came home one by one, '.repeat(6)}and slept.`];
+  for (const line of kept) assert.equal(html(`<p>${line}</p>`), `<p>${line}</p>`, line);
+  assert.equal(html('<p id="k">Scanned by Nobody</p>'), '<p id="k">Scanned by Nobody</p>');
+
+  // A text file: gone at the start, kept further in.
+  const story = ['Scanned and proofed by Nobody', 'Translated by A. Person', 'CHAPTER ONE', ...Array.from({ length: 25 }, (_, i) => `Paragraph ${i + 1} of the story.`), 'Formatted by the narrator, who liked tidy pages.'];
+  const txt = await convert(Buffer.from(story.join('\n\n')), { filename: 'story.txt' });
+  const txtHtml = txt.sections.map((s) => serialize(s.nodes)).join('\n');
+  assert.doesNotMatch(txtHtml, /Scanned and proofed/);
+  assert.match(txtHtml, /<p>Translated by A\. Person<\/p>/);
+  assert.match(txtHtml, /<p>Formatted by the narrator, who liked tidy pages\.<\/p>/);
+
+  // A PDF keeps its page marker; an EPUB comes out like the book without the line.
+  const pdf = await convert(makePdf([['Formatted by Someone (someone42) Exclusively for Demonoid.com', '', 'The Glass Road'], ['Chapter text on the next page.']]), { filename: 'g.pdf' });
+  const pdfHtml = pdf.sections.map((s) => serialize(s.nodes)).join('\n');
+  assert.doesNotMatch(pdfHtml, /Demonoid|Formatted by/);
+  assert.match(pdfHtml, /^<span class="pg" id="pg1"><\/span>\n+<p>The Glass Road<\/p>/);
+  assert.match(pdfHtml, /<span class="pg" id="pg2"><\/span>/);
+  const chapters = [{ id: 'ch1', file: 'ch1.xhtml', title: 'Chapter One', body: '<h1>Chapter One</h1><p>It begins.</p>' }];
+  const credited = [{ ...chapters[0], body: `<div class="calibre1"><p class="calibre3">Scanned &amp; proofed by The Group</p></div>${chapters[0].body}` }];
+  const clean = await convertEpub(makeEpub({ chapters }));
+  const book = await convertEpub(makeEpub({ chapters: credited }));
+  assert.deepEqual(book.sections.map((s) => serialize(s.nodes)), clean.sections.map((s) => serialize(s.nodes)));
+});
+
+test('a paragraph holding only a mark such as "* * *" is a scene break in every format, while lists stay lists', async () => {
+  const hr = '<hr class="scene-break" />';
+  const html = (body) => serialize(normalizeDocument(`<body>${body}</body>`).root.children);
+  for (const mark of ['*', '* * *', '***', '#', '# # #', '~', '~ ~ ~', '⁂', '• • •', '*&nbsp;&nbsp;*&nbsp;&nbsp;*']) {
+    assert.equal(html(`<p>One.</p><p class="center" style="text-align:center">${mark}</p><p>Two.</p>`), `<p>One.</p>${hr}<p>Two.</p>`, mark);
+  }
+  assert.equal(html('<div class="break"><p id="b1"><span>* * *</span></p></div>'), '<div class="break"><hr class="scene-break" id="b1" /></div>');
+  assert.equal(html('<h3>* * *</h3>'), hr);
+  // A bullet alone, a note marker, a link, a mark with words and a list item stay.
+  for (const kept of ['<p>•</p>', '<p>-</p>', '<p><sup>*</sup></p>', '<p><a href="http://x.y/">*</a></p>', '<p>* A note.</p>', '<p>***Boom***</p>', '<ul><li>*</li></ul>']) {
+    assert.doesNotMatch(html(kept), /scene-break/, kept);
+  }
+  const epub = await convertEpub(makeEpub({ chapters: [{ id: 'c', file: 'c.xhtml', title: 'C', body: '<p>One.</p><p class="calibre5">* * *</p><p>Two.</p>' }] }));
+  assert.match(serialize(epub.sections[0].nodes), /<p>One\.<\/p><hr class="scene-break" \/><p>Two\.<\/p>/);
+
+  // Text: a centred mark is not preformatted text, and a mark stands alone between wrapped lines.
+  const text = textToHtml('The first scene ends.\n\n            * * *\n\nThe second scene.\n\n#\n\nThe third.\n\n* one item\n* another item');
+  assert.equal(text, '<p>The first scene ends.</p>\n<hr class="scene-break"/>\n<p>The second scene.</p>\n<hr class="scene-break"/>\n<p>The third.</p>\n<p>* one item</p>\n<p>* another item</p>');
+  const wrapped = textToHtml(`${'A line of hard-wrapped text that runs on to the next line and\n'.repeat(12)}*\n${'the story carries on after the break, wrapped just the same way\n'.repeat(12)}`);
+  assert.match(wrapped, / and<\/p>\n<hr class="scene-break"\/>\n<p>the story carries on/);
+  const txt = await convert(Buffer.from('One.\n\n~ ~ ~\n\nTwo.'), { filename: 't.txt' });
+  assert.equal(serialize(txt.sections[0].nodes), `<p>One.</p>\n${hr}\n<p>Two.</p>`);
+
+  // PDF: a lone "*" is a break, set apart or not, while "* item" and "- item" lines are list items.
+  const pdf = await convert(makePdf([
+    ['The first scene ends here.', '', '*', '', 'The second scene starts here.', '*', 'the third scene follows close.', '', '* first item', '* second item', '- item one', '- item two'],
+    ['* * *', 'Another page.'],
+  ]), { filename: 'scenes.pdf' });
+  assert.equal(pdf.sections.map((s) => serialize(s.nodes)).join('\n'), [
+    '<span class="pg" id="pg1"></span>', '<p>The first scene ends here.</p>', hr, '<p>The second scene starts here.</p>', hr, '<p>the third scene follows close.</p>',
+    '<p class="list-item">* first item</p>', '<p class="list-item">* second item</p>', '<p class="list-item">- item one</p>', '<p class="list-item">- item two</p>',
+    '<span class="pg" id="pg2"></span>', hr, '<p>Another page.</p>',
+  ].join('\n'));
 });

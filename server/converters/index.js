@@ -4,8 +4,8 @@ import { convertMarkdown, readMarkdownMetadata } from './markdown.js';
 import { convertText } from './text.js';
 import { convertPdf, readPdfMetadata } from './pdf.js';
 import { isMobi } from './mobi-codec.js';
-import { titleFromFilename } from './bundle.js';
-import { withTitleSeries } from './series.js';
+import { detailsFromFilename } from './bundle.js';
+import { withTitleSeries, uniqueSeries, sameSeriesName } from './series.js';
 
 export const SUPPORTED_EXTENSIONS = ['epub', 'mobi', 'prc', 'azw', 'azw3', 'kf8', 'pdf', 'md', 'markdown', 'txt', 'text'];
 
@@ -57,32 +57,54 @@ export function detectFormat(filename, buffer) {
 async function convertFormat(buffer, { filename }) {
   const format = detectFormat(filename, buffer);
   switch (format) {
-    case 'epub': return convertEpub(buffer, { filename });
-    case 'mobi': return convertMobi(buffer, { filename });
-    case 'pdf': return convertPdf(buffer, { filename });
-    case 'md': return convertMarkdown(buffer, { filename });
-    case 'txt': return convertText(buffer, { filename });
+    case 'epub': return convertEpub(buffer);
+    case 'mobi': return convertMobi(buffer);
+    case 'pdf': return convertPdf(buffer);
+    case 'md': return convertMarkdown(buffer);
+    case 'txt': return convertText(buffer);
     default: throw new Error(`Unsupported file type: ${filename}`);
   }
+}
+
+/**
+ * A book's details, with those its file name gives when the book names no title of its own (the
+ * converters leave the title '' then): the title, and the series (see detailsFromFilename). The file
+ * name's series counts when the book records none, or gives the place in the one it records.
+ */
+function withFilenameDetails(meta, filename) {
+  if (meta.title) return meta;
+  const file = detailsFromFilename(filename);
+  const series = uniqueSeries(meta.series);
+  for (const { name, ...place } of file.series) {
+    const same = series.find((s) => sameSeriesName(s.name, name));
+    if (!series.length) series.push({ name, ...place });
+    else if (same && same.position == null) Object.assign(same, place);
+  }
+  return { ...meta, title: file.title, series };
 }
 
 /** Converts a book. `meta.series` lists the series and collections it belongs to: [{name, position, positionEnd?}]. */
 export async function convert(buffer, { filename }) {
   const book = await convertFormat(buffer, { filename });
-  return { ...book, meta: withTitleSeries(book.meta) };
+  return { ...book, meta: withTitleSeries(withFilenameDetails(book.meta, filename)) };
 }
 
 /**
  * Reads a book's details (title, author, language, series) without converting it. The series
- * are the ones its metadata names; a series named in the title is left to withTitleSeries.
+ * are the ones its metadata names, and those its file name gives when the title comes from there;
+ * a series named in the book's own title is left to withTitleSeries.
  */
 export async function readMetadata(buffer, { filename }) {
+  return withFilenameDetails(await readFormatMetadata(buffer, { filename }), filename);
+}
+
+async function readFormatMetadata(buffer, { filename }) {
   switch (detectFormat(filename, buffer)) {
-    case 'epub': return readEpubMetadata(buffer, { filename });
-    case 'mobi': return readMobiMetadata(buffer, { filename });
-    case 'pdf': return readPdfMetadata(buffer, { filename });
-    case 'md': return readMarkdownMetadata(buffer, { filename });
-    case 'txt': return { title: titleFromFilename(filename), author: '', language: '', format: 'txt' };
+    case 'epub': return readEpubMetadata(buffer);
+    case 'mobi': return readMobiMetadata(buffer);
+    case 'pdf': return readPdfMetadata(buffer);
+    case 'md': return readMarkdownMetadata(buffer);
+    case 'txt': return { title: '', author: '', language: '', format: 'txt' };
     default: throw new Error(`Unsupported file type: ${filename}`);
   }
 }

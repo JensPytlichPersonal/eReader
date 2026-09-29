@@ -185,6 +185,29 @@ export function seriesFromTitle(title) {
   return null;
 }
 
+// A file name may start with the book's place in a series: "01 - The Belgariad - Pawn of Prophecy", "3. Dune".
+// One to three digits, so a year such as "1984 - ..." stays part of the title.
+const NUMBER_FIRST = rx(`^(\\d{1,3}(?:\\.\\d{1,2})?)(?:\\s*[-–—]\\s+|\\.(?!\\d)\\s*)(.+)$`);
+
+/**
+ * Finds a series in a title made from a file name, where a number in front is the book's place in a
+ * series: "01 - The Belgariad - Pawn of Prophecy" is Pawn of Prophecy in The Belgariad, #1. Without a
+ * series name the number just goes: "03 - Dune" is Dune. The forms seriesFromTitle() knows count too.
+ * Only for file names: in a book's own title a number in front is too often part of it.
+ * @returns {{title: string, name?: string, position?: number, positionEnd?: number}}
+ */
+export function seriesFromFileTitle(title) {
+  const t = String(title ?? '').replace(/\s+/g, ' ').trim();
+  const lead = NUMBER_FIRST.exec(t);
+  if (!lead || !hasText(lead[2])) return seriesFromTitle(t) ?? { title: t };
+  const rest = lead[2].trim();
+  const parts = /^(.+?)\s[-–—]\s(.+)$/.exec(rest);
+  const name = parts && hasText(parts[2]) ? seriesName(parts[1]) : null;
+  const place = parsePlace(lead[1]);
+  if (name && place) return { title: parts[2].trim(), name, ...place };
+  return seriesFromTitle(rest) ?? { title: rest };
+}
+
 /**
  * Completes a book's details with a series named in its title. The title loses that part when
  * it names the series the book is recorded in (or the book has none recorded), so

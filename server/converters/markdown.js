@@ -1,6 +1,6 @@
 import { Marked } from 'marked';
 import { normalizeDocument } from './html.js';
-import { assembleSections, titleFromFilename } from './bundle.js';
+import { assembleSections } from './bundle.js';
 import { decodeText } from './text.js';
 import { seriesFromFrontMatter } from './series.js';
 
@@ -38,23 +38,20 @@ function createMarked() {
   return marked;
 }
 
-/** Title, author, language and series from the front matter, else the first heading or the file name. */
-function markdownMetadata(body, meta, filename) {
-  let title = meta.title;
-  if (!title) {
-    const h1 = body.match(/^#\s+(.+)$/m);
-    title = h1 ? h1[1].trim() : titleFromFilename(filename);
-  }
+/** Title, author, language and series from the front matter, the title else from the first heading ('' without one). */
+function markdownMetadata(body, meta) {
+  const h1 = meta.title ? null : body.match(/^#\s+(.+)$/m);
+  const title = meta.title || (h1 ? h1[1].trim() : '');
   return { title, author: meta.author || '', language: meta.lang || meta.language || '', format: 'md', series: seriesFromFrontMatter(meta) };
 }
 
 /** Reads only the book's details, without converting it. */
-export async function readMarkdownMetadata(buffer, { filename }) {
+export async function readMarkdownMetadata(buffer) {
   const { body, meta } = frontMatter(decodeText(buffer));
-  return markdownMetadata(body, meta, filename);
+  return markdownMetadata(body, meta);
 }
 
-export async function convertMarkdown(buffer, { filename }) {
+export async function convertMarkdown(buffer) {
   const text = decodeText(buffer);
   const { body, meta } = frontMatter(text);
   const html = createMarked().parse(body);
@@ -63,5 +60,5 @@ export async function convertMarkdown(buffer, { filename }) {
     resolveLink: (href) => (href.startsWith('#') ? `md${href}` : null),
   });
   const { sections, toc } = assembleSections([{ root, key: 'md' }]);
-  return { meta: markdownMetadata(body, meta, filename), sections, toc };
+  return { meta: markdownMetadata(body, meta), sections, toc };
 }

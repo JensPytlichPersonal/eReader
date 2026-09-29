@@ -6,7 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { now, transaction } from '../db.js';
 import { detectFormat, readMetadata, readOpfDetails, OPF_FILE, SUPPORTED_EXTENSIONS } from '../converters/index.js';
-import { sniffImage, titleFromFilename } from '../converters/bundle.js';
+import { sniffImage, detailsFromFilename } from '../converters/bundle.js';
 import { cleanSeriesName, knownSeriesName, parsePlace } from '../converters/series.js';
 import { LookupError } from '../lookup.js';
 import { fingerprint } from '../duplicates.js';
@@ -162,7 +162,7 @@ export function bookRoutes(db, auth, config, processor, { series, genres }, look
       return alreadyIn(same);
     }
     const added = now();
-    stmts.insert.run(id, (details?.title || titleFromFilename(filename)).slice(0, 500), (details?.author || '').slice(0, 500), format, filename, body.length,
+    stmts.insert.run(id, (details?.title || detailsFromFilename(filename).title).slice(0, 500), (details?.author || '').slice(0, 500), format, filename, body.length,
       req.user.id, added, 'processing', sha256, useCover ? 'custom' : 'file', useCover ? added : 0);
     processor.enqueue(id);
     res.status(202).json({ book: shapeBook({ ...stmts.get.get(id) }, []), used: { opf: !!details, cover: useCover } });
