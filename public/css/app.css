@@ -212,6 +212,8 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .progress { height: 8px; border: 1px solid var(--fg); border-radius: 4px; overflow: hidden; background: var(--bg); }
 .progress > div { height: 100%; background: var(--fg); }
 .card .menu-btn { position: absolute; top: auto; bottom: var(--menu-inset, 6px); right: var(--menu-inset, 6px); width: var(--menu-size, 40px); height: var(--menu-size, 40px); padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: calc(var(--menu-size, 40px) * .45); line-height: 1; }
+/* On a stack it keeps clear of the sheets drawn behind the top cover */
+.card.pile > .menu-btn { right: calc(var(--edge, 8px) + var(--menu-inset, 6px)); }
 .card .status { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-weight: 700; font-size: var(--card-title, 16px); background: var(--bg); padding: 8px; border-top: 2px solid var(--fg); border-bottom: 2px solid var(--fg); }
 .card .status.err { color: var(--danger); }
 .card .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
@@ -264,6 +266,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .shelf-book .progress { margin-top: auto; }
 .shelf-book .progress + .state { margin-top: 0; }
 .shelf-book .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+.shelf-book > .menu-btn { grid-row: 1 / 2; grid-column: 1 / 2; position: absolute; top: auto; bottom: 5px; right: 5px; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 14px; line-height: 1; }
 /* List view: one row per book or series */
 .list { display: flex; flex-direction: column; border-top: 2px solid var(--line); }
 .list-row { position: relative; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 4px; border-bottom: 2px solid var(--line); }
@@ -286,6 +289,8 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .list-row .meta .place { font-weight: 700; color: var(--fg); }
 .list-row .link { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
 .list-row .menu-btn { position: relative; z-index: 1; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 2px solid var(--fg); background: var(--bg); color: var(--fg); font-weight: 800; font-size: 18px; line-height: 1; }
+/* A series row has the options of the book on top before its chevron */
+.list-row.group { grid-template-columns: 48px minmax(0, 1fr) auto auto; }
 .list-row .chevron { padding: 0 12px; font-size: 26px; font-weight: 700; }
 /* A book a series lacks: a dashed outline in its place, opening the book on Hardcover when Hardcover lists it */
 .card.missing { border-style: dashed; background: none; }
