@@ -291,8 +291,8 @@ The Books view shows each series in one of three ways, chosen in the toolbar and
 
 | View | What you see |
 | --- | --- |
-| Series as stacks (default) | Each series is one tile: a stack of books with the one you're on as the top cover, and where you are ("Reading #2", "Next: #4"). Its menu button opens that top book's menu, where you can reset your reading position. |
-| Series as shelves | Each series gets a row with every book, its number and title in reading order, and the book you're on outlined. Other books follow below. |
+| Series as stacks (default) | Each series is one tile: a stack of books with the one you're on as the top cover, and where you are ("Reading #2", "Next: #4"). Its menu button, and a series row's in the list view, opens that top book's menu, where you can reset your reading position. |
+| Series as shelves | Each series gets a row with every book, its number and title in reading order, and the book you're on outlined. Each book has its own menu button. Other books follow below. |
 | Every book separately | One card per book. |
 
 Only series fold up: collections, and series with a single book in the library, stay as ordinary book

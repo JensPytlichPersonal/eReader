@@ -396,15 +396,12 @@ function stackCard(g) {
   const pct = groupPct(g);
   // While choosing books, a stack's tick sits at the foot of its top cover, clear of the number of books.
   const tick = selecting ? TICK : '';
-  // The options of the book on top, so a book you only opened can be reset from its stack (the Reading filter shows no single books).
-  const top = place.item?.book;
-  const menu = top && !selecting ? `<button class="menu-btn" aria-label="Options for ${escapeHtml(top.title)}" data-menu="${top.id}">&#8943;</button>` : '';
   // The number of books: a line above the cover in the soft look, a tag on the cover in the e-ink look (see the stylesheets).
   return `<div class="card group${n > 1 ? ' pile' : ''}${chosenClass(g.items.map((i) => i.book.id))}">
     <div class="count">${plural(n, 'book', 'books')}</div>
     ${n > 1 ? `<div class="stack">${cover}${tick}</div>` : `${cover}${tick}`}<span class="cover-tag">${plural(n, 'book', 'books')}</span>
     ${seriesOpener(g, `${g.name}, ${plural(n, 'book', 'books')}`)}
-    ${menu}
+    ${topMenu(place)}
     <div class="info">
       <div class="title">${escapeHtml(g.name)}</div>
       <div class="author">${escapeHtml(g.author)}</div>
@@ -412,6 +409,12 @@ function stackCard(g) {
       <div class="meta"><span class="place">${escapeHtml(place.text)}</span></div>
     </div>
   </div>`;
+}
+
+/** The options button of the book on top of a stack or a series row, so a book you only opened can be reset there. */
+function topMenu(place) {
+  const top = place.item?.book;
+  return top && !selecting ? `<button class="menu-btn" aria-label="Options for ${escapeHtml(top.title)}" data-menu="${top.id}">&#8943;</button>` : '';
 }
 
 /** A series or collection as a row of the list view. */
@@ -427,7 +430,7 @@ function groupRow(g) {
       <div class="about">${about}</div>
       <div class="meta">${g.state !== 'unread' ? `<div class="progress"><div style="width:${groupPct(g)}%"></div></div>` : ''}<span class="place">${escapeHtml(place.text)}</span></div>
     </div>
-    <span class="chevron" aria-hidden="true">&#8250;</span>${selecting ? TICK : ''}
+    ${topMenu(place)}<span class="chevron" aria-hidden="true">&#8250;</span>${selecting ? TICK : ''}
   </div>`;
 }
 
@@ -445,6 +448,7 @@ function shelf(g) {
     return `<div class="shelf-book${current ? ' current' : ''}${chosenClass([b.id])}">
       ${coverHtml(b)}${place.position != null ? `<span class="cover-tag">#${numberIn(place)}</span>` : ''}
       ${opener(b)}
+      <button class="menu-btn" aria-label="Options for ${escapeHtml(b.title)}" data-menu="${b.id}">&#8943;</button>
       <div class="title">${escapeHtml(b.title)}</div>
       ${st === 'reading' ? `<div class="progress" title="${pct}%"><div style="width:${pct}%"></div></div>` : ''}
       <div class="state">${state}</div>

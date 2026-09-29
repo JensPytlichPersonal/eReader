@@ -246,23 +246,26 @@
 :root[data-skin="soft"] .card .status { margin: 0 10px; border: 0; border-radius: 8px; background: var(--glass); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: 0 1px 4px rgba(0,0,0,.15); font-weight: 600; }
 /* The options button: a dark disc with a light ring and a white glyph, so it shows on any picture. With a
    pointer it appears in the middle of the cover under it; on touch it stays at the cover's corner. */
-:root[data-skin="soft"] .card .menu-btn {
+:root[data-skin="soft"] :is(.card, .shelf-book) .menu-btn {
   z-index: 3; width: 40px; height: 40px; border: 0; background: var(--tag-bg); color: var(--tag-fg);
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 0 0 1px rgba(255,255,255,.3), 0 2px 8px rgba(0,0,0,.35);
   font-weight: 700; font-size: 22px; line-height: 1;
 }
 @media (hover: hover) and (pointer: fine) {
-  :root[data-skin="soft"] .card .menu-btn { opacity: 0; top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); }
-  :root[data-skin="soft"] .card:hover .menu-btn,
-  :root[data-skin="soft"] .card:focus-within .menu-btn,
-  :root[data-skin="soft"] .card .menu-btn:focus-visible { opacity: 1; }
+  :root[data-skin="soft"] :is(.card, .shelf-book) .menu-btn { opacity: 0; top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); }
+  :root[data-skin="soft"] :is(.card, .shelf-book):hover .menu-btn,
+  :root[data-skin="soft"] :is(.card, .shelf-book):focus-within .menu-btn,
+  :root[data-skin="soft"] :is(.card, .shelf-book) .menu-btn:focus-visible { opacity: 1; }
   /* The middle of a stack's top cover, which sits below and left of the sheets behind it */
   :root[data-skin="soft"] .card.pile > .menu-btn { top: calc(50% + var(--edge, 8px) / 2); left: calc(50% - var(--edge, 8px) / 2); }
 }
 @media (hover: none) {
   :root[data-skin="soft"] .card .menu-btn { width: 36px; height: 36px; font-size: 20px; top: auto; bottom: 8px; right: 8px; }
   :root[data-skin="soft"] .card.pile > .menu-btn { right: calc(var(--edge, 8px) + 8px); }
+  :root[data-skin="soft"] .shelf-book .menu-btn { top: auto; bottom: 6px; right: 6px; }
 }
+/* Shelf covers are smaller than cards */
+:root[data-skin="soft"] .shelf-book .menu-btn { width: 32px; height: 32px; font-size: 18px; }
 :root[data-skin="soft"] .card .cover-tag,
 :root[data-skin="soft"] .shelf-book .cover-tag {
   top: auto; bottom: 8px; left: 8px; padding: 3px 8px; border: 0; border-radius: 999px; background: var(--tag-bg); color: var(--tag-fg);
@@ -296,6 +299,7 @@
 
 /* ---- List ---- */
 :root[data-skin="soft"] .list { border-top: 0; }
+:root[data-skin="soft"] .list-row.group { grid-template-columns: 44px minmax(0, 1fr) auto auto; }
 :root[data-skin="soft"] .list-row { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px; padding: 10px 8px; border-bottom: 1px solid var(--line); border-radius: 10px; }
 :root[data-skin="soft"] .list-row:hover,
 :root[data-skin="soft"] .list-row:focus-within { background: var(--surface); }
