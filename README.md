@@ -328,8 +328,8 @@ The Books view shows each series in one of three ways, chosen in the toolbar and
 
 Only series fold up: collections, and series with a single book in the library, stay as ordinary book
 cards. The books you are reading still show one by one under *Continue reading*, and searching always
-lists the matching books themselves. Filters apply to a whole series: *Reading* shows series you have
-started but not finished.
+lists the matching books themselves. So does the *Reading* filter: it shows the books you are reading,
+each on its own card, not their series. *Not started* and *Finished* apply to a whole series.
 
 A book the library lacks shows as a dashed outline in its place: with #1, #2 and #4 in the library, #3
 sits between them, on the series' page and on its shelf. The numbers alone tell which are missing, and
