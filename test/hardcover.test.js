@@ -385,17 +385,27 @@ test('a book found in both catalogues is offered once, with what only one of the
 test('when one catalogue cannot be asked the other still answers, and the reason is passed on', async () => {
   const leviathanWakes = match({ key: '/works/OL1W', source: 'openlibrary', title: 'Leviathan Wakes', author: 'James S. A. Corey' });
   const expired = catalogue(async () => { throw new LookupError('Hardcover did not accept the token.'); });
-  let lookups = createLookup({ hardcover: expired, openLibrary: catalogue(async () => [leviathanWakes]) });
+  const logged = [];
+  const log = { error: (...args) => logged.push(args) };
+  let lookups = createLookup({ hardcover: expired, openLibrary: catalogue(async () => [leviathanWakes]), log });
   assert.deepEqual(await lookups.lookup({ title: 'Leviathan Wakes' }), { results: [leviathanWakes], problems: ['Hardcover did not accept the token.'] });
+  // The server's log says which catalogue failed, for which book, and why.
+  assert.deepEqual(logged, [['[lookup] "Leviathan Wakes": Hardcover did not accept the token.']]);
   // Nothing found is not a failure.
-  lookups = createLookup({ hardcover: expired, openLibrary: catalogue(async () => []) });
+  lookups = createLookup({ hardcover: expired, openLibrary: catalogue(async () => []), log });
   assert.deepEqual(await lookups.lookup({ title: 'Nothing' }), { results: [], problems: ['Hardcover did not accept the token.'] });
-  lookups = createLookup({ hardcover: expired, openLibrary: catalogue(async () => { throw new LookupError('Open Library did not answer.'); }) });
+  lookups = createLookup({ hardcover: expired, openLibrary: catalogue(async () => { throw new LookupError('Open Library did not answer.'); }), log });
   await assert.rejects(lookups.lookup({ title: 'Leviathan Wakes' }), { message: 'Hardcover did not accept the token. Open Library did not answer.' });
-  // Without a token only Open Library is asked; a bug is not passed off as a catalogue's problem.
-  lookups = createLookup({ openLibrary: catalogue(async () => { throw new TypeError('bug'); }) });
+  // A catalogue that fails in a way its client did not expect is named to the user, and the log keeps the error itself.
+  logged.length = 0;
+  const bug = new TypeError('bug');
+  lookups = createLookup({ hardcover: catalogue(async () => { throw bug; }), openLibrary: catalogue(async () => [leviathanWakes]), log });
+  assert.deepEqual(await lookups.lookup({ title: 'Leviathan Wakes' }), { results: [leviathanWakes], problems: ['Hardcover sent an answer the app could not read. Try again in a moment.'] });
+  assert.deepEqual(logged, [['[lookup] "Leviathan Wakes": Hardcover failed:', bug]]);
+  // Without a token only Open Library is asked; when it fails like that too, the user is told so.
+  lookups = createLookup({ openLibrary: catalogue(async () => { throw bug; }), log: { error() {} } });
   assert.deepEqual(lookups.sources, ['openlibrary']);
-  await assert.rejects(lookups.lookup({ title: 'Leviathan Wakes' }), TypeError);
+  await assert.rejects(lookups.lookup({ title: 'Leviathan Wakes' }), { message: 'Open Library sent an answer the app could not read. Try again in a moment.' });
 });
 
 // ---- the API ----

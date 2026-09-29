@@ -8,6 +8,7 @@ export class LookupError extends Error {}
 // Catalogues ask applications to say who they are.
 export const USER_AGENT = 'eReader (self-hosted e-reader)';
 const SHOWN = 5;
+const NAMES = { hardcover: 'Hardcover', openlibrary: 'Open Library' };
 
 // Too common to tell two titles apart: "The Hunted" is nothing like "The Encyclopedia of Arcade Video Games".
 const COMMON = new Set(['a', 'an', 'and', 'at', 'by', 'for', 'from', 'in', 'is', 'of', 'on', 'or', 'the', 'to', 'with', 'af', 'de', 'den', 'det', 'en', 'et', 'i', 'med', 'og', 'på', 'til']);
@@ -64,8 +65,9 @@ export function rankMatches(found, { title = '', author = '' }, limit = SHOWN) {
  * @param {object} catalogues each with lookup(book) and cover(id); `hardcover` is null without a
  * token, or a function giving the client in use at the time (see catalogues.js), so a token saved
  * while the server runs is used at once
+ * @param {object} [log] where a catalogue that did not answer is noted, so the server's log says why
  */
-export function createLookup({ openLibrary, hardcover = null }) {
+export function createLookup({ openLibrary, hardcover = null, log = console }) {
   const hardcoverNow = typeof hardcover === 'function' ? hardcover : () => hardcover;
   // Asked in this order, so a book both have comes from Hardcover, which knows series better.
   const reachable = () => Object.entries({ hardcover: hardcoverNow(), openlibrary: openLibrary }).filter(([, c]) => c);
@@ -79,11 +81,20 @@ export function createLookup({ openLibrary, hardcover = null }) {
     const answers = await Promise.allSettled(catalogues.map(([, c]) => c.lookup(book)));
     const found = [];
     const problems = [];
-    for (const answer of answers) {
-      if (answer.status === 'fulfilled') found.push(...answer.value);
-      else if (answer.reason instanceof LookupError) problems.push(answer.reason.message);
-      else throw answer.reason;
-    }
+    answers.forEach((answer, i) => {
+      if (answer.status === 'fulfilled') { found.push(...answer.value); return; }
+      const err = answer.reason;
+      const name = NAMES[catalogues[i][0]];
+      if (err instanceof LookupError) {
+        log.error?.(`[lookup] "${book.title || book.isbns?.[0] || ''}": ${err.message}${err.cause?.message ? ` (${err.cause.message})` : ''}`);
+        problems.push(err.message);
+      } else {
+        // Something the catalogue client did not expect, such as an answer in another shape: the
+        // other catalogue's matches are still worth showing, and the log keeps the details.
+        log.error?.(`[lookup] "${book.title || ''}": ${name} failed:`, err);
+        problems.push(`${name} sent an answer the app could not read. Try again in a moment.`);
+      }
+    });
     if (problems.length === catalogues.length) throw new LookupError(problems.join(' '));
     // A book in both catalogues is offered once, where the better match of the two ranks: as the
     // catalogue asked first has it, with a series or cover only the other has.
@@ -111,6 +122,13 @@ export function createLookup({ openLibrary, hardcover = null }) {
     /** The catalogues this server asks now: 'hardcover' and 'openlibrary'. */
     get sources() { return reachable().map(([name]) => name); },
     /** The large picture of a match's cover (its coverSource and coverId). */
-    cover: (source, id) => reachable().find(([name]) => name === source)[1].cover(id),
+    async cover(source, id) {
+      try {
+        return await reachable().find(([name]) => name === source)[1].cover(id);
+      } catch (err) {
+        if (err instanceof LookupError) log.error?.(`[lookup] cover ${id}: ${err.message}${err.cause?.message ? ` (${err.cause.message})` : ''}`);
+        throw err;
+      }
+    },
   };
 }
