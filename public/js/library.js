@@ -72,7 +72,14 @@ const tiles = (html) => `<div class="${display === 'list' ? 'list' : 'grid'}">${
 // The books as the library last loaded them, for opening it without a connection.
 const SAVED = 'ereader.library-books';
 
-async function load() {
+// While books are being prepared the library asks for them every few seconds (a "quiet" load). It is only drawn
+// again when something changed, and a book that became ready has its own card swapped, so the others do not
+// move while the rest of the batch is still being prepared. `settled` is false until the whole library is
+// drawn again from the latest books.
+let shownBooks = '';
+let settled = true;
+
+async function load({ quiet = false } = {}) {
   loadedAt = Date.now();
   let data;
   try {
@@ -81,17 +88,46 @@ async function load() {
     if (err instanceof ApiError) throw err;
     return showOffline();
   }
+  const wasOffline = offline;
   offline = false;
+  const before = books;
   books = data.books;
   supported = new Set(data.supported);
   const ids = new Set(books.map((b) => b.id));
   for (const id of selected) if (!ids.has(id)) selected.delete(id); // deleted meanwhile
   try { if (me) localStorage.setItem(SAVED, JSON.stringify({ me, books })); } catch { /* storage full */ }
-  render();
-  restoreFirst();
   const processing = books.some((b) => b.status === 'processing');
+  const fresh = JSON.stringify(books);
+  if (!quiet || wasOffline) render();
+  else if (fresh !== shownBooks && !(processing && swapReady(before))) render();
+  else if (!processing && !settled) render();
+  shownBooks = fresh;
+  restoreFirst();
   clearTimeout(pollTimer);
-  if (processing) pollTimer = setTimeout(load, 3000);
+  if (processing) pollTimer = setTimeout(() => load({ quiet: true }), 3000);
+}
+
+/**
+ * Swaps the cards of books that became ready since `before` for their new ones, in place, and says whether
+ * that was all that changed. Anything else, such as a book added or removed, or one that is not on the
+ * page as a card of its own (on a shelf, say), needs the library drawn again.
+ */
+function swapReady(before) {
+  if (offline || before.length !== books.length) return false;
+  const old = new Map(before.map((b) => [b.id, b]));
+  const changed = books.filter((b) => JSON.stringify(b) !== JSON.stringify(old.get(b.id)));
+  if (changed.some((b) => old.get(b.id)?.status !== 'processing')) return false;
+  const found = changed.map((b) => [b, [...els.library.querySelectorAll(`[data-id="${b.id}"]`)]]);
+  if (found.some(([, places]) => !places.length)) return false;
+  const seriesId = openSeriesId();
+  const tpl = document.createElement('template');
+  for (const [b, places] of found) {
+    const inSeries = seriesId != null && b.series.find((s) => s.id === seriesId);
+    tpl.innerHTML = card(b, inSeries ? { seriesId, position: numberIn(inSeries) } : {}).trim();
+    for (const el of places) el.replaceWith(tpl.content.firstElementChild.cloneNode(true));
+  }
+  settled = false;
+  return true;
 }
 
 /**
@@ -694,6 +730,24 @@ function closeSeries() {
   restoreScroll(0);
 }
 
+// The covers on the page that have loaded, by their markup: a new picture just like one of them takes its place.
+function loadedCovers() {
+  const covers = new Map();
+  for (const img of els.library.querySelectorAll('img')) {
+    if (!img.complete || !img.naturalWidth) continue;
+    const key = img.outerHTML;
+    covers.set(key, [...(covers.get(key) || []), img]);
+  }
+  return covers;
+}
+function keepCovers(covers) {
+  if (!covers.size) return;
+  for (const img of [...els.library.querySelectorAll('img')]) {
+    const old = covers.get(img.outerHTML)?.shift();
+    if (old) img.replaceWith(old);
+  }
+}
+
 function render() {
   const seriesId = openSeriesId();
   const shown = seriesId != null ? 'series' : view;
@@ -716,10 +770,14 @@ function render() {
   els.activeFilters.innerHTML = narrowing.length ? `<span>Showing ${escapeHtml(narrowing.join(' · '))}</span><button type="button" class="btn small" data-show-all>Show all</button>` : '';
   els.activeFilters.classList.toggle('hidden', !narrowing.length);
   els.offlineNote.classList.toggle('hidden', !offline);
+  // Covers already on the page are kept, so drawing the library again does not make them flash.
+  const covers = loadedCovers();
   if (!books.length) els.library.innerHTML = '<div class="empty"><p>The library is empty.</p><p>Upload EPUB, MOBI, PDF, Markdown or text files to get started.</p></div>';
   else if (seriesId != null) renderSeries(seriesId);
   else if (view === 'series') renderSeriesList();
   else renderBooks();
+  keepCovers(covers);
+  settled = true;
   if (selecting) showSelection();
 }
 
@@ -944,7 +1002,7 @@ async function sendQueue() {
   if (ended.ended === 'done' && ended.total === 1 && ended.added === 1 && !ended.skipped.size) setTimeout(() => { if (batch === ended) closeBatch(); }, 4000);
   clearTimeout(reloadTimer);
   reloadTimer = null;
-  load();
+  load({ quiet: true });
 }
 
 /** Stops the batch: the file going up now is cut off, and the files after it stay behind. */
@@ -1010,7 +1068,7 @@ async function uploadDropped(entries) {
 let reloadTimer = null;
 let loadedAt = 0;
 function reloadSoon() {
-  if (!reloadTimer) reloadTimer = setTimeout(() => { reloadTimer = null; load(); }, Math.max(0, loadedAt + 3000 - Date.now()));
+  if (!reloadTimer) reloadTimer = setTimeout(() => { reloadTimer = null; load({ quiet: true }); }, Math.max(0, loadedAt + 3000 - Date.now()));
 }
 
 els.upload.addEventListener('click', () => { setMenu(false); els.file.click(); });

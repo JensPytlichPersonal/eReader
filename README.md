@@ -228,6 +228,12 @@ shows how far the upload has come, with a *Stop* button; keep the page open unti
 browser asks before leaving it). Files that could not be added are listed under that line with the
 reason. Each file can be up to `MAX_UPLOAD_MB` (500 MB by default).
 
+A book shows in the library as soon as it is up, marked *Preparing…* until it is converted, and can be
+read from then on. Books are converted in the background, one at a time. While any are being prepared,
+the library checks on them every few seconds, but it only changes what changed: a book that is ready
+gets its own card back in place, and the library is sorted into its series and sections once the
+last one is done. Covers already on the page stay put.
+
 ### Duplicates
 
 A file that is already in the library is not added again, whatever its name and whoever added it: the
