@@ -639,13 +639,13 @@ function renderBooks() {
   // In sections by author or genre, their headings take the place of "All books".
   const allBooks = cont && groupBy === 'none' ? `${cont}${heading('All books', books.length)}` : cont;
   const cards = (things) => tiles(things.map((x) => (x.items ? stackCard(x) : card(x))).join(''));
-  // Searching always lists the matching books themselves.
-  if (layout === 'every' || els.search.value.trim()) {
+  // Searching always lists the matching books themselves, and so does Reading: the books being read, not their series.
+  if (layout === 'every' || els.search.value.trim() || els.filter.value === 'reading') {
     const list = visible();
     els.library.innerHTML = list.length ? `${allBooks}${grouped(list, cards)}` : '<div class="empty">No books match.</div>';
     return;
   }
-  // A series matches a filter as a whole: Reading means started but not finished.
+  // A series matches the other filters as a whole: Not started, or Finished.
   const keep = (state) => els.filter.value === 'all' || state === els.filter.value;
   const { series, singles } = foldSeries();
   const shownSeries = series.filter((g) => keep(g.state)).sort(sorter());
