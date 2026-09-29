@@ -36,7 +36,7 @@ let books = [];
 let offline = false; // no connection: showing the books from the last time, with `kept` the ones this device can open
 let kept = new Set();
 let pollTimer = null;
-let coverEditor = null; // the cover dialog, which takes images pasted or dropped on the page while it is open
+let coverEditor = null; // a book's menu, open for someone who can change the book: it takes images pasted or dropped on the page as the cover
 const prefs = JSON.parse(localStorage.getItem('ereader.library') || '{}');
 els.sort.value = prefs.sort || 'recent';
 els.filter.value = prefs.filter || 'all';
@@ -165,8 +165,10 @@ function visible() {
 }
 
 // Converting a book again rewrites its own cover, but leaves one picked by hand in place.
-const coverHtml = (b) => (b.hasCover && (b.status === 'ready' || b.coverSource === 'custom')
-  ? `<img class="cover" loading="lazy" alt="" src="/books/${b.id}/cover?v=${b.coverVersion}">`
+const coverSrc = (b) => (b.hasCover && (b.status === 'ready' || b.coverSource === 'custom') ? `/books/${b.id}/cover?v=${b.coverVersion}` : null);
+// A book's cover, or the picture at `src` in its place (a book's menu shows one not saved yet); without one, a tile with its title and author.
+const coverHtml = (b, src = coverSrc(b)) => (src
+  ? `<img class="cover" loading="lazy" alt="" src="${escapeHtml(src)}">`
   : `<div class="cover placeholder"><div class="t">${escapeHtml(b.title)}</div><div class="a">${escapeHtml(b.author)}</div></div>`);
 
 // A book that looks like another in the library says so, and the flag opens them side by side.
@@ -478,7 +480,7 @@ function renderSeriesList() {
   const all = groupSeries();
   if (!all.length) {
     els.library.innerHTML = `<div class="empty"><p>No series or collections yet.</p>
-      <p>Books join a series by themselves when their details name one. To group any books, choose <b>Edit details</b> in a book's &#8943; menu.</p></div>`;
+      <p>Books join a series by themselves when their details name one. To group any books, use <b>Details and cover</b> in a book's &#8943; menu.</p></div>`;
     return;
   }
   const q = els.search.value.trim().toLowerCase();
@@ -1028,7 +1030,8 @@ els.uploads.addEventListener('click', (e) => {
 });
 // Leaving the page stops the upload, so the browser asks first.
 window.addEventListener('beforeunload', (e) => { if (sending) { e.preventDefault(); e.returnValue = ''; } });
-// While the cover dialog is open, an image dropped or pasted on the page becomes the cover instead.
+// While a book's menu is open for someone who can change the book, an image dropped or pasted on the page
+// becomes its cover instead.
 const coverOpen = () => !!coverEditor?.root.isConnected;
 for (const ev of ['dragenter', 'dragover']) document.addEventListener(ev, (e) => { e.preventDefault(); if (!coverOpen()) els.drop.classList.add('active'); });
 for (const ev of ['dragleave', 'drop']) document.addEventListener(ev, (e) => { e.preventDefault(); if (ev === 'drop' || e.target === document.documentElement) els.drop.classList.remove('active'); });
@@ -1043,7 +1046,10 @@ document.addEventListener('drop', (e) => {
 });
 document.addEventListener('paste', (e) => {
   if (!coverOpen()) return;
-  const file = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+  const items = [...(e.clipboardData?.items || [])];
+  // In a field, text wins: cells copied from a spreadsheet come as text with a picture of them. An image alone is the cover.
+  if (e.target.closest?.('input, textarea') && items.some((i) => i.kind === 'string' && i.type === 'text/plain')) return;
+  const file = items.find((i) => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
   if (!file) return;
   e.preventDefault();
   coverEditor.useFile(file);
@@ -1061,34 +1067,60 @@ function dialog(html) {
 // A plain click on a series link opens it in place; modified clicks keep their usual meaning.
 const plainClick = (e) => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
+/**
+ * A book's menu, in three areas: Open and Close in a bar that stays at the top while the rest scrolls; the
+ * details and the cover, for the uploader or an admin (see editBook()), where other readers see the book's
+ * cover and details; and at the foot who is reading the book, its file and what can be done with the file.
+ */
 function bookMenu(b) {
-  const canEdit = me.isAdmin || b.addedById === me.id;
+  const canEdit = mayEdit(b);
   const { root, close } = dialog(`
-    <h2>${escapeHtml(b.title)}</h2>
-    <p class="muted">${escapeHtml(b.author || '')}<br>${b.genre ? `${escapeHtml(b.genre)} · ` : ''}${b.format.toUpperCase()} · ${(b.size / 1048576).toFixed(1)} MB · added by ${escapeHtml(b.addedBy || 'unknown')} ${formatDate(b.addedAt)}</p>
-    ${b.series.length ? `<p class="series-links">Part of ${b.series.map(seriesLink).join(', ')}</p>` : ''}
-    ${b.status === 'error' ? `<p class="error">${escapeHtml(b.error || 'Conversion failed')}</p>` : ''}
-    <div class="menu">
-      ${b.status === 'ready' ? `<a class="btn" href="/read/${b.id}">Open</a>` : ''}
-      ${b.progress ? '<button class="btn" data-act="reset">Reset my reading position</button>' : ''}
-      ${flagged(b) ? '<button class="btn" data-act="duplicates">Compare with possible duplicates</button>' : ''}
-      <button class="btn" data-act="readers">Who is reading this</button>
-      <a class="btn" href="/books/${b.id}/original" download="${escapeHtml(b.originalName)}">Download original file</a>
-      ${canEdit ? '<button class="btn" data-act="edit">Edit details and series</button>' : ''}
-      ${canEdit ? `<button class="btn" data-act="cover">${b.hasCover ? 'Change cover' : 'Add a cover'}</button>` : ''}
-      ${canEdit ? '<button class="btn" data-act="reprocess">Convert again</button>' : ''}
-      ${canEdit ? '<button class="btn danger" data-act="delete">Delete from library</button>' : ''}
-      <button class="btn" data-close>Close</button>
-    </div>`);
+    <div class="sheet-bar">
+      ${b.status === 'ready' ? `<a class="btn primary" href="/read/${b.id}">Open</a>` : ''}
+      <button type="button" class="btn" data-close>Close</button>
+    </div>
+    <header class="book-head">
+      ${canEdit ? '' : `<div class="cover-preview">${coverHtml(b)}</div>`}
+      <div class="about">
+        <h2 id="bk-title">${escapeHtml(b.title)}</h2>
+        ${b.author ? `<p class="muted">${escapeHtml(b.author)}</p>` : ''}
+        ${b.series.length ? `<p class="series-links">Part of ${b.series.map(seriesLink).join(', ')}</p>` : ''}
+        ${!canEdit && b.genre ? `<p class="muted">${escapeHtml(b.genre)}</p>` : ''}
+        ${b.status === 'error' ? `<p class="error">${escapeHtml(b.error || 'Conversion failed')}</p>` : ''}
+        ${flagged(b) ? '<p class="flag"><button type="button" class="dup-flag" data-act="duplicates">Compare with possible duplicates</button></p>' : ''}
+      </div>
+    </header>
+    ${canEdit ? bookFormHtml(b) : ''}
+    <footer class="book-foot">
+      <div class="facts">
+        <section class="readers">
+          <h3 class="area-name">Who is reading</h3>
+          <div data-readers aria-live="polite"></div>
+          ${b.progress ? '<button type="button" class="btn small" data-act="reset">Reset my reading position</button>' : ''}
+        </section>
+        <section class="file">
+          <h3 class="area-name">File</h3>
+          <p>${b.format.toUpperCase()} · ${(b.size / 1048576).toFixed(1)} MB · added by ${escapeHtml(b.addedBy || 'unknown')} ${formatDate(b.addedAt)}</p>
+          <p class="muted">${escapeHtml(b.originalName)}</p>
+        </section>
+      </div>
+      <div class="file-actions">
+        <a class="btn small" href="/books/${b.id}/original" download="${escapeHtml(b.originalName)}">Download original file</a>
+        ${canEdit ? '<button type="button" class="btn small" data-act="reprocess">Convert again</button>' : ''}
+        ${canEdit ? '<button type="button" class="btn small danger" data-act="delete">Delete from library</button>' : ''}
+      </div>
+    </footer>`);
+  root.classList.add('book');
+  root.classList.toggle('editable', canEdit);
+  root.setAttribute('aria-labelledby', 'bk-title');
+  showReaders(b, root.querySelector('[data-readers]'));
   root.addEventListener('click', async (ev) => {
     const link = ev.target.closest('a[data-series]');
     if (link && plainClick(ev)) { ev.preventDefault(); close(); openSeries(Number(link.dataset.series)); return; }
     const act = ev.target.closest('button[data-act]')?.dataset.act;
     if (!act) return;
     try {
-      if (act === 'edit') { editDetails(b); return; }
       if (act === 'duplicates') { compareCopies(b); return; }
-      if (act === 'cover') { editCover(b); return; }
       if (act === 'delete') {
         if (!confirm(`Delete "${b.title}" for everyone? This cannot be undone.`)) return;
         await api(`/api/books/${b.id}`, { method: 'DELETE' });
@@ -1097,15 +1129,27 @@ function bookMenu(b) {
       } else if (act === 'reset') {
         if (!confirm('Forget your reading position for this book?')) return;
         await api(`/api/books/${b.id}/progress`, { method: 'DELETE' });
-      } else if (act === 'readers') {
-        const { readers } = await api(`/api/books/${b.id}/readers`);
-        alert(readers.length ? readers.map((r) => `${r.displayName || r.username}: ${Math.round(r.percent * 100)}% (${formatDate(r.updatedAt)})`).join('\n') : 'Nobody has started this book yet.');
-        return;
       }
       close();
       await load();
     } catch (err) { toast(err.message); }
   });
+  if (canEdit) editBook(b, root, close);
+}
+
+/** Who is reading a book, how far they are and when they last read, filled in once the server says. */
+async function showReaders(b, box) {
+  let html;
+  try {
+    const { readers } = await api(`/api/books/${b.id}/readers`);
+    html = readers.length ? `<ul class="reader-list">${readers.map((r) => {
+      const pct = Math.round(r.percent * 100);
+      return `<li><span class="who">${escapeHtml(r.displayName || r.username)}${r.username === me.username ? ' (you)' : ''}</span><div class="progress"><div style="width:${pct}%"></div></div><span class="pct">${pct}%</span><span class="when">${formatDate(r.updatedAt)}</span></li>`;
+    }).join('')}</ul>` : '<p class="muted">Nobody has started this book yet.</p>';
+  } catch {
+    html = '<p class="muted">The readers could not be loaded.</p>';
+  }
+  if (box.isConnected) box.innerHTML = html; // unless the menu was closed meanwhile
 }
 
 /**
@@ -1171,12 +1215,14 @@ const seriesRow = (s = { name: '', position: null }) => `<div class="series-row"
     <input type="text" name="series-no" value="${numberIn(s) ?? ''}" placeholder="No." aria-label="Number in the series" maxlength="20" autocomplete="off">
     <button type="button" class="btn icon" data-remove-row aria-label="Remove">&times;</button>
   </div>`;
+/** Adds an empty row under a book's series and collections, and gives it. */
+const addSeriesRow = (rows) => { rows.insertAdjacentHTML('beforeend', seriesRow()); return rows.lastElementChild; };
 
 // The catalogues the server looks books up in.
 const CATALOGUES = { hardcover: 'Hardcover', openlibrary: 'Open Library' };
 
 /**
- * A book found online, offered in the edit dialog: choosing it (anywhere on it) fills in the form, and
+ * A book found online, offered in a book's menu: choosing it (anywhere on it) fills in the form, and
  * "Cover only" takes just its cover. "More covers" shows the other covers the catalogue has for it,
  * such as its editions', under it; choosing one takes just that cover. The sizes of the covers are
  * filled in once they have loaded (see showSize()).
@@ -1220,48 +1266,254 @@ function showSize(img, label, text) {
 const genreNames = () => [...new Map(books.filter((b) => b.genre).map((b) => [genreKey(b.genre), b.genre])).values()].sort((x, y) => x.localeCompare(y));
 const genreList = (names) => `<datalist id="genre-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`;
 
-/** Title, author, genre and the series and collections a book is in. */
-function editDetails(b) {
+/** The middle of a book's menu, for the uploader or an admin: the cover and the details, which one Save keeps. */
+function bookFormHtml(b) {
   const names = [...new Set(books.flatMap((x) => x.series.map((s) => s.name)))].sort((x, y) => x.localeCompare(y));
-  const { root, close } = dialog(`
-    <h2>Edit details</h2>
-    <form class="details" novalidate>
-      <div class="field"><label for="ed-title">Title</label><input id="ed-title" name="title" value="${escapeHtml(b.title)}" maxlength="500"></div>
-      <div class="field"><label for="ed-author">Author</label><input id="ed-author" name="author" value="${escapeHtml(b.author || '')}" maxlength="500"></div>
-      <div class="lookup">
-        <button type="button" class="btn small" data-lookup>Look up online</button>
-        <div class="found">
-          <div data-matches aria-live="polite"></div>
-          <div data-picked aria-live="polite"></div>
-        </div>
+  const page = b.format !== 'pdf' ? '' : `<div class="cover-page row">
+          <button type="button" class="btn small" data-page>Use page</button>
+          <span class="page-no"><input type="number" name="page" value="1" min="1"${b.pageCount ? ` max="${b.pageCount}"` : ''} aria-label="Page of the PDF">
+            ${b.pageCount ? `<span class="muted">of ${b.pageCount}</span>` : ''}</span>
+        </div>`;
+  return `<form class="book-edit" novalidate>
+    <h3 class="area-name">Details and cover</h3>
+    <div class="cover-edit">
+      <div class="cover-preview"><div data-cover></div><p class="size" data-size></p></div>
+      <div class="cover-actions">
+        <p class="cover-note hidden" data-note aria-live="polite"></p>
+        <button type="button" class="btn small" data-pick>Choose an image</button>
+        ${page}
+        <button type="button" class="btn small" data-source="file">Use the original cover</button>
+        <button type="button" class="btn small" data-source="none">Remove cover</button>
+        <button type="button" class="btn small" data-undo>Keep the cover as it was</button>
+        ${matchMedia('(pointer: fine)').matches ? '<p class="muted hint">Or paste an image, or drop one on the page.</p>' : ''}
+        <p class="muted hint hidden" data-busy></p>
       </div>
-      <fieldset class="field">
-        <legend>Series and collections</legend>
-        <div class="series-rows">${(b.series.length ? b.series : [undefined]).map((s) => seriesRow(s)).join('')}</div>
-        <button type="button" class="btn small" data-add-row>Add to another</button>
-        <p class="muted hint">The number puts a series in order (1, 2, 2.5 …); a book holding several, such as an omnibus, takes a range (1-3). Leave it empty for a collection without an order.</p>
-      </fieldset>
-      <div class="field"><label for="ed-genre">Genre</label><input id="ed-genre" name="genre" list="genre-names" value="${escapeHtml(b.genre || '')}" maxlength="100" autocomplete="off"></div>
-      <p class="error hidden" data-error></p>
-      <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button></div>
-    </form>
-    <datalist id="series-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>${genreList(genreNames())}`);
-  const form = root.querySelector('form');
-  const rows = root.querySelector('.series-rows');
-  const error = root.querySelector('[data-error]');
-  const lookupBtn = root.querySelector('[data-lookup]');
-  const matches = root.querySelector('[data-matches]');
-  const picked = root.querySelector('[data-picked]');
+    </div>
+    <div class="field f-title"><label for="ed-title">Title</label><input id="ed-title" name="title" value="${escapeHtml(b.title)}" maxlength="500"></div>
+    <div class="field f-author"><label for="ed-author">Author</label><input id="ed-author" name="author" value="${escapeHtml(b.author || '')}" maxlength="500"></div>
+    <div class="lookup">
+      <button type="button" class="btn small" data-lookup>Look up online</button>
+      <div class="found">
+        <div data-matches aria-live="polite"></div>
+        <div data-picked aria-live="polite"></div>
+      </div>
+    </div>
+    <fieldset class="field f-series">
+      <legend>Series and collections</legend>
+      <div class="series-rows">${(b.series.length ? b.series : [undefined]).map((s) => seriesRow(s)).join('')}</div>
+      <button type="button" class="btn small" data-add-row>Add to another</button>
+      <p class="muted hint">The number puts a series in order (1, 2, 2.5 …); a book holding several, such as an omnibus, takes a range (1-3). Leave it empty for a collection without an order.</p>
+    </fieldset>
+    <div class="field f-genre"><label for="ed-genre">Genre</label><input id="ed-genre" name="genre" list="genre-names" value="${escapeHtml(b.genre || '')}" maxlength="100" autocomplete="off"></div>
+    <p class="error hidden" data-error></p>
+    <div class="row save"><button class="btn primary" type="submit">Save</button><p class="muted hint">Nothing changes until you save.</p></div>
+    <input type="file" accept="image/*" class="hidden" data-file>
+    <datalist id="series-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>${genreList(genreNames())}
+  </form>`;
+}
+
+/**
+ * The details and the cover in a book's menu at work. Nothing is sent until Save, and Save sends only what
+ * was changed: a title, author or series sent counts as edited by hand, and then wins over the book's file
+ * whenever it is converted again, so a new cover alone leaves them as the file has them.
+ */
+function editBook(b, root, close) {
+  const form = root.querySelector('.book-edit');
+  const rows = form.querySelector('.series-rows');
+  const error = form.querySelector('[data-error]');
+  const saveBtn = form.querySelector('[type="submit"]');
+  const coverBox = form.querySelector('[data-cover]');
+  const sizeNote = form.querySelector('.cover-preview [data-size]');
+  const note = form.querySelector('[data-note]');
+  const busyNote = form.querySelector('[data-busy]');
+  const fileInput = form.querySelector('[data-file]');
   const fail = (message) => { error.textContent = message; error.classList.remove('hidden'); };
-  const addRow = () => { rows.insertAdjacentHTML('beforeend', seriesRow()); return rows.lastElementChild; };
-  // The book's cover now, which the covers found are compared with.
-  const current = b.hasCover ? Object.assign(new Image(), { src: `/books/${b.id}/cover?v=${b.coverVersion}` }) : null;
+
+  // What the form says, read as it is drawn and again on Save, which sends what differs.
+  const readDetails = () => ({
+    title: form.elements.title.value.trim(),
+    author: form.elements.author.value.trim(),
+    series: [...rows.querySelectorAll('.series-row')]
+      .map((r) => ({ name: r.querySelector('[name="series-name"]').value.trim(), position: r.querySelector('[name="series-no"]').value.trim() || null }))
+      .filter((s) => s.name),
+    genre: form.elements.genre.value.trim(),
+  });
+  const before = readDetails();
+
+  let pending = null; // the cover the book gets when saved, null to leave it: { src, source, says, body, offered }
+  let byHand = false; // a cover was chosen by hand here, so a match chosen for its details does not tick its own
+  let busy = false; // a picture is being prepared
+  let saving = false;
+  const lookup = lookUpOnline(root, form, { book: () => b, mayTick: () => !b.hasCover && !byHand, offer });
+
+  // The cover area, from the cover to be saved or else the book's own: the picture, its size, the note that it
+  // is not saved yet, and the ways to change it that make sense from there.
+  function showCover() {
+    const typed = { ...b, title: form.elements.title.value, author: form.elements.author.value };
+    coverBox.innerHTML = pending ? coverHtml(typed, pending.src) : coverHtml(typed);
+    const img = coverBox.querySelector('img');
+    sizeNote.textContent = '';
+    // A picture replaced before it loaded leaves the size of the one shown now alone.
+    if (img) showSize(img, sizeNote, (size) => (img.isConnected ? (size ?? '') : sizeNote.textContent));
+    note.textContent = pending ? `${pending.says}. Not saved yet.` : '';
+    note.classList.toggle('hidden', !pending);
+    form.querySelector('[data-source="file"]').classList.toggle('hidden', (pending ? pending.source : b.coverSource) === 'file' || !b.fileHasCover);
+    form.querySelector('[data-source="none"]').classList.toggle('hidden', !img);
+    form.querySelector('[data-undo]').classList.toggle('hidden', !pending);
+  }
+
+  // Every change of the cover to be saved comes through here, which lets go of a picture no longer shown.
+  function setPending(next) {
+    if (pending?.src?.startsWith('blob:') && pending.src !== next?.src) URL.revokeObjectURL(pending.src);
+    pending = next;
+    showCover();
+  }
+
+  // A cover chosen by hand, or null for one the book has already: it takes the place of a match's cover.
+  function chooseCover(next) {
+    byHand = true;
+    setPending(next);
+    lookup.leave();
+  }
+
+  // The cover of a match that is ticked, or null when none is: ticked, it is the cover the book gets when saved.
+  function offer(m) {
+    if (m) setPending({ src: m.cover, source: 'custom', says: `Cover from ${CATALOGUES[m.source]}`, body: { source: m.coverSource, coverId: m.coverId }, offered: true });
+    else if (pending?.offered) setPending(null);
+  }
+
+  // While a picture is prepared or the book saved, the cover's buttons and Save wait.
+  function lock(on) {
+    for (const el of form.querySelectorAll('.cover-actions button, .cover-actions input')) el.disabled = on;
+    saveBtn.disabled = on;
+  }
+
+  // An image read and scaled, or a page of the PDF drawn, by `work`, which gives { blob, says }.
+  async function prepare(doing, work) {
+    if (busy || saving) return;
+    busy = true;
+    lock(true);
+    error.classList.add('hidden');
+    busyNote.textContent = doing;
+    busyNote.classList.remove('hidden');
+    try {
+      const { blob, says } = await work();
+      if (root.isConnected) chooseCover({ src: URL.createObjectURL(blob), source: 'custom', says, body: blob });
+    } catch (err) {
+      fail(err.message);
+    } finally {
+      busy = false;
+      lock(false);
+      busyNote.classList.add('hidden');
+    }
+  }
+  const useFile = (file) => prepare('Preparing the cover…', async () => ({ blob: await coverImage(file), says: 'New cover' }));
+  // Most PDFs have no cover image, but their first page usually is the cover.
+  function usePage() {
+    const input = form.elements.page;
+    prepare(`Preparing page ${input.value || 1}…`, async () => {
+      const { renderPdfPage } = await import('./pdf-view.js');
+      const { canvas, page } = await renderPdfPage(`/books/${b.id}/original`, Number(input.value), COVER_SIDE);
+      input.value = page;
+      return { blob: await toJpeg(canvas), says: `Page ${page} of the PDF` };
+    });
+  }
+  coverEditor = { root, useFile };
+  showCover();
+
+  form.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-add-row]')) addSeriesRow(rows).querySelector('input').focus();
+    const remove = ev.target.closest('[data-remove-row]');
+    if (remove) {
+      const row = remove.closest('.series-row');
+      if (rows.children.length > 1) row.remove(); else row.querySelectorAll('input').forEach((i) => { i.value = ''; });
+    }
+    if (ev.target.closest('[data-pick]')) fileInput.click();
+    if (ev.target.closest('[data-page]')) usePage();
+    const source = ev.target.closest('[data-source]')?.dataset.source;
+    if (source === 'file') chooseCover(b.coverSource === 'file' ? null : { src: `/books/${b.id}/cover?source=file&v=${b.convertedAt}`, source: 'file', says: 'The original cover', body: { source: 'file' } });
+    if (source === 'none') chooseCover(b.hasCover ? { src: null, source: 'none', says: 'No cover', body: { source: 'none' } } : null);
+    if (ev.target.closest('[data-undo]')) { setPending(null); lookup.leave(); }
+  });
+  fileInput.addEventListener('change', () => {
+    const [file] = fileInput.files;
+    fileInput.value = '';
+    if (file) useFile(file);
+  });
+  // Enter in the page field uses the page, rather than saving the form.
+  form.elements.page?.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    usePage();
+  });
+  // Without a picture, the cover is a tile with the title and author as they are typed.
+  form.addEventListener('input', (ev) => { if (['title', 'author'].includes(ev.target.name) && !coverBox.querySelector('img')) showCover(); });
+
+  const sendCover = (body) => api(`/api/books/${b.id}/cover`, body instanceof Blob
+    ? { method: 'PUT', raw: true, body, headers: { 'Content-Type': body.type || 'application/octet-stream' } }
+    : { method: 'PUT', body });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (busy || saving) return;
+    const now = readDetails();
+    const bad = now.series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?(\s*[-–—]\s*\d{1,5}([.,]\d+)?)?$/.test(s.position));
+    if (!now.title) return fail('The book needs a title.');
+    if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5, or a range for a book holding several, such as 1-3.`);
+    const differs = (key) => JSON.stringify(now[key]) !== JSON.stringify(before[key]);
+    // The title, author and series go together, and only when one of them changed; the genre goes on its own.
+    const details = ['title', 'author', 'series'].some(differs) ? { title: now.title, author: now.author, series: now.series } : {};
+    if (differs('genre')) details.genre = now.genre;
+    saving = true;
+    lock(true);
+    saveBtn.textContent = 'Saving…';
+    let coverSaved = false;
+    try {
+      // The cover first: when it cannot be kept, nothing has changed yet. Once it is, the menu shows it as
+      // saved, so a failure of the details leaves the menu true to the server.
+      if (pending) {
+        ({ book: b } = await sendCover(pending.body));
+        coverSaved = true;
+        setPending(null);
+        lookup.untick();
+      }
+      if (Object.keys(details).length) await api(`/api/books/${b.id}`, { method: 'PATCH', body: details });
+      close();
+      await load();
+    } catch (err) {
+      fail(err.message);
+      if (coverSaved) load(); // the library behind the menu shows the new cover
+    } finally {
+      saving = false;
+      lock(false);
+      saveBtn.textContent = 'Save';
+    }
+  });
+}
+
+/**
+ * Look up online, in a book's menu: a match chosen fills in the form, and its cover is offered, which ticked
+ * is the cover the book gets when saved. `book()` is the book as saved now, `mayTick()` whether the cover of
+ * a match chosen for its details is ticked from the start, and `offer(m)` is told the match whose cover is
+ * ticked, or null. Gives `untick()`, for once the cover is saved, and `leave()`, for a cover chosen by hand
+ * or the one the book had, which also ends "Cover only".
+ */
+function lookUpOnline(root, form, { book, mayTick, offer }) {
+  const lookupBtn = form.querySelector('[data-lookup]');
+  const matches = form.querySelector('[data-matches]');
+  const picked = form.querySelector('[data-picked]');
+  const rows = form.querySelector('.series-rows');
   let found = [];
   let filled = null; // the match the form was filled in from
   let coverFrom = null; // the match whose cover is offered
   let coverOnly = false; // taken with "Cover only", so filling in from another match keeps it
-  // On a wide screen the dialog grows, with the matches beside the form, once there is something to show there.
+  let ticked = false; // the offered cover is the one the book gets when saved
+  // On a wide screen the menu grows, with the matches beside the form, once there is something to show there.
   const widen = () => root.classList.toggle('wide', found.length > 0 || !!filled || !!coverFrom);
+  // The book's cover now, which the covers found are compared with.
+  const currentCover = () => {
+    const b = book();
+    return b.hasCover ? Object.assign(new Image(), { src: `/books/${b.id}/cover?v=${b.coverVersion}` }) : null;
+  };
 
   // Searches the catalogues for the title and author as typed (and the ISBN in the file).
   async function lookUp() {
@@ -1269,9 +1521,10 @@ function editDetails(b) {
     lookupBtn.textContent = 'Looking up…';
     matches.innerHTML = '';
     found = [];
+    const current = currentCover();
     try {
       const query = new URLSearchParams({ title: form.elements.title.value.trim(), author: form.elements.author.value.trim() });
-      const answer = await api(`/api/books/${b.id}/lookup?${query}`);
+      const answer = await api(`/api/books/${book().id}/lookup?${query}`);
       found = answer.results;
       // A catalogue that could not be asked, such as Hardcover with an expired token.
       const notes = answer.notes.map((note) => `<p class="muted hint">${escapeHtml(note)}</p>`).join('');
@@ -1300,15 +1553,16 @@ function editDetails(b) {
     }
   }
 
-  // Shows what the form takes from the matches: the details, and the cover to use when ticked. The
-  // rows they came from are marked in the list.
+  // Shows what the form takes from the matches: the details, and the cover with its tick. The rows they
+  // came from are marked in the list.
   function showPicked() {
+    const current = currentCover();
     const from = (m) => `<a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${CATALOGUES[m.source]}</a>`;
     picked.innerHTML = `${filled ? `<p class="hint">Filled in from ${from(filled)}. Check the details, then save.</p>` : ''}
       ${coverOnly ? `<p class="hint">Cover from ${from(coverFrom)}.</p>` : ''}
-      ${coverFrom ? `<label class="use-cover"><input type="checkbox" name="useCover"${coverOnly || !b.hasCover ? ' checked' : ''}>
+      ${coverFrom ? `<label class="use-cover"><input type="checkbox" name="useCover"${ticked ? ' checked' : ''}>
         <img class="cover" src="${escapeHtml(coverFrom.cover)}" alt="">
-        <span><span>${b.hasCover ? 'Use this cover instead of the current one' : 'Use this cover'}</span>
+        <span><span>${book().hasCover ? 'Use this cover instead of the current one' : 'Use this cover'}</span>
           <span class="about"><span data-size></span>${current ? '<span data-current></span>' : ''}</span></span></label>` : ''}`;
     if (coverFrom) {
       showSize(picked.querySelector('.use-cover img'), picked.querySelector('[data-size]'), (size) => size ?? 'The cover could not be loaded');
@@ -1321,33 +1575,46 @@ function editDetails(b) {
       btn.classList.toggle('chosen', coverOnly && m.covers[Number(btn.dataset.coverChoice)].cover === coverFrom.cover);
     }
     widen();
-    picked.scrollIntoView({ block: 'nearest' });
+  }
+
+  // Ticked, the offered cover is the one the book gets when saved; unticked, it is left.
+  function tick(on) {
+    ticked = on;
+    offer(on ? coverFrom : null);
   }
 
   // Fills in the form from a match. Its series join the rows already there; a series that is
-  // already listed takes the match's number. Its cover is offered too, and chosen by default
-  // when the book has none, unless a cover was taken with "Cover only".
+  // already listed takes the match's number. Its cover is offered too, ticked when the book has
+  // none and none was chosen by hand, unless a cover was taken with "Cover only".
   function useMatch(m) {
     filled = m;
     form.elements.title.value = m.title;
     if (m.author) form.elements.author.value = m.author;
+    // As if typed, so the title tile in the cover's place follows
+    form.elements.title.dispatchEvent(new Event('input', { bubbles: true }));
     const nameKey = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
     for (const s of m.series) {
       const all = [...rows.querySelectorAll('.series-row')];
       const nameOf = (row) => row.querySelector('[name="series-name"]');
-      const row = all.find((r) => nameKey(nameOf(r).value) === nameKey(s.name)) || all.find((r) => !nameOf(r).value.trim()) || addRow();
+      const row = all.find((r) => nameKey(nameOf(r).value) === nameKey(s.name)) || all.find((r) => !nameOf(r).value.trim()) || addSeriesRow(rows);
       if (!nameOf(row).value.trim()) nameOf(row).value = s.name;
       if (s.position != null) row.querySelector('[name="series-no"]').value = numberIn(s);
     }
-    if (!coverOnly) coverFrom = m.cover && m.coverId ? m : null;
+    if (!coverOnly) {
+      coverFrom = m.cover && m.coverId ? m : null;
+      tick(!!coverFrom && mayTick());
+    }
     showPicked();
+    picked.scrollIntoView({ block: 'nearest' });
   }
 
-  // Takes only a match's cover: the details stay as they are.
+  // Takes only a match's cover, ticked: the details stay as they are.
   function useCover(m) {
     coverFrom = m;
     coverOnly = true;
+    tick(true);
     showPicked();
+    picked.scrollIntoView({ block: 'nearest' });
   }
 
   // Shows or hides the other covers of the match in `row`.
@@ -1357,14 +1624,8 @@ function editDetails(b) {
     button.textContent = hidden ? `More covers (${found[Number(row.dataset.match)].covers.length})` : 'Hide covers';
   }
 
-  root.addEventListener('click', (ev) => {
-    if (ev.target.closest('[data-add-row]')) addRow().querySelector('input').focus();
-    const remove = ev.target.closest('[data-remove-row]');
-    if (remove) {
-      const row = remove.closest('.series-row');
-      if (rows.children.length > 1) row.remove(); else row.querySelectorAll('input').forEach((i) => { i.value = ''; });
-    }
-    if (ev.target.closest('[data-lookup]')) lookUp();
+  form.querySelector('.lookup').addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-lookup]')) { lookUp(); return; }
     const coverButton = ev.target.closest('[data-cover-only]');
     const moreButton = ev.target.closest('[data-more-covers]');
     const choice = ev.target.closest('[data-cover-choice]');
@@ -1376,31 +1637,20 @@ function editDetails(b) {
     else if (choice) useCover({ ...m, ...m.covers[Number(choice.dataset.coverChoice)] });
     else if (match && !ev.target.closest('.more-covers')) useMatch(m);
   });
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const title = form.elements.title.value.trim();
-    const series = [...rows.querySelectorAll('.series-row')]
-      .map((r) => ({ name: r.querySelector('[name="series-name"]').value.trim(), position: r.querySelector('[name="series-no"]').value.trim() || null }))
-      .filter((s) => s.name);
-    const bad = series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?(\s*[-–—]\s*\d{1,5}([.,]\d+)?)?$/.test(s.position));
-    if (!title) return fail('The book needs a title.');
-    if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5, or a range for a book holding several, such as 1-3.`);
-    const saveBtn = form.querySelector('[type="submit"]');
-    saveBtn.disabled = true;
-    saveBtn.textContent = 'Saving…';
-    try {
-      // The cover first: when the catalogue cannot send it, nothing has changed yet.
-      if (form.elements.useCover?.checked) await api(`/api/books/${b.id}/cover`, { method: 'PUT', body: { source: coverFrom.coverSource, coverId: coverFrom.coverId } });
-      await api(`/api/books/${b.id}`, { method: 'PATCH', body: { title, author: form.elements.author.value.trim(), series, genre: form.elements.genre.value.trim() } });
-      close();
-      await load();
-    } catch (err) {
-      fail(err.message);
-    } finally {
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'Save';
-    }
-  });
+  picked.addEventListener('change', (ev) => { if (ev.target.name === 'useCover') tick(ev.target.checked); });
+
+  function untick() {
+    tick(false);
+    showPicked();
+  }
+  return {
+    untick,
+    // A cover chosen by hand, or the one the book had, takes the place of the offered one and ends "Cover only".
+    leave() {
+      coverOnly = false;
+      untick();
+    },
+  };
 }
 
 // Covers are shown small, so a larger image is scaled down to this many pixels on its longer side and sent as a JPEG.
@@ -1433,87 +1683,6 @@ async function coverImage(file) {
   } finally {
     URL.revokeObjectURL(url);
   }
-}
-
-/** The cover the library shows: an image, a page of the PDF, the book's own cover or none. Each change is saved at once. */
-function editCover(b) {
-  const { root } = dialog(`
-    <h2>Cover</h2>
-    <p class="muted">${escapeHtml(b.title)}</p>
-    <div class="cover-edit">
-      <div class="cover-preview"></div>
-      <div class="menu">
-        <button type="button" class="btn" data-pick>Choose an image</button>
-        ${b.format === 'pdf' ? `<form class="cover-page" novalidate>
-          <button type="submit" class="btn">Use page</button>
-          <input type="number" name="page" value="1" min="1"${b.pageCount ? ` max="${b.pageCount}"` : ''} aria-label="Page of the PDF">
-          ${b.pageCount ? `<span class="muted">of ${b.pageCount}</span>` : ''}
-        </form>` : ''}
-        <button type="button" class="btn" data-source="file">Use the original cover</button>
-        <button type="button" class="btn" data-source="none">Remove cover</button>
-        <button type="button" class="btn" data-close>Done</button>
-      </div>
-    </div>
-    <input type="file" accept="image/*" class="hidden" data-file>
-    ${matchMedia('(pointer: fine)').matches ? '<p class="muted hint">You can also paste an image, or drop one on the page.</p>' : ''}
-    <p class="muted hint hidden" data-busy></p>
-    <p class="error hidden" data-error></p>`);
-  const preview = root.querySelector('.cover-preview');
-  const busyNote = root.querySelector('[data-busy]');
-  const error = root.querySelector('[data-error]');
-  const fileInput = root.querySelector('[data-file]');
-  const controls = [...root.querySelectorAll('.menu button:not([data-close]), .menu input')];
-  const show = () => {
-    preview.innerHTML = coverHtml(b);
-    root.querySelector('[data-source="file"]').classList.toggle('hidden', b.coverSource === 'file' || !b.fileHasCover);
-    root.querySelector('[data-source="none"]').classList.toggle('hidden', !b.hasCover);
-  };
-  let busy = false;
-  const save = async (doing, work) => {
-    if (busy) return;
-    busy = true;
-    controls.forEach((el) => { el.disabled = true; });
-    error.classList.add('hidden');
-    busyNote.textContent = doing;
-    busyNote.classList.remove('hidden');
-    try {
-      ({ book: b } = await work());
-      show();
-      load();
-    } catch (err) {
-      error.textContent = err.message;
-      error.classList.remove('hidden');
-    } finally {
-      busy = false;
-      controls.forEach((el) => { el.disabled = false; });
-      busyNote.classList.add('hidden');
-    }
-  };
-  const send = (body) => api(`/api/books/${b.id}/cover`, body instanceof Blob
-    ? { method: 'PUT', raw: true, body, headers: { 'Content-Type': body.type || 'application/octet-stream' } }
-    : { method: 'PUT', body });
-  const useFile = (file) => save('Saving the cover…', async () => send(await coverImage(file)));
-  coverEditor = { root, useFile };
-  show();
-
-  root.querySelector('[data-pick]').addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => {
-    const [file] = fileInput.files;
-    fileInput.value = '';
-    if (file) useFile(file);
-  });
-  for (const btn of root.querySelectorAll('[data-source]')) btn.addEventListener('click', () => save('Saving…', () => send({ source: btn.dataset.source })));
-  // Most PDFs have no cover image, but their first page usually is the cover.
-  root.querySelector('.cover-page')?.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const input = ev.target.elements.page;
-    save(`Preparing page ${input.value || 1}…`, async () => {
-      const { renderPdfPage } = await import('./pdf-view.js');
-      const { canvas, page } = await renderPdfPage(`/books/${b.id}/original`, Number(input.value), COVER_SIDE);
-      input.value = page;
-      return send(await toJpeg(canvas));
-    });
-  });
 }
 
 /** Rename (or merge) and remove a whole series or collection. Admins only. */

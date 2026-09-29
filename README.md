@@ -220,8 +220,8 @@ book (`Dune.opf` and `Dune.jpg`, as calibre's *Save to disk* writes them), or `m
 `cover.jpg` in a folder holding one book, in one or more formats (as in a calibre library). The title,
 author, series, language and ISBN in the `.opf` file win over those inside the book, which fill in what
 it leaves out, and it is kept with the book, so *Convert again* uses it too; details edited by hand
-still win over both. The picture becomes the book's cover like one picked by hand, so *Change cover*
-can still go back to the book's own. The upload says how many books came with each.
+still win over both. The picture becomes the book's cover like one picked by hand, so *Use the original
+cover* can still go back to the book's own. The upload says how many books came with each.
 
 Books go up one at a time while the server converts the ones already there. A line above the library
 shows how far the upload has come, with a *Stop* button; keep the page open until it is done (the
@@ -248,6 +248,22 @@ the uploader of either book or an admin.
 
 Books already in the library when this arrived are fingerprinted, and their ISBNs read, once in the
 background when the server starts, without converting them again, so copies among them are flagged too.
+
+## A book's menu
+
+The ⋯ button on a book opens its menu, in three parts:
+
+| Part | What it holds |
+| --- | --- |
+| The bar at the top | *Open* and *Close*. It stays in place while the rest scrolls. |
+| Details and cover | The title, author, series and collections, and genre, with **Look up online** (see [Looking up details online](#looking-up-details-online)), and the cover with the ways to change it (see [Covers](#covers)). One *Save* keeps all of it; *Close* leaves the book as it was. |
+| The foot | Who is reading the book, how far they are and when they last read, with *Reset my reading position* for your own place. The file's format, size and name, and who added it. *Download original file*, *Convert again* and *Delete from library*. |
+
+*Details and cover*, *Convert again* and *Delete from library* are for the uploader of the book or an
+admin. Other readers see the book's cover and details in their place.
+
+*Save* sends only what was changed. A new cover alone leaves the details as the book's file has them,
+so they do not count as edited by hand, and converting the book again can still bring them up to date.
 
 ## Formats
 
@@ -325,8 +341,8 @@ Where the series comes from:
 | The title | "Leviathan Wakes (The Expanse Book 1)", "Caliban's War (The Expanse, #2)", "A Game of Thrones: A Song of Ice and Fire: Book One", "Kvinden i buret (Afdeling Q, bind 1)", "The Expanse 03 - Abaddon's Gate", and for an omnibus "Box Set (The Expanse, #1-3)" or "(The Expanse, Books 1–3)". This is the only place MOBI and text files carry a series. Only explicit forms count (a `#`, or a word such as Book, Volume, Part, Bind or Band before the number), so a title like "Windows 10" is left alone. The series part is removed from the title. |
 
 Series names are matched regardless of case, spacing and quote style, so books from different
-sources end up together. To add books to a series or collection by hand, or to fix one, choose
-*Edit details and series* in a book's menu (the uploader or an admin can). Admins can rename a series
+sources end up together. To add books to a series or collection by hand, or to fix one, use
+*Details and cover* in a book's menu (the uploader or an admin can). Admins can rename a series
 or collection from its page; giving it the name of another one merges the two. Removing one leaves
 its books in the library.
 
@@ -348,7 +364,7 @@ whole names, so "Herbert, Frank" and "Le Guin, Ursula K." stay one author each. 
 menu goes by surname too, with the books without an author last.
 
 A book has one genre, such as Fantasy or Crime, or none. Files bring none, so it is set by hand: under
-*Edit details and series* for one book, or for many at once:
+*Details and cover* in its menu for one book, or for many at once:
 
 1. Press *Select* in the toolbar. Tapping a book now selects it, and tapping a series' stack selects
    all of its books, as does a series or collection in the *Series & collections* tab. With *Group by*
@@ -364,7 +380,7 @@ someone else added stay as they are. Searching finds books by genre too.
 
 ## Looking up details online
 
-*Edit details and series* has a **Look up online** button. It searches
+*Details and cover* in a book's menu has a **Look up online** button. It searches
 [Open Library](https://openlibrary.org), a free book catalogue that needs no account or key, and
 [Hardcover](https://hardcover.app) when the server has a token for it. It looks for the ISBN in the
 book's file (EPUB and MOBI files usually carry one) and for the title and author as they are in the
@@ -373,13 +389,15 @@ the file's ISBN first, each with the catalogue it came from. A book both catalog
 once, from Hardcover, with Open Library filling in a series or cover Hardcover lacks. Choosing a match
 fills in the title, author and series; nothing changes until you press *Save*.
 
-Each match shows its cover and the cover's size in pixels, and the dialog says how large the book's
+Each match shows its cover and the cover's size in pixels, and the menu says how large the book's
 cover is now, so a sharp cover can be told from a small scan. *Cover only* takes just a match's cover
 and leaves the details as they are. A match chosen for its details offers its cover with *Use this
-cover*, ticked when the book has no cover yet and left for you to tick when it has one; a cover taken
-with *Cover only* is ticked, and stays when the details then come from another match. On saving, the
-server fetches the picture and keeps it like a cover picked by hand, so *Change cover* can still go back
-to the book's own. On a wide screen the dialog grows once there are matches, to show them beside the form.
+cover*, ticked when the book has no cover yet and none was chosen by hand in the menu, and left for you
+to tick otherwise; a cover taken with *Cover only* is ticked, and stays when the details then come from
+another match. A cover that is ticked shows in the cover's place, marked as not saved yet. On saving,
+the server fetches the picture and keeps it like a cover picked by hand, so *Use the original cover* can
+still go back to the book's own. On a wide screen the menu grows once there are matches, to show them
+beside the form.
 
 *More covers* under a match from Hardcover shows the covers of the book's other editions, each with its
 size; choosing one takes just that cover, like *Cover only*. Covers of editions marked as being in
@@ -468,8 +486,8 @@ never do, so the library shows the title and author instead.
 A cover is shown whole, at its own proportions: a taller or shorter one stands on the same line as its
 neighbours instead of being cut to a common shape.
 
-To add a cover, or to replace a wrong one, choose *Add a cover* or *Change cover* in a book's menu (the
-uploader or an admin can):
+To add a cover, or to replace a wrong one, use the buttons beside the cover under *Details and cover*
+in a book's menu (the uploader or an admin can):
 
 | Choice | What it does |
 | --- | --- |
@@ -477,6 +495,9 @@ uploader or an admin can):
 | Use page | PDFs only: one of the PDF's pages, the first by default, which is usually the cover. |
 | Use the original cover | Goes back to the cover in the book's file. |
 | Remove cover | Shows the title and author instead of a picture. |
+| Keep the cover as it was | Takes back a choice that is not saved yet. |
+
+The cover chosen shows at once, marked as not saved yet, and *Save* keeps it together with the details.
 
 The browser scales a large picture down to 1200 pixels on its longer side and sends it as a JPEG, so the
 library stays quick on phones and e-readers; a small JPEG or PNG is sent as it is. The server takes

@@ -149,6 +149,39 @@ test('a PDF has no cover until one is added', async () => {
   assert.deepEqual(coverFiles(book.id), []);
 });
 
+test('the cover in the book\'s file can be fetched whatever cover the library shows', async () => {
+  const book = await upload(jens, 'Own.epub', makeEpub({ title: 'Own' }));
+  const own = (c, id) => c(`/books/${id}/cover?source=file`);
+  let r = await own(anna, book.id);
+  assert.equal(r.status, 200, 'a reader who did not add the book can fetch it');
+  assert.equal(r.type, 'image/png');
+  assert.deepEqual(r.data, TINY_PNG);
+
+  // A cover picked by hand is what the library shows, and the book's own stays to be seen.
+  await setCover(jens, book.id, PNG);
+  assert.deepEqual((await anna(`/books/${book.id}/cover`)).data, PNG);
+  r = await own(anna, book.id);
+  assert.equal(r.status, 200);
+  assert.equal(r.type, 'image/png');
+  assert.deepEqual(r.data, TINY_PNG);
+
+  // So it does with no cover shown.
+  await setCover(jens, book.id, { source: 'none' });
+  assert.equal((await anna(`/books/${book.id}/cover`)).status, 404);
+  r = await own(jens, book.id);
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.data, TINY_PNG);
+
+  // A PDF without a cover of its own has none to show, whatever cover it was given.
+  const pdf = await upload(jens, 'Bare.pdf', makePdf([['Another page of text.']]));
+  assert.equal((await own(jens, pdf.id)).status, 404);
+  await setCover(jens, pdf.id, PNG);
+  assert.deepEqual((await jens(`/books/${pdf.id}/cover`)).data, PNG);
+  assert.equal((await own(anna, pdf.id)).status, 404);
+  assert.equal((await own(jens, '0123456789abcdef')).status, 404);
+  assert.equal((await own(client(), book.id)).status, 401);
+});
+
 test('only the uploader or an admin can change a cover, and only to an image', async () => {
   const mine = await upload(anna, 'Annas.epub', makeEpub({ title: 'Annas' }));
   assert.equal((await setCover(anna, mine.id, PNG)).status, 200);

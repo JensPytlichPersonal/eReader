@@ -352,12 +352,20 @@
 :root[data-skin="soft"] .sheet { padding: 22px; border: 0; border-radius: 18px; background: var(--surface); box-shadow: var(--pop-shadow); }
 :root[data-skin="soft"] .sheet hr { margin: 14px 0; border-top: 1px solid var(--line); }
 :root[data-skin="soft"] .sheet .hint { color: var(--muted); }
-:root[data-skin="soft"] .menu { gap: 2px; margin: 0 -10px; }
-:root[data-skin="soft"] .menu .btn { min-height: 42px; padding: 0 12px; border: 0; border-radius: 10px; background: none; font-weight: 500; font-size: 14.5px; }
-:root[data-skin="soft"] .menu .btn:hover { background: var(--surface-2); }
-:root[data-skin="soft"] .menu .btn.danger { color: var(--danger); }
-/* The cover dialog's buttons may wrap, as in app.css */
-:root[data-skin="soft"] .cover-edit .menu > .btn { padding-top: 6px; padding-bottom: 6px; }
+/* A book's menu: hairlines between its three areas, the foot on a tinted ground */
+:root[data-skin="soft"] .sheet.book { --pad: 22px; padding: 0; }
+:root[data-skin="soft"] .sheet-bar { border-bottom: 1px solid var(--line); background: var(--surface); }
+:root[data-skin="soft"] .sheet .area-name { font-family: var(--ui-font); font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+:root[data-skin="soft"] .book-edit { border-top: 1px solid var(--line); }
+/* Buttons whose names may wrap are rounded boxes, not pills */
+:root[data-skin="soft"] .cover-actions .btn,
+:root[data-skin="soft"] .file-actions .btn { border-radius: var(--radius); }
+:root[data-skin="soft"] .file-actions .btn { padding: 4px 6px; }
+:root[data-skin="soft"] .file-actions > :only-child { padding-left: 12px; padding-right: 12px; }
+:root[data-skin="soft"] .book-foot { border-top: 1px solid var(--line); background: var(--surface-2); }
+:root[data-skin="soft"] .book-foot .facts { font-size: 13.5px; }
+:root[data-skin="soft"] .reader-list .pct { color: var(--accent-ink); font-weight: 600; }
+:root[data-skin="soft"] .reader-list .progress { margin-top: 0; }
 :root[data-skin="soft"] .match { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
 :root[data-skin="soft"] .match.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 @media (hover: hover) {
@@ -371,8 +379,17 @@
 :root[data-skin="soft"] .match .cover-choice.chosen .about { color: var(--accent-ink); }
 :root[data-skin="soft"] .copy { border: 1px solid var(--line); border-radius: 12px; }
 :root[data-skin="soft"] .copy:first-child { border-color: var(--accent); }
+/* The cover in a book's menu */
 :root[data-skin="soft"] .cover-preview img.cover { border-radius: 0; filter: var(--cover-drop); }
 :root[data-skin="soft"] .cover-preview .cover.placeholder { border: 0; border-radius: 0; }
+:root[data-skin="soft"] .book-head .cover-preview img.cover { filter: drop-shadow(0 1px 1px rgba(60,40,20,.3)); }
+:root[data-skin="soft"] .cover-preview .size { font-size: 12px; }
+:root[data-skin="soft"] .cover-note { color: var(--accent-ink); font-weight: 600; }
+:root[data-skin="soft"] .cover-page .page-no { font-size: 13px; }
+:root[data-skin="soft"] .cover-actions .cover-page input { height: 34px; }
+@media (hover: none) {
+  :root[data-skin="soft"] .cover-actions .cover-page input { height: 40px; }
+}
 :root[data-skin="soft"] .genre-choices .btn { border-radius: 999px; }
 :root[data-skin="soft"] table.list th,
 :root[data-skin="soft"] table.list td { border-bottom: 1px solid var(--line); }

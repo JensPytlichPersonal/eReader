@@ -406,10 +406,13 @@ export function bookFiles(db, auth, config) {
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.sendFile(path.join(dir, name));
   });
-  // The cover the library shows: one picked by hand, or the one in the book's file.
+  // The cover the library shows: one picked by hand, or the one in the book's file. With ?source=file,
+  // the cover in the book's own file whatever the library shows, so a book's menu can show it before
+  // it is chosen; 404 when the file has none.
   r.get('/:id/cover', (req, res) => {
     if (!/^[a-f0-9]{16}$/.test(req.params.id)) return res.status(404).end();
-    const source = coverSource.get(req.params.id)?.cover_source;
+    const shown = coverSource.get(req.params.id)?.cover_source;
+    const source = shown && req.query.source === 'file' ? 'file' : shown;
     if (source !== 'custom' && source !== 'file') return res.status(404).end();
     const prefix = source === 'custom' ? 'custom-cover.' : 'cover.';
     const dir = path.join(config.booksDir, req.params.id);

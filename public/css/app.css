@@ -376,8 +376,6 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .sheet-backdrop { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,.35); z-index: 20; }
 .sheet { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92vw, 420px); max-height: 90vh; overflow: auto; background: var(--bg); color: var(--fg); border: 2px solid var(--fg); border-radius: var(--radius); padding: 18px; z-index: 21; }
 .sheet h2 { margin-top: 0; }
-.menu { display: flex; flex-direction: column; gap: 8px; }
-.menu .btn { justify-content: flex-start; }
 .sheet hr { border: 0; border-top: 2px solid var(--line); margin: 18px 0; }
 .sheet .hint { font-size: 13px; margin: 6px 0 0; }
 .field > .hint { margin: 0; }
@@ -393,6 +391,45 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .genre-choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
 .genre-choices .btn { white-space: normal; }
 .genre-choices .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+
+/* A book's menu, in three areas: a bar with Open and Close, the details and the cover to change in
+   the middle, and at the foot who is reading the book, its file and what can be done with the file.
+   Each area brings its own padding (--pad), so the bar and the foot reach the edges of the sheet. */
+.sheet.book { --pad: 18px; padding: 0; }
+.sheet.book.editable { width: min(92vw, 460px); }
+.sheet-bar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px var(--pad); background: var(--bg); border-bottom: 2px solid var(--fg); }
+.sheet-bar .btn { min-width: 92px; }
+/* Without Open (a book still being prepared), Close keeps to the right */
+.sheet-bar > :only-child { margin-left: auto; }
+.book-head { display: flex; align-items: flex-start; gap: 14px; padding: 16px var(--pad); }
+/* For a reader who cannot change the book, its cover stands beside its name */
+.book-head .cover-preview { flex: 0 0 84px; }
+.book-head .about { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.book-head h2, .book-head p { margin: 0; overflow-wrap: anywhere; }
+/* The name of an area, like the headings over the library's menus */
+.area-name { margin: 0 0 10px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; line-height: 1.2; color: var(--muted); }
+/* The middle: the cover beside the ways to change it, then the details. One Save keeps both. */
+.book-edit { padding: 16px var(--pad) var(--pad); border-top: 2px solid var(--line); }
+.book-edit .cover-edit { flex-wrap: nowrap; margin-bottom: 18px; }
+.book-edit .save { margin-top: 4px; }
+.book-edit .save .hint { margin: 0; }
+/* The foot: smaller, on the panel colour */
+.book-foot { padding: 14px var(--pad) 18px; border-top: 2px solid var(--fg); background: var(--panel); }
+.book-foot .facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px 28px; margin-bottom: 14px; font-size: 14px; }
+.book-foot .facts p { margin: 0; overflow-wrap: anywhere; }
+.book-foot .area-name { margin-bottom: 8px; }
+.reader-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.reader-list li { display: grid; grid-template-columns: minmax(0, 1fr) 64px 40px 58px; gap: 10px; align-items: center; }
+.reader-list .who { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.reader-list .pct, .reader-list .when { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.reader-list .when { color: var(--muted); }
+.readers .btn { margin-top: 10px; }
+/* Download on the left, Convert again in the middle, Delete on the right; on a narrow sheet their names wrap */
+.file-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.file-actions .btn { white-space: normal; text-align: center; line-height: 1.2; padding: 4px 6px; }
+/* Download alone, for a reader who cannot change the book */
+.file-actions > :only-child { grid-column: 1 / -1; justify-self: start; padding-left: 12px; padding-right: 12px; }
+/* Look up online: the matches found, and what the form takes from them */
 .lookup { margin: -4px 0 14px; }
 .lookup .hint a { font-weight: 600; }
 .matches { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
@@ -422,15 +459,34 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .use-cover .cover { flex: none; width: 40px; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
 .use-cover > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .use-cover .about { font-size: 13px; font-weight: 400; color: var(--muted); }
-/* Desktops: once there are matches, the details dialog grows, with them beside the form (the button
-   stays under the author) and their covers larger. */
+/* Tablets and laptops: the cover in a column of its own beside the details, the author beside the
+   genre, and the title and author on one line, so the form shows whole on a laptop */
+@media (min-width: 700px) {
+  .sheet.book { --pad: 22px; }
+  .sheet.book.editable { width: min(92vw, 680px); }
+  .book-head .about { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
+  /* What went wrong, and the way to its possible duplicates, on lines of their own */
+  .book-head .about > .error, .book-head .about > .flag { flex-basis: 100%; }
+  .book-edit { display: grid; grid-template-columns: 154px minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: repeat(8, auto) 1fr; column-gap: 14px; align-items: start; }
+  .book-edit > * { grid-column: 2 / 4; }
+  .book-edit > .area-name { grid-column: 1 / -1; grid-row: 1; }
+  .book-edit > .cover-edit { grid-column: 1; grid-row: 2 / -1; flex-direction: column; align-items: stretch; margin: 0 14px 0 0; }
+  .book-edit > .f-author { grid-column: 2; grid-row: 3; }
+  .book-edit > .f-genre { grid-column: 3; grid-row: 3; }
+  .book-edit .cover-preview, .book-edit .cover-actions { flex: none; }
+  .book-foot .facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* Laptops: once there are matches the sheet grows, with them in a column of their own and their covers
+   larger; the fields stand under each other again, as the matches take more room than they do */
 @media (min-width: 900px) {
-  .sheet.wide { width: min(94vw, 980px); }
-  .sheet.wide .details { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: repeat(7, auto) 1fr; column-gap: 28px; align-items: start; }
-  .sheet.wide .details > * { grid-column: 1; }
-  .sheet.wide .lookup { display: contents; }
-  .sheet.wide .lookup > .btn { grid-column: 1; justify-self: start; margin: -4px 0 14px; }
-  .sheet.wide .found { grid-column: 2; grid-row: 1 / -1; }
+  .sheet.book.wide { width: min(94vw, 1040px); }
+  .sheet.book.wide .book-edit { grid-template-columns: 140px minmax(0, 5fr) minmax(0, 6fr); column-gap: 28px; }
+  .sheet.book.wide .book-edit > * { grid-column: 2; grid-row: auto; }
+  .sheet.book.wide .book-edit > .area-name { grid-column: 1 / -1; grid-row: 1; }
+  .sheet.book.wide .book-edit > .cover-edit { grid-column: 1; grid-row: 2 / -1; margin-right: 0; }
+  .sheet.book.wide .lookup { display: contents; }
+  .sheet.book.wide .lookup > .btn { grid-column: 2; justify-self: start; margin: -4px 0 14px; }
+  .sheet.book.wide .found { grid-column: 3; grid-row: 2 / -1; }
   .sheet.wide .match { grid-template-columns: 72px minmax(0, 1fr); }
   .sheet.wide .match .cover, .sheet.wide .use-cover .cover { width: 72px; }
 }
@@ -446,7 +502,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .copy .about { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .copy .about.why { color: var(--fg); font-weight: 600; }
 .copy > .row { grid-column: 1 / -1; gap: 6px; }
-/* Cover dialog: the cover as the library shows it, beside the ways to change it */
+/* The cover in a book's menu: as the library shows it, or as it will be once saved, beside the ways to change it */
 .cover-edit { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
 .cover-preview { flex: 0 0 110px; }
 .cover-preview .cover { display: block; width: 100%; }
@@ -454,10 +510,18 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .cover-preview .cover.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 8px; aspect-ratio: 2 / 3; height: auto; text-align: center; overflow: hidden; background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); }
 .cover-preview .cover.placeholder .t { font-weight: 700; font-size: 14px; line-height: 1.2; }
 .cover-preview .cover.placeholder .a { font-size: 12px; color: var(--muted); }
-.cover-edit .menu { flex: 1 1 210px; min-width: 0; }
-.cover-edit .menu > .btn { white-space: normal; text-align: left; padding-top: 6px; padding-bottom: 6px; }
+.cover-preview .size { margin: 6px 0 0; font-size: 12px; line-height: 1.3; color: var(--muted); text-align: center; }
+.cover-actions { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.cover-actions .btn { justify-content: flex-start; white-space: normal; text-align: left; line-height: 1.2; padding-top: 4px; padding-bottom: 4px; }
+/* A page of a PDF as the cover: the number and how many there are keep together, under the button where the room is short */
 .cover-page { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cover-page input { width: 76px; height: var(--ctl); padding: 8px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); text-align: center; }
+.cover-actions .cover-page { gap: 6px; }
+.cover-actions .cover-page .btn { flex: 1 1 auto; }
+.cover-page .page-no { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 14px; }
+.cover-actions .cover-page input { width: 60px; height: 36px; }
+/* A cover chosen but not saved yet */
+.cover-note { margin: 0; font-size: 13px; font-weight: 700; }
 
 /* Tables */
 table.list { width: 100%; border-collapse: collapse; }
