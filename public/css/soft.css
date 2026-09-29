@@ -256,9 +256,12 @@
   :root[data-skin="soft"] .card:hover .menu-btn,
   :root[data-skin="soft"] .card:focus-within .menu-btn,
   :root[data-skin="soft"] .card .menu-btn:focus-visible { opacity: 1; }
+  /* The middle of a stack's top cover, which sits below and left of the sheets behind it */
+  :root[data-skin="soft"] .card.pile > .menu-btn { top: calc(50% + var(--edge, 8px) / 2); left: calc(50% - var(--edge, 8px) / 2); }
 }
 @media (hover: none) {
   :root[data-skin="soft"] .card .menu-btn { width: 36px; height: 36px; font-size: 20px; top: auto; bottom: 8px; right: 8px; }
+  :root[data-skin="soft"] .card.pile > .menu-btn { right: calc(var(--edge, 8px) + 8px); }
 }
 :root[data-skin="soft"] .card .cover-tag,
 :root[data-skin="soft"] .shelf-book .cover-tag {

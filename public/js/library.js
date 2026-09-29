@@ -396,11 +396,15 @@ function stackCard(g) {
   const pct = groupPct(g);
   // While choosing books, a stack's tick sits at the foot of its top cover, clear of the number of books.
   const tick = selecting ? TICK : '';
+  // The options of the book on top, so a book you only opened can be reset from its stack (the Reading filter shows no single books).
+  const top = place.item?.book;
+  const menu = top && !selecting ? `<button class="menu-btn" aria-label="Options for ${escapeHtml(top.title)}" data-menu="${top.id}">&#8943;</button>` : '';
   // The number of books: a line above the cover in the soft look, a tag on the cover in the e-ink look (see the stylesheets).
   return `<div class="card group${n > 1 ? ' pile' : ''}${chosenClass(g.items.map((i) => i.book.id))}">
     <div class="count">${plural(n, 'book', 'books')}</div>
     ${n > 1 ? `<div class="stack">${cover}${tick}</div>` : `${cover}${tick}`}<span class="cover-tag">${plural(n, 'book', 'books')}</span>
     ${seriesOpener(g, `${g.name}, ${plural(n, 'book', 'books')}`)}
+    ${menu}
     <div class="info">
       <div class="title">${escapeHtml(g.name)}</div>
       <div class="author">${escapeHtml(g.author)}</div>
