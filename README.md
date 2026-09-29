@@ -387,20 +387,19 @@ book's file (EPUB and MOBI files usually carry one) and for the title and author
 form, so a messy title can be tidied before looking up. Up to five matches are listed, the one with
 the file's ISBN first, each with the catalogue it came from. A book both catalogues have is listed
 once, from Hardcover, with Open Library filling in a series or cover Hardcover lacks. Choosing a match
-fills in the title, author and series; nothing changes until you press *Save*.
+fills in the title, author and series and leaves the cover alone, also when the book has none; nothing
+changes until you press *Save*.
 
 Each match shows its cover and the cover's size in pixels, and the menu says how large the book's
-cover is now, so a sharp cover can be told from a small scan. *Cover only* takes just a match's cover
-and leaves the details as they are. A match chosen for its details offers its cover with *Use this
-cover*, ticked when the book has no cover yet and none was chosen by hand in the menu, and left for you
-to tick otherwise; a cover taken with *Cover only* is ticked, and stays when the details then come from
-another match. A cover that is ticked shows in the cover's place, marked as not saved yet. On saving,
-the server fetches the picture and keeps it like a cover picked by hand, so *Use the original cover* can
-still go back to the book's own. On a wide screen the menu grows once there are matches, to show them
-beside the form.
+cover is now, so a sharp cover can be told from a small scan. *Use cover* takes a match's cover and
+leaves the details as they are. The cover taken shows in the cover's place, marked as not saved yet,
+and *Use cover* on another match takes that one instead. Choosing a match for its details afterwards
+leaves the cover taken as it is. On saving, the server fetches the picture and keeps it like a cover
+picked by hand, so *Use the original cover* can still go back to the book's own. On a wide screen the
+menu grows once there are matches, to show them beside the form.
 
 *More covers* under a match from Hardcover shows the covers of the book's other editions, each with its
-size; choosing one takes just that cover, like *Cover only*. Covers of editions marked as being in
+size; choosing one takes just that cover, like *Use cover*. Covers of editions marked as being in
 another language than the book are left out, so an English book is not offered the Finnish edition's
 cover; editions without a language set are offered. The book's language is the one its file gives, else
 that of the edition Hardcover shows the book with. A match's own cover follows the same rule: a Danish

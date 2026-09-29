@@ -372,7 +372,6 @@
   :root[data-skin="soft"] .match:hover { border-color: var(--line-2); }
 }
 :root[data-skin="soft"] .match .cover,
-:root[data-skin="soft"] .use-cover .cover,
 :root[data-skin="soft"] .cover-choice img,
 :root[data-skin="soft"] .copy .cover { border: 0; border-radius: 3px; box-shadow: 0 1px 2px rgba(60,40,20,.25); }
 :root[data-skin="soft"] .cover-choice.chosen { background: var(--accent-soft); }
