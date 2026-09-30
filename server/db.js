@@ -87,6 +87,14 @@ CREATE TABLE IF NOT EXISTS book_series (
 );
 CREATE INDEX IF NOT EXISTS book_series_series ON book_series(series_id);
 
+-- Books a series lacks that an admin removed as shown wrongly: no dashed outline shows at that number,
+-- whether a gap in the numbers or a book Hardcover lists (see public/js/missing.js).
+CREATE TABLE IF NOT EXISTS missing_removed (
+  series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (series_id, position)
+);
+
 CREATE TABLE IF NOT EXISTS progress (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,

@@ -206,3 +206,37 @@ test('books converted before series support get their series without converting 
   assert.equal(converted(second.id), before, 'read the details only, no reconversion');
   assert.deepEqual(await processor.backfillMetadata(), { checked: 0, found: 0 });
 });
+
+test('an admin removes a missing book from a series, and shows it again', async () => {
+  const first = await upload(jens, 'culture-1.epub', makeEpub({ title: 'Consider Phlebas', metadata: calibre('Culture', '1') }));
+  await upload(jens, 'culture-4.epub', makeEpub({ title: 'Use of Weapons', metadata: calibre('Culture', '4') }));
+  const id = first.series[0].id;
+  const removed = (position) => `/api/series/${id}/removed/${position}`;
+  let r = await jens('/api/books');
+  assert.equal(r.data.removedMissing[id], undefined);
+
+  r = await jens(removed(3), { method: 'PUT' });
+  assert.deepEqual([r.status, r.data], [200, { removed: [3] }]);
+  r = await jens(removed(2), { method: 'PUT' });
+  assert.deepEqual(r.data, { removed: [2, 3] });
+  // Every reader's library leaves them out.
+  r = await anna('/api/books');
+  assert.deepEqual(r.data.removedMissing[id], [2, 3]);
+
+  // Only admins, only whole numbers from 1, only series that exist.
+  assert.equal((await anna(removed(2), { method: 'DELETE' })).status, 403);
+  assert.equal((await anna(removed(5), { method: 'PUT' })).status, 403);
+  for (const bad of ['0', '2.5', '-1', 'abc', '123456']) {
+    r = await jens(removed(bad), { method: 'PUT' });
+    assert.equal(r.status, 400, bad);
+    assert.match(r.data.error, /whole number/);
+  }
+  assert.equal((await jens('/api/series/99999/removed/3', { method: 'PUT' })).status, 404);
+  assert.equal((await jens('/api/series/abc/removed/3', { method: 'DELETE' })).status, 404);
+
+  r = await jens(removed(2), { method: 'DELETE' });
+  assert.deepEqual([r.status, r.data], [200, { removed: [3] }]);
+  r = await jens(removed(2), { method: 'DELETE' });
+  assert.deepEqual(r.data, { removed: [3] }, 'showing one that shows already changes nothing');
+  assert.deepEqual((await anna('/api/books')).data.removedMissing[id], [3]);
+});

@@ -25,6 +25,12 @@ export function createSeriesStore(db) {
       WHERE series_id = ? AND position IS NULL`),
     moveBooks: db.prepare('INSERT OR IGNORE INTO book_series (book_id, series_id, position, position_end) SELECT book_id, ?, position, position_end FROM book_series WHERE series_id = ?'),
     markEdited: db.prepare('UPDATE books SET edited_at = ? WHERE id IN (SELECT book_id FROM book_series WHERE series_id = ?)'),
+    // The numbers at which an admin removed a book a series lacks (see missing_removed in db.js).
+    removedAll: db.prepare('SELECT series_id, position FROM missing_removed ORDER BY series_id, position'),
+    removedIn: db.prepare('SELECT position FROM missing_removed WHERE series_id = ? ORDER BY position'),
+    removeMissing: db.prepare('INSERT OR IGNORE INTO missing_removed (series_id, position) VALUES (?, ?)'),
+    restoreMissing: db.prepare('DELETE FROM missing_removed WHERE series_id = ? AND position = ?'),
+    moveRemoved: db.prepare('INSERT OR IGNORE INTO missing_removed (series_id, position) SELECT ?, position FROM missing_removed WHERE series_id = ?'),
   };
 
   // positionEnd only for a range, so a single number reads as it always has: { id, name, position }.
@@ -57,9 +63,17 @@ export function createSeriesStore(db) {
     return out;
   }
 
+  /** The numbers removed from the books each series lacks, as { [series id]: [numbers, lowest first] }, for the whole library. */
+  function removedMissing() {
+    const out = {};
+    for (const r of stmts.removedAll.all()) (out[r.series_id] ||= []).push(r.position);
+    return out;
+  }
+
   /**
    * Renames a series. When another series already has the new name, this one is merged into it
-   * (which keeps its name). Books in it count as edited by hand, so converting them again keeps the change.
+   * (which keeps its name), and so are the missing books removed from it. Books in it count as edited
+   * by hand, so converting them again keeps the change.
    * @returns {number} id of the renamed (or merged into) series
    */
   function rename(id, name) {
@@ -74,6 +88,7 @@ export function createSeriesStore(db) {
       }
       stmts.fillPositions.run(id, other.id);
       stmts.moveBooks.run(other.id, id);
+      stmts.moveRemoved.run(other.id, id);
       stmts.delete.run(id);
       return other.id;
     });
@@ -98,6 +113,13 @@ export function createSeriesStore(db) {
     setForBook,
     rename,
     remove,
+    removedMissing,
+    /** The numbers removed from the books a series lacks, lowest first. */
+    removed: (id) => stmts.removedIn.all(id).map((r) => r.position),
+    /** Stops showing the book a series lacks at this whole number, as it is shown wrongly. Removing it twice changes nothing. */
+    removeMissing: (id, position) => { stmts.removeMissing.run(id, position); },
+    /** Shows the book a series lacks at this number again. */
+    restoreMissing: (id, position) => { stmts.restoreMissing.run(id, position); },
     /** Drops series no book belongs to any more (after books are deleted). */
     prune: () => stmts.prune.run(),
   };

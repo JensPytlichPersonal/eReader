@@ -320,6 +320,8 @@
 :root[data-skin="soft"] .missing .cover-tag { border: 1px dashed var(--line-2); background: none; color: var(--muted); -webkit-backdrop-filter: none; backdrop-filter: none; }
 :root[data-skin="soft"] .missing .title,
 :root[data-skin="soft"] .missing .cover.placeholder { color: var(--muted); }
+/* An admin's options button on an outline is as quiet as its number: a dashed ring, not the dark disc made to show on a picture */
+:root[data-skin="soft"] :is(.card, .shelf-book).missing .menu-btn { border: 1px dashed var(--line-2); background: var(--bg); color: var(--muted); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 /* ---- Choosing books (Select) ---- */
 :root[data-skin="soft"] .check { border: 0; background: var(--tag-bg); color: var(--tag-fg); box-shadow: 0 0 0 1px rgba(255,255,255,.3), 0 2px 8px rgba(0,0,0,.35); }
@@ -352,6 +354,10 @@
 :root[data-skin="soft"] .sheet { padding: 22px; border: 0; border-radius: 18px; background: var(--surface); box-shadow: var(--pop-shadow); }
 :root[data-skin="soft"] .sheet hr { margin: 14px 0; border-top: 1px solid var(--line); }
 :root[data-skin="soft"] .sheet .hint { color: var(--muted); }
+/* The missing books removed from a series, between hairlines */
+:root[data-skin="soft"] .removed-list { border-top: 1px solid var(--line); }
+:root[data-skin="soft"] .removed-list li { border-bottom: 1px solid var(--line); }
+:root[data-skin="soft"] .removed-list .name { font-weight: 500; }
 /* A book's menu: hairlines between its three areas, the foot on a tinted ground */
 :root[data-skin="soft"] .sheet.book { --pad: 22px; padding: 0; }
 :root[data-skin="soft"] .sheet-bar { border-bottom: 1px solid var(--line); background: var(--surface); }

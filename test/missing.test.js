@@ -99,6 +99,20 @@ test('the library shows gaps in the numbers, and what Hardcover lists in their p
   assert.deepEqual(order([book('one', 1), book('omnibus', 4, 6)], [2, 3, 7]), ['one', '#2', '#3', 'omnibus', '#7']);
 });
 
+test('no book shows as missing at a number an admin removed', () => {
+  assert.deepEqual(gaps(at(1, 5), { removed: [3] }), [2, 4]);
+  assert.deepEqual(gaps(at(1, 4), { removed: [2, 3] }), []);
+  // A number a book holds, or one past the highest, changes nothing.
+  assert.deepEqual(gaps(at(1, 4), { removed: [1, 9] }), [2, 3]);
+
+  const answer = { series: { name: 'The Expanse', url: expanse.url }, missing: missingBooks(expanse, [{ title: 'Leviathan Wakes', position: 1 }, { title: 'Cibola Burn', position: 4 }]) };
+  // Whether the outline is a gap or a book Hardcover lists, also after the last one the library has.
+  assert.deepEqual(toShow(at(1, 4), null, { removed: [2] }), [{ position: 3 }]);
+  assert.deepEqual(toShow(at(1, 4), answer, { removed: [3] }).map((m) => [m.position, m.title]), [[2, "Caliban's War"]]);
+  assert.deepEqual(toShow(at(1, 4), answer, { all: true, removed: [3, 10] }).map((m) => m.position), [2, 9]);
+  assert.deepEqual(toShow(at(1, 4), { series: null, missing: [] }, { all: true, removed: [2, 3] }), []);
+});
+
 test('Hardcover is asked once a day for a series, one lookup at a time', async () => {
   const asked = [];
   let reply = async () => [expanse];

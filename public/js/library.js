@@ -33,6 +33,8 @@ const els = {
 };
 let me = null;
 let books = [];
+// The numbers at which an admin removed a book a series lacks, by series id: no outline shows there (see missing.js).
+let removedMissing = {};
 let offline = false; // no connection: showing the books from the last time, with `kept` the ones this device can open
 let kept = new Set();
 let pollTimer = null;
@@ -92,12 +94,13 @@ async function load({ quiet = false } = {}) {
   offline = false;
   const before = books;
   books = data.books;
+  removedMissing = data.removedMissing || {};
   supported = new Set(data.supported);
   const ids = new Set(books.map((b) => b.id));
   for (const id of selected) if (!ids.has(id)) selected.delete(id); // deleted meanwhile
-  try { if (me) localStorage.setItem(SAVED, JSON.stringify({ me, books })); } catch { /* storage full */ }
+  try { if (me) localStorage.setItem(SAVED, JSON.stringify({ me, books, removedMissing })); } catch { /* storage full */ }
   const processing = books.some((b) => b.status === 'processing');
-  const fresh = JSON.stringify(books);
+  const fresh = JSON.stringify([books, removedMissing]);
   if (!quiet || wasOffline) render();
   else if (fresh !== shownBooks && !(processing && swapReady(before))) render();
   else if (!processing && !settled) render();
@@ -143,6 +146,7 @@ async function showOffline() {
       return;
     }
     ({ me, books } = saved);
+    removedMissing = saved.removedMissing || {};
   }
   const here = 'caches' in window ? await Promise.all(books.map((b) => caches.match(`/books/${b.id}/book.json`).then((hit) => hit && b.id, () => null))) : [];
   kept = new Set(here.filter(Boolean));
@@ -360,16 +364,24 @@ let renderSoon = null;
 
 /**
  * The books a series lacks, in order (see missingBooks() in missing.js), `all` of them for the series'
- * own page. The server is asked what Hardcover lists the first time and when the series' books change:
- * for its page always, for a shelf only when there are gaps to put titles to.
+ * own page, leaving out those an admin removed. The server is asked what Hardcover lists the first time
+ * and when the series' books change: for its page always, for a shelf only when there are gaps left to
+ * put titles to.
  */
 function lacking(g, { all = false } = {}) {
   if (!g.numbered) return [];
+  const removed = removedMissing[g.id] || [];
   const key = `${g.name}\n${g.items.map((i) => `${i.book.id}@${numberIn(i)}`).join(' ')}`;
   const known = catalogued.get(g.id);
   const outdated = !known || known.key !== key || (known.failed && Date.now() - known.at > RETRY);
-  if (outdated && !known?.asking && !offline && (all || gaps(g.items)?.length)) askCatalogue(g.id, key);
-  return missingBooks(g.items, known?.answer, { all });
+  if (outdated && !known?.asking && !offline && (all || gaps(g.items, { removed })?.length)) askCatalogue(g.id, key);
+  return missingBooks(g.items, known?.answer, { all, removed });
+}
+
+/** The book a series lacks at a number, with its title, author and link when Hardcover lists it, else only its number. */
+function listedMissing(seriesId, position) {
+  const answer = catalogued.get(seriesId)?.answer;
+  return (answer?.series && answer.missing.find((m) => m.position === position)) || { position };
 }
 
 function askCatalogue(id, key) {
@@ -391,10 +403,16 @@ const missingCover = (m) => `<div class="cover placeholder">${m.title ? `<div cl
 // A book Hardcover lists opens there, in another tab.
 const missingLink = (m) => (m.url ? `<a class="link" href="${escapeHtml(m.url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(`#${m.position} ${m.title}, ${missingState(m).toLowerCase()}: see it on Hardcover`)}"></a>` : '');
 const missingMeta = (m) => (m.title ? `<div class="meta"><span>${missingState(m)}</span>${m.url ? '<span class="badge">Hardcover</span>' : ''}</div>` : '');
+// "#3 Abaddon's Gate", or "#3" when only the number is known.
+const missingName = (m) => `#${m.position}${m.title ? ` ${m.title}` : ''}`;
+// For admins, the options of a book the series lacks, where one shown wrongly is removed (see missingOptions()).
+// It comes after the link to Hardcover, so it sits above it.
+const missingMenu = (m, seriesId) => (me.isAdmin && !selecting
+  ? `<button class="menu-btn" aria-label="${escapeHtml(`Options for ${missingName(m)}`)}" data-missing-menu="${seriesId}:${m.position}">&#8943;</button>` : '');
 
-/** A book the series lacks (see lacking()) as a dashed outline in its place. */
-function missingCard(m) {
-  if (display === 'list') return missingRow(m);
+/** A book series `seriesId` lacks (see lacking()) as a dashed outline in its place. */
+function missingCard(m, seriesId) {
+  if (display === 'list') return missingRow(m, seriesId);
   return `<div class="card missing">
     ${missingCover(m)}<span class="cover-tag">#${m.position}</span>${missingLink(m)}
     <div class="info">
@@ -402,11 +420,12 @@ function missingCard(m) {
       ${m.title ? `<div class="author">${escapeHtml(m.author)}</div>` : ''}
       ${missingMeta(m)}
     </div>
+    ${missingMenu(m, seriesId)}
   </div>`;
 }
 
 /** A book the series lacks as a row of the list view. */
-function missingRow(m) {
+function missingRow(m, seriesId) {
   return `<div class="list-row missing">
     <div class="thumb">${missingCover(m)}</div>
     ${missingLink(m)}
@@ -415,12 +434,14 @@ function missingRow(m) {
       ${m.author ? `<div class="about">${escapeHtml(m.author)}</div>` : ''}
       ${missingMeta(m)}
     </div>
+    ${missingMenu(m, seriesId)}
   </div>`;
 }
 
 /** A book the series lacks on its shelf. */
-const missingShelfBook = (m) => `<div class="shelf-book missing">
+const missingShelfBook = (m, seriesId) => `<div class="shelf-book missing">
     ${missingCover(m)}<span class="cover-tag">#${m.position}</span>${missingLink(m)}
+    ${missingMenu(m, seriesId)}
     ${m.title ? `<div class="title">${escapeHtml(m.title)}</div>` : ''}
     <div class="state">${missingState(m)}</div>
   </div>`;
@@ -495,8 +516,8 @@ function shelf(g) {
   const current = (i) => i === place.item && g.state !== 'unread';
   const items = inOrder(g.items, lacking(g));
   const books = display === 'list'
-    ? tiles(items.map((i) => (i.missing ? missingRow(i.missing) : bookRow(i.book, { seriesId: g.id, position: numberIn(i), current: current(i) }))).join(''))
-    : `<div class="shelf-row">${items.map((i) => (i.missing ? missingShelfBook(i.missing) : shelfBook(i, current(i)))).join('')}</div>`;
+    ? tiles(items.map((i) => (i.missing ? missingRow(i.missing, g.id) : bookRow(i.book, { seriesId: g.id, position: numberIn(i), current: current(i) }))).join(''))
+    : `<div class="shelf-row">${items.map((i) => (i.missing ? missingShelfBook(i.missing, g.id) : shelfBook(i, current(i)))).join('')}</div>`;
   // In a section of the Group by menu, a shelf's heading comes under the section's.
   const h = groupBy === 'none' ? 'h2' : 'h3';
   return `<section class="shelf">
@@ -552,7 +573,7 @@ function renderSeries(id) {
         ${me.isAdmin ? `<button class="btn" data-edit-series="${g.id}">Rename or remove</button>` : ''}
       </div>
     </div>
-    ${tiles(inOrder(g.items, missing).map((i) => (i.missing ? missingCard(i.missing) : card(i.book, { seriesId: g.id, position: numberIn(i) }))).join(''))}`;
+    ${tiles(inOrder(g.items, missing).map((i) => (i.missing ? missingCard(i.missing, g.id) : card(i.book, { seriesId: g.id, position: numberIn(i) }))).join(''))}`;
 }
 
 // Under a section of the Group by menu, a heading is one level down.
@@ -1757,12 +1778,17 @@ async function coverImage(file) {
   }
 }
 
-/** Rename (or merge) and remove a whole series or collection. Admins only. */
+// The missing books removed from a series (see missingOptions()), each with a button that shows it again.
+const removedItems = (id, numbers) => numbers.map((n) => `<li><span class="name">${escapeHtml(missingName(listedMissing(id, n)))}</span>
+  <button class="btn small" type="button" data-restore="${n}">Show again</button></li>`).join('');
+
+/** Rename (or merge) and remove a whole series or collection, and show again the missing books removed from it. Admins only. */
 function editSeries(id) {
   const g = groupSeries().find((x) => x.id === id);
   if (!g) return;
   const kind = g.numbered ? 'series' : 'collection';
   const others = groupSeries().filter((x) => x.id !== id).map((x) => x.name).sort((x, y) => x.localeCompare(y));
+  const removed = removedMissing[id] || [];
   const { root, close } = dialog(`
     <h2>${escapeHtml(g.name)}</h2>
     <form class="details" novalidate>
@@ -1774,6 +1800,12 @@ function editSeries(id) {
       <p class="error hidden" data-error></p>
       <div class="row"><button class="btn primary" type="submit">Rename</button><button class="btn" type="button" data-close>Cancel</button></div>
     </form>
+    ${removed.length ? `<section data-removed>
+      <hr>
+      <h3 class="area-name">Removed from the missing books</h3>
+      <ul class="removed-list">${removedItems(id, removed)}</ul>
+      <p class="muted hint">Nothing shows as missing at these numbers.</p>
+    </section>` : ''}
     <hr>
     <button class="btn danger" type="button" data-remove-series>Remove this ${kind}</button>
     <p class="muted hint">Its ${plural(g.items.length, 'book stays', 'books stay')} in the library.</p>`);
@@ -1798,6 +1830,49 @@ function editSeries(id) {
       openedHere = false;
       history.replaceState(null, '', '/');
       await load();
+    } catch (err) { toast(err.message); }
+  });
+  root.querySelector('[data-removed]')?.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('[data-restore]');
+    if (!btn) return;
+    const position = Number(btn.dataset.restore);
+    try {
+      const { removed: left } = await api(`/api/series/${id}/removed/${position}`, { method: 'DELETE' });
+      removedMissing[id] = left;
+      render();
+      // The dialog stays open, for the name and the others; the list follows what the server says is left.
+      if (left.length) root.querySelector('.removed-list').innerHTML = removedItems(id, left);
+      else root.querySelector('[data-removed]').remove();
+      toast(`${missingName(listedMissing(id, position))} shows as missing again`);
+    } catch (err) { toast(err.message); }
+  });
+}
+
+/**
+ * The options of a book a series lacks: see it on Hardcover, or remove it from the series when it is shown
+ * wrongly. Nothing then shows as missing at its number, a gap or a book Hardcover lists, until Rename or
+ * remove shows it again (see editSeries()). No need to ask first, as it can be undone. Admins only.
+ */
+function missingOptions(seriesId, position) {
+  const g = groupSeries().find((x) => x.id === seriesId);
+  if (!g) return;
+  const m = listedMissing(seriesId, position);
+  const { root, close } = dialog(`
+    <h2>${escapeHtml(missingName(m))}</h2>
+    <p class="muted">${[m.author, missingState(m)].filter(Boolean).map(escapeHtml).join(' · ')}</p>
+    <p>Shown by mistake? Remove it from ${escapeHtml(g.name)}, and nothing shows as missing at #${position}. <b>Rename or remove</b> on the series' page shows it again.</p>
+    <div class="row">
+      ${m.url ? `<a class="btn" href="${escapeHtml(m.url)}" target="_blank" rel="noopener">See it on Hardcover</a>` : ''}
+      <button class="btn" type="button" data-remove-missing>Remove from this series</button>
+      <button class="btn" type="button" data-close>Close</button>
+    </div>`);
+  root.querySelector('[data-remove-missing]').addEventListener('click', async () => {
+    try {
+      const { removed } = await api(`/api/series/${seriesId}/removed/${position}`, { method: 'PUT' });
+      removedMissing[seriesId] = removed;
+      close();
+      render();
+      toast(`${missingName(m)} removed from ${g.name}`);
     } catch (err) { toast(err.message); }
   });
 }
@@ -1884,6 +1959,13 @@ els.library.addEventListener('click', (e) => {
   if (dups) {
     const b = books.find((x) => x.id === dups.dataset.dups);
     if (b) compareCopies(b);
+    return;
+  }
+  const lacks = e.target.closest('button[data-missing-menu]');
+  if (lacks) {
+    e.preventDefault();
+    const [seriesId, position] = lacks.dataset.missingMenu.split(':').map(Number);
+    missingOptions(seriesId, position);
     return;
   }
   const btn = e.target.closest('button[data-menu]');
