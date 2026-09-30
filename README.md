@@ -516,6 +516,7 @@ in a book's menu (the uploader or an admin can):
 | Use the original cover | Goes back to the cover in the book's file. |
 | Remove cover | Shows the title and author instead of a picture. |
 | Keep the cover as it was | Takes back a choice that is not saved yet. |
+| Earlier covers | The covers the book had before, small under the buttons, the most recent first. Choose one to use it again. |
 
 The cover chosen shows at once, marked as not saved yet, and *Save* keeps it together with the details.
 
@@ -524,6 +525,11 @@ library stays quick on phones and e-readers; a small JPEG or PNG is sent as it i
 JPEG, PNG, GIF and WebP images of up to 10 MB. A cover picked by hand is stored beside the book as
 `custom-cover.<ext>` and kept when the book is converted again. A cover can also come from Open Library
 or Hardcover (see above).
+A cover picked by hand is not deleted when another takes its place, or when the book goes back to its
+original cover or to none. It moves to a `covers` folder beside the book, and shows under *Earlier
+covers*. Each picture is kept once, however often it comes back, and the one shown is not listed. There
+is no limit on how many are kept. Converting the book again keeps them; deleting the book deletes them.
+
 
 ## How position sync works
 

@@ -517,6 +517,14 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .cover-actions .cover-page input { width: 60px; height: 36px; }
 /* A cover chosen but not saved yet */
 .cover-note { margin: 0; font-size: 13px; font-weight: 700; }
+/* Earlier covers: the covers the book had before, small under the ways to change it, chosen like a match's
+   other covers (.cover-choice). Each is whole, standing on the bottom of its slot like the cover above. */
+.earlier-covers { margin-top: 4px; }
+.earlier-name { margin: 0 0 6px; font-size: 13px; font-weight: 700; }
+.earlier-covers .choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.earlier-covers .cover-choice { width: 54px; }
+.earlier-covers .cover-choice img { aspect-ratio: var(--cover-ratio); height: auto; object-fit: contain; object-position: 50% 100%; background: none; border: 0; border-radius: 0; filter: var(--cover-edge); }
+@media (hover: hover) { .earlier-covers .cover-choice:hover img { filter: var(--cover-ring); } }
 
 /* Tables */
 table.list { width: 100%; border-collapse: collapse; }

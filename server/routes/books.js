@@ -14,6 +14,11 @@ import { fingerprint } from '../duplicates.js';
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
 const COVER_TYPES = ['jpg', 'png', 'gif', 'webp'];
 const MAX_COVER_BYTES = 10 * 1024 * 1024;
+// The covers a book had before, kept in this folder beside it to be used again. Each is named by its
+// content (see earlierName), which is also its id in the API.
+const EARLIER_DIR = 'covers';
+const EARLIER_NAME = new RegExp(`^[a-f0-9]{16}\\.(${COVER_TYPES.join('|')})$`);
+const earlierName = (image, ext) => `${crypto.createHash('sha256').update(image).digest('hex').slice(0, 16)}.${ext}`;
 // The most books changed at once (the whole library, chosen in the app).
 const MAX_BATCH = 10000;
 
@@ -92,10 +97,36 @@ export function bookRoutes(db, auth, config, processor, { series, genres }, look
   const readManifest = async (id) => {
     try { return JSON.parse(await fsp.readFile(path.join(bookDir(id), 'book.json'), 'utf8')); } catch { return null; }
   };
-  const removeCustomCovers = async (id, keep) => {
+  const earlierDir = (id) => path.join(bookDir(id), EARLIER_DIR);
+  // The covers the book had before, most recently put away first: [{ name, time }]. The time of a file
+  // says when it was put away, as putAwayCustomCovers sets it.
+  const earlierCovers = async (id) => {
+    let names = [];
+    try { names = (await fsp.readdir(earlierDir(id))).filter((f) => EARLIER_NAME.test(f)); } catch { return []; }
+    const covers = [];
+    for (const name of names) {
+      try { covers.push({ name, time: (await fsp.stat(path.join(earlierDir(id), name))).mtimeMs }); } catch { /* gone meanwhile */ }
+    }
+    return covers.sort((x, y) => y.time - x.time || x.name.localeCompare(y.name));
+  };
+  // Moves the cover picked by hand into covers/ when it stops being shown, so it can be used again. The
+  // same picture is kept once: put away again, it only moves to the front.
+  const putAwayCustomCovers = async (id) => {
     let files = [];
-    try { files = await fsp.readdir(bookDir(id)); } catch { /* no folder */ }
-    for (const f of files) if (f.startsWith('custom-cover.') && f !== keep) await fsp.rm(path.join(bookDir(id), f), { force: true });
+    try { files = (await fsp.readdir(bookDir(id))).filter((f) => f.startsWith('custom-cover.')); } catch { /* no folder */ }
+    for (const f of files) {
+      const from = path.join(bookDir(id), f);
+      const ext = f.slice('custom-cover.'.length);
+      // Not a picture useCoverImage kept, so nothing to use again.
+      if (!COVER_TYPES.includes(ext)) { await fsp.rm(from, { force: true }); continue; }
+      const to = path.join(earlierDir(id), earlierName(await fsp.readFile(from), ext));
+      // Later than every cover put away before, even within the same millisecond, so the order holds.
+      const newest = (await earlierCovers(id))[0]?.time ?? 0;
+      const when = new Date(Math.max(Date.now(), Math.round(newest) + 1));
+      await fsp.mkdir(earlierDir(id), { recursive: true });
+      await fsp.rename(from, to);
+      await fsp.utimes(to, when, when);
+    }
   };
   // The book's ISBNs: those kept when it was converted, from its file and any OPF file that came with it,
   // else those in its file. EPUB and MOBI files carry them, and reading their details is quick.
@@ -276,23 +307,36 @@ export function bookRoutes(db, auth, config, processor, { series, genres }, look
     res.status(202).json({ book: shapeBook(stmts.get.get(b.id)) });
   });
 
-  // Keeps an image as the cover picked for the book. Checked by content, not by name: an SVG could
-  // carry scripts. False when it is not a JPEG, PNG, GIF or WebP image.
+  // Keeps an image as the cover picked for the book, and puts away the one it replaces. Checked by
+  // content, not by name: an SVG could carry scripts. False when it is not a JPEG, PNG, GIF or WebP image.
   const useCoverImage = async (b, image) => {
     const ext = sniffImage(image);
     if (!COVER_TYPES.includes(ext)) return false;
-    const name = `custom-cover.${ext}`;
-    await removeCustomCovers(b.id, name);
-    await fsp.writeFile(path.join(bookDir(b.id), name), image);
+    await putAwayCustomCovers(b.id);
+    await fsp.writeFile(path.join(bookDir(b.id), `custom-cover.${ext}`), image);
+    // The cover shown is not also one of the earlier covers.
+    await fsp.rm(path.join(earlierDir(b.id), earlierName(image, ext)), { force: true });
     stmts.setCover.run('custom', now(), b.id);
     return true;
   };
 
+  // The covers the book had before, most recently replaced first, for its menu to offer again:
+  // [{ id, url }], with `url` under /books/:id/.
+  r.get('/:id/covers', async (req, res) => {
+    const b = stmts.get.get(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' });
+    if (!req.user.isAdmin && b.added_by !== req.user.id) return res.status(403).json({ error: 'Only the uploader or an admin can change the cover' });
+    const covers = await earlierCovers(b.id);
+    res.json({ covers: covers.map((c) => ({ id: c.name, url: `/books/${b.id}/${EARLIER_DIR}/${c.name}` })) });
+  });
+
   // The cover the library shows. Send an image (JPEG, PNG, GIF or WebP) to use it, or JSON
-  // { source: 'file' } for the cover in the book's own file, { source: 'none' } for no cover, or the
+  // { source: 'file' } for the cover in the book's own file, { source: 'none' } for no cover,
+  // { source: 'earlier', id } for one of the covers it had before (see GET /:id/covers), or the
   // coverSource and coverId of a match from the lookup ({ source: 'openlibrary', coverId }), which
   // the server fetches from that catalogue.
-  // The image is kept apart from the book's own cover, so converting the book again keeps it.
+  // The image is kept apart from the book's own cover, so converting the book again keeps it. The
+  // cover picked by hand before it is kept in covers/ beside it.
   r.put('/:id/cover', express.raw({ type: (req) => !req.is('json'), limit: MAX_COVER_BYTES }), async (req, res) => {
     const b = stmts.get.get(req.params.id);
     if (!b) return res.status(404).json({ error: 'No such book' });
@@ -314,10 +358,18 @@ export function bookRoutes(db, auth, config, processor, { series, genres }, look
       }
       if (!stmts.get.get(b.id)) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
       if (image.length > MAX_COVER_BYTES || !(await useCoverImage(b, image))) return res.status(502).json({ error: 'The catalogue sent something that is not a cover picture' });
+    } else if (source === 'earlier') {
+      const { id } = req.body;
+      if (typeof id !== 'string') return res.status(400).json({ error: 'id must be the id of one of the earlier covers' });
+      // Only a name found in the book's covers/ folder, so an id cannot reach any other file.
+      const found = (await earlierCovers(b.id)).some((c) => c.name === id);
+      const image = found ? await fsp.readFile(path.join(earlierDir(b.id), id)).catch(() => null) : null; // null when gone meanwhile
+      if (!image) return res.status(404).json({ error: 'No such earlier cover' });
+      if (!(await useCoverImage(b, image))) return res.status(415).json({ error: 'The cover must be a JPEG, PNG, GIF or WebP image' });
     } else {
-      if (source !== 'file' && source !== 'none') return res.status(400).json({ error: "Send an image, or a source of 'file', 'none', 'openlibrary' or 'hardcover'" });
+      if (source !== 'file' && source !== 'none') return res.status(400).json({ error: "Send an image, or a source of 'file', 'none', 'earlier', 'openlibrary' or 'hardcover'" });
       stmts.setCover.run(source, now(), b.id);
-      await removeCustomCovers(b.id);
+      await putAwayCustomCovers(b.id);
     }
     const updated = stmts.get.get(b.id);
     if (!updated) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
@@ -389,7 +441,7 @@ const FILE_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; 
 // None of these types is run by a browser.
 const ORIGINAL_FORMATS = ['epub', 'mobi', 'pdf', 'md', 'txt'];
 
-/** Serves converted book files: /books/:id/book.json, sections/N.html, images/*, cover, styles.css, original */
+/** Serves converted book files: /books/:id/book.json, sections/N.html, images/*, cover, covers/* (its earlier covers), styles.css, original */
 export function bookFiles(db, auth, config) {
   const r = Router();
   const coverSource = db.prepare('SELECT cover_source FROM books WHERE id = ?');
