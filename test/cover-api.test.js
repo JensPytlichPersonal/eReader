@@ -89,13 +89,13 @@ test('a cover picked by hand replaces the one in the book and is kept when the b
   assert.deepEqual((await anna(`/books/${book.id}/cover`)).data, PNG);
   assert.deepEqual(coverFiles(book.id), ['cover.png', 'custom-cover.png']);
 
-  // Another image replaces the first, whatever its type.
+  // Another image replaces the first, whatever its type. The first is put away in covers/.
   r = await setCover(jens, book.id, JPEG);
   versions.push(r.data.book.coverVersion);
   r = await anna(`/books/${book.id}/cover`);
   assert.equal(r.type, 'image/jpeg');
   assert.deepEqual(r.data, JPEG);
-  assert.deepEqual(coverFiles(book.id), ['cover.png', 'custom-cover.jpg']);
+  assert.deepEqual(coverFiles(book.id), ['cover.png', 'covers', 'custom-cover.jpg']);
 
   // No cover: the library shows the title instead, and the book's own cover stays for later.
   r = await setCover(jens, book.id, { source: 'none' });
@@ -103,7 +103,7 @@ test('a cover picked by hand replaces the one in the book and is kept when the b
   assert.deepEqual(cover(r.data.book), { hasCover: false, coverSource: 'none', fileHasCover: true });
   versions.push(r.data.book.coverVersion);
   assert.equal((await anna(`/books/${book.id}/cover`)).status, 404);
-  assert.deepEqual(coverFiles(book.id), ['cover.png']);
+  assert.deepEqual(coverFiles(book.id), ['cover.png', 'covers']);
 
   r = await setCover(jens, book.id, { source: 'file' });
   assert.deepEqual(cover(r.data.book), { hasCover: true, coverSource: 'file', fileHasCover: true });
@@ -146,7 +146,7 @@ test('a PDF has no cover until one is added', async () => {
   r = await setCover(jens, book.id, { source: 'file' });
   assert.deepEqual(cover(r.data.book), { hasCover: false, coverSource: 'file', fileHasCover: false });
   assert.equal((await jens(`/books/${book.id}/cover`)).status, 404);
-  assert.deepEqual(coverFiles(book.id), []);
+  assert.deepEqual(coverFiles(book.id), ['covers']);
 });
 
 test('the cover in the book\'s file can be fetched whatever cover the library shows', async () => {
@@ -212,4 +212,148 @@ test('only the uploader or an admin can change a cover, and only to an image', a
   assert.deepEqual(cover(after), { hasCover: true, coverSource: 'file', fileHasCover: true });
   assert.equal(after.coverVersion, theirs.coverVersion);
   assert.deepEqual(coverFiles(theirs.id), ['cover.png']);
+});
+
+// A third picture; the server goes by the first bytes.
+const GIF = Buffer.concat([Buffer.from('GIF89a'), Buffer.alloc(40, 3)]);
+// The covers a book had before, newest first, as its menu loads them; their ids, and their pictures.
+const earlier = async (c, id) => (await c(`/api/books/${id}/covers`)).data.covers;
+const ids = (list) => list.map((e) => e.id);
+const pictures = (list) => Promise.all(list.map(async (e) => (await anna(e.url)).data));
+const earlierFiles = (id) => (fs.existsSync(path.join(dataDir, 'books', id, 'covers')) ? fs.readdirSync(path.join(dataDir, 'books', id, 'covers')).sort() : []);
+
+test('a cover that is replaced is kept, most recent first, and can be used again', async () => {
+  const book = await upload(jens, 'Earlier.epub', makeEpub({ title: 'Earlier' }));
+  assert.deepEqual(await earlier(jens, book.id), []);
+  // The cover in the book's file is not one of them: it stays in the book.
+  await setCover(jens, book.id, PNG);
+  assert.deepEqual(await earlier(jens, book.id), []);
+
+  await setCover(jens, book.id, JPEG);
+  let list = await earlier(jens, book.id);
+  assert.equal(list.length, 1);
+  const png = list[0].id;
+  assert.match(png, /^[a-f0-9]{16}\.png$/);
+  assert.equal(list[0].url, `/books/${book.id}/covers/${png}`);
+  // Any reader can load it, like the book's other files.
+  let r = await anna(list[0].url);
+  assert.equal(r.status, 200);
+  assert.equal(r.type, 'image/png');
+  assert.deepEqual(r.data, PNG);
+
+  // Going back to the book's own cover keeps the one picked by hand, and so does going to none.
+  await setCover(jens, book.id, { source: 'file' });
+  list = await earlier(jens, book.id);
+  const jpg = list[0].id;
+  assert.deepEqual(ids(list), [jpg, png]);
+  assert.deepEqual(await pictures(list), [JPEG, PNG]);
+  await setCover(jens, book.id, PNG);
+  await setCover(jens, book.id, { source: 'none' });
+  assert.deepEqual(ids(await earlier(jens, book.id)), [png, jpg]);
+
+  // Used again, it is the cover picked by hand, with a new address, and not listed while it is shown.
+  const version = (await jens(`/api/books/${book.id}`)).data.book.coverVersion;
+  r = await setCover(jens, book.id, { source: 'earlier', id: jpg });
+  assert.equal(r.status, 200);
+  assert.deepEqual(cover(r.data.book), { hasCover: true, coverSource: 'custom', fileHasCover: true });
+  assert.ok(r.data.book.coverVersion > version);
+  assert.deepEqual((await anna(`/books/${book.id}/cover`)).data, JPEG);
+  assert.deepEqual(ids(await earlier(jens, book.id)), [png]);
+
+  // Another earlier cover swaps places with it.
+  r = await setCover(jens, book.id, { source: 'earlier', id: png });
+  assert.equal(r.status, 200);
+  assert.deepEqual((await anna(`/books/${book.id}/cover`)).data, PNG);
+  assert.deepEqual(ids(await earlier(jens, book.id)), [jpg]);
+  assert.deepEqual(coverFiles(book.id), ['cover.png', 'covers', 'custom-cover.png']);
+
+  // So does the same picture sent again as an image.
+  await setCover(jens, book.id, JPEG);
+  assert.deepEqual(ids(await earlier(jens, book.id)), [png]);
+  assert.deepEqual(earlierFiles(book.id), [png]);
+});
+
+test('each picture is kept once, however often it is put away', async () => {
+  const book = await upload(jens, 'Once.epub', makeEpub({ title: 'Once' }));
+  for (const body of [PNG, JPEG, PNG, JPEG, GIF, { source: 'none' }]) assert.equal((await setCover(jens, book.id, body)).status, 200);
+  let list = await earlier(jens, book.id);
+  assert.deepEqual(await pictures(list), [GIF, JPEG, PNG]);
+  assert.equal(earlierFiles(book.id).length, 3);
+
+  // Put away again, a cover moves to the front.
+  await setCover(jens, book.id, { source: 'earlier', id: list[2].id });
+  await setCover(jens, book.id, { source: 'none' });
+  list = await earlier(jens, book.id);
+  assert.deepEqual(await pictures(list), [PNG, GIF, JPEG]);
+  assert.equal(earlierFiles(book.id).length, 3);
+
+  // As if a save was cut short and left the cover shown among the earlier ones too: put away, it is still kept once.
+  const gif = list[1].id;
+  await setCover(jens, book.id, { source: 'earlier', id: gif });
+  const dir = path.join(dataDir, 'books', book.id);
+  fs.copyFileSync(path.join(dir, 'custom-cover.gif'), path.join(dir, 'covers', gif));
+  fs.utimesSync(path.join(dir, 'covers', gif), new Date(2001, 0, 1), new Date(2001, 0, 1));
+  await setCover(jens, book.id, { source: 'none' });
+  assert.deepEqual(await pictures(await earlier(jens, book.id)), [GIF, PNG, JPEG]);
+  assert.equal(earlierFiles(book.id).length, 3);
+});
+
+test('only the uploader or an admin can see and use the earlier covers, and only the book\'s own', async () => {
+  const theirs = await upload(jens, 'Guarded.epub', makeEpub({ title: 'Guarded' }));
+  await setCover(jens, theirs.id, PNG);
+  await setCover(jens, theirs.id, JPEG);
+  const [png] = await earlier(jens, theirs.id);
+  let r = await anna(`/api/books/${theirs.id}/covers`);
+  assert.equal(r.status, 403);
+  assert.match(r.data.error, /uploader or an admin/);
+  assert.equal((await setCover(anna, theirs.id, { source: 'earlier', id: png.id })).status, 403);
+  assert.equal((await client()(`/api/books/${theirs.id}/covers`)).status, 401);
+  assert.equal((await jens('/api/books/0123456789abcdef/covers')).status, 404);
+
+  const mine = await upload(anna, 'Annas own.epub', makeEpub({ title: 'Annas own' }));
+  await setCover(anna, mine.id, GIF);
+  await setCover(anna, mine.id, PNG);
+  r = await anna(`/api/books/${mine.id}/covers`);
+  assert.equal(r.status, 200);
+  const [gif] = r.data.covers;
+  assert.deepEqual(await earlier(jens, mine.id), r.data.covers, 'an admin sees them too');
+
+  const version = (await jens(`/api/books/${theirs.id}`)).data.book.coverVersion;
+  for (const id of [undefined, 5, null, [png.id]]) {
+    r = await setCover(jens, theirs.id, { source: 'earlier', id });
+    assert.equal(r.status, 400);
+    assert.match(r.data.error, /earlier covers/);
+  }
+  // Only a name among the book's earlier covers: no other file of the book, and nothing outside it.
+  const others = ['', 'custom-cover.jpg', 'cover.png', 'book.json', '../cover.png', `covers/${png.id}`, `./${png.id}`, `${png.id}/`,
+    png.id.toUpperCase(), '0123456789abcdef.png', `../../${mine.id}/covers/${gif.id}`, gif.id];
+  for (const id of others) {
+    r = await setCover(jens, theirs.id, { source: 'earlier', id });
+    assert.equal(r.status, 404, id);
+    assert.equal(r.data.error, 'No such earlier cover');
+  }
+  // The address of an earlier cover cannot reach past the book's folder either.
+  assert.equal((await jens(`/books/${theirs.id}/covers/..%2F..%2F${mine.id}%2Fcustom-cover.png`)).status, 404);
+
+  // Nothing above changed it.
+  const after = (await jens(`/api/books/${theirs.id}`)).data.book;
+  assert.equal(after.coverVersion, version);
+  assert.deepEqual(ids(await earlier(jens, theirs.id)), [png.id]);
+  assert.deepEqual(coverFiles(theirs.id), ['cover.png', 'covers', 'custom-cover.jpg']);
+  assert.deepEqual((await jens(`/books/${theirs.id}/cover`)).data, JPEG);
+});
+
+test('converting a book again keeps its earlier covers, and deleting it deletes them', async () => {
+  const book = await upload(jens, 'Kept.epub', makeEpub({ title: 'Kept' }));
+  await setCover(jens, book.id, PNG);
+  await setCover(jens, book.id, JPEG);
+  const before = await earlier(jens, book.id);
+  assert.equal((await jens(`/api/books/${book.id}/reprocess`, { method: 'POST' })).status, 202);
+  assert.equal((await waitReady(book.id)).status, 'ready');
+  assert.deepEqual(await earlier(jens, book.id), before);
+  assert.deepEqual(await pictures(before), [PNG]);
+  assert.deepEqual((await jens(`/books/${book.id}/cover`)).data, JPEG);
+
+  assert.equal((await jens(`/api/books/${book.id}`, { method: 'DELETE' })).status, 200);
+  assert.equal(fs.existsSync(path.join(dataDir, 'books', book.id)), false);
 });

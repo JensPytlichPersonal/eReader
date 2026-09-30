@@ -1345,6 +1345,10 @@ function bookFormHtml(b) {
         <button type="button" class="btn small" data-undo>Keep the cover as it was</button>
         ${matchMedia('(pointer: fine)').matches ? '<p class="muted hint">Or paste an image, or drop one on the page.</p>' : ''}
         <p class="muted hint hidden" data-busy></p>
+        <div class="earlier-covers hidden" role="group" aria-labelledby="ed-earlier">
+          <p class="earlier-name" id="ed-earlier">Earlier covers</p>
+          <div class="choices" data-earlier></div>
+        </div>
       </div>
     </div>
     <div class="field f-title"><label for="ed-title">Title</label><input id="ed-title" name="title" value="${escapeHtml(b.title)}" maxlength="500"></div>
@@ -1385,6 +1389,7 @@ function editBook(b, root, close) {
   const note = form.querySelector('[data-note]');
   const busyNote = form.querySelector('[data-busy]');
   const fileInput = form.querySelector('[data-file]');
+  const earlierList = form.querySelector('[data-earlier]');
   const fail = (message) => { error.textContent = message; error.classList.remove('hidden'); };
 
   // What the form says, read as it is drawn and again on Save, which sends what differs.
@@ -1401,6 +1406,7 @@ function editBook(b, root, close) {
   let pending = null; // the cover the book gets when saved, null to leave it: { src, source, says, body }
   let busy = false; // a picture is being prepared
   let saving = false;
+  let earlier = []; // the covers the book had before, most recent first: [{ id, url }]
   const lookup = lookUpOnline(root, form, { book: () => b, matchCover });
 
   // The cover area, from the cover to be saved or else the book's own: the picture, its size, the note that it
@@ -1417,6 +1423,28 @@ function editBook(b, root, close) {
     form.querySelector('[data-source="file"]').classList.toggle('hidden', (pending ? pending.source : b.coverSource) === 'file' || !b.fileHasCover);
     form.querySelector('[data-source="none"]').classList.toggle('hidden', !img);
     form.querySelector('[data-undo]').classList.toggle('hidden', !pending);
+    markEarlier();
+  }
+
+  // The covers the book had before, under the ways to change it. Asked for each time the menu opens, so
+  // they follow what was saved.
+  async function loadEarlier() {
+    try {
+      ({ covers: earlier } = await api(`/api/books/${b.id}/covers`));
+    } catch {
+      earlier = [];
+    }
+    if (!root.isConnected) return; // the menu was closed meanwhile
+    earlierList.innerHTML = earlier.map((c, i) => `<button type="button" class="cover-choice" data-earlier-cover="${i}"${busy || saving ? ' disabled' : ''}>
+      <img class="cover" src="${escapeHtml(c.url)}" alt="" loading="lazy"><span class="sr-only">Earlier cover ${i + 1}</span></button>`).join('');
+    earlierList.parentElement.classList.toggle('hidden', !earlier.length);
+    markEarlier();
+  }
+
+  // Marks the earlier cover to be saved, if one is.
+  function markEarlier() {
+    const chosen = pending?.body?.source === 'earlier' ? pending.body.id : null;
+    for (const btn of earlierList.children) btn.classList.toggle('chosen', earlier[Number(btn.dataset.earlierCover)]?.id === chosen);
   }
 
   // Every change of the cover to be saved comes through here, which lets go of a picture no longer shown.
@@ -1475,6 +1503,7 @@ function editBook(b, root, close) {
   }
   coverEditor = { root, useFile };
   showCover();
+  loadEarlier();
 
   form.addEventListener('click', (ev) => {
     if (ev.target.closest('[data-add-row]')) addSeriesRow(rows).querySelector('input').focus();
@@ -1488,6 +1517,8 @@ function editBook(b, root, close) {
     const source = ev.target.closest('[data-source]')?.dataset.source;
     if (source === 'file') chooseCover(b.coverSource === 'file' ? null : { src: `/books/${b.id}/cover?source=file&v=${b.convertedAt}`, source: 'file', says: 'The original cover', body: { source: 'file' } });
     if (source === 'none') chooseCover(b.hasCover ? { src: null, source: 'none', says: 'No cover', body: { source: 'none' } } : null);
+    const again = earlier[Number(ev.target.closest('[data-earlier-cover]')?.dataset.earlierCover)];
+    if (again) chooseCover({ src: again.url, source: 'custom', says: 'An earlier cover', body: { source: 'earlier', id: again.id } });
     if (ev.target.closest('[data-undo]')) { setPending(null); lookup.leave(); }
   });
   fileInput.addEventListener('change', () => {
@@ -1535,7 +1566,8 @@ function editBook(b, root, close) {
       await load();
     } catch (err) {
       fail(err.message);
-      if (coverSaved) load(); // the library behind the menu shows the new cover
+      // The library behind the menu shows the new cover, and the menu the covers it replaced.
+      if (coverSaved) { load(); loadEarlier(); }
     } finally {
       saving = false;
       lock(false);
