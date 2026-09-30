@@ -357,11 +357,16 @@
 :root[data-skin="soft"] .sheet-bar { border-bottom: 1px solid var(--line); background: var(--surface); }
 :root[data-skin="soft"] .sheet .area-name { font-family: var(--ui-font); font-size: 11px; font-weight: 600; letter-spacing: .08em; }
 :root[data-skin="soft"] .book-edit { border-top: 1px solid var(--line); }
-/* Buttons whose names may wrap are rounded boxes, not pills */
-:root[data-skin="soft"] .cover-actions .btn,
-:root[data-skin="soft"] .file-actions .btn { border-radius: var(--radius); }
-:root[data-skin="soft"] .file-actions .btn { padding: 4px 6px; }
-:root[data-skin="soft"] .file-actions > :only-child { padding-left: 12px; padding-right: 12px; }
+/* Every button in a book's menu is a rounded box like the foot's, not a pill, as their names may wrap */
+:root[data-skin="soft"] .sheet.book .btn { border-radius: var(--radius); padding: 4px 12px; }
+:root[data-skin="soft"] .sheet.book :is(.sheet-bar, .file-actions) .btn { padding: 4px 6px; }
+:root[data-skin="soft"] .sheet.book .btn.small { min-height: 34px; font-size: 13px; }
+@media (hover: none) {
+  :root[data-skin="soft"] .sheet.book .btn.small { min-height: 40px; }
+}
+/* Save is green while there is something to save */
+:root[data-skin="soft"] .sheet-bar .save:not(:disabled) { background: var(--ok); border-color: var(--ok); color: var(--accent-fg); }
+:root[data-skin="soft"] .sheet.book .file-actions > :only-child { padding-left: 12px; padding-right: 12px; }
 :root[data-skin="soft"] .book-foot { border-top: 1px solid var(--line); background: var(--surface-2); }
 :root[data-skin="soft"] .book-foot .facts { font-size: 13.5px; }
 :root[data-skin="soft"] .reader-list .pct { color: var(--accent-ink); font-weight: 600; }
