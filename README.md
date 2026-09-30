@@ -261,8 +261,8 @@ The ⋯ button on a book opens its menu, in three parts:
 
 | Part | What it holds |
 | --- | --- |
-| The bar at the top | *Open* and *Close*. It stays in place while the rest scrolls. |
-| Details and cover | The title, author, series and collections, and genre, with **Look up online** (see [Looking up details online](#looking-up-details-online)), and the cover with the ways to change it (see [Covers](#covers)). One *Save* keeps all of it; *Close* leaves the book as it was. |
+| The bar at the top | *Read*, *Save* and *Close*. It stays in place while the rest scrolls. |
+| Details and cover | The title, author, series and collections, and genre, with **Look up online** (see [Looking up details online](#looking-up-details-online)), and the cover with the ways to change it (see [Covers](#covers)). *Save* in the bar keeps all of it. |
 | The foot | Who is reading the book, how far they are and when they last read, with *Reset my reading position* for your own place. The file's format, size and name, and who added it. *Download original file*, *Convert again* and *Delete from library*. |
 
 *Details and cover*, *Convert again* and *Delete from library* are for the uploader of the book or an
@@ -270,6 +270,10 @@ admin. Other readers see the book's cover and details in their place.
 
 *Save* sends only what was changed. A new cover alone leaves the details as the book's file has them,
 so they do not count as edited by hand, and converting the book again can still bring them up to date.
+
+*Save* can be pressed only while something differs from the book as saved, and is green in the Soft
+look. *Close*, a click beside the menu, *Read* or a series link with changes not saved asks first
+whether to leave them.
 
 ## Formats
 

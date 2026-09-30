@@ -392,15 +392,23 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .genre-choices .btn { white-space: normal; }
 .genre-choices .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 
-/* A book's menu, in three areas: a bar with Open and Close, the details and the cover to change in
+/* A book's menu, in three areas: a bar with Read, Save and Close, the details and the cover to change in
    the middle, and at the foot who is reading the book, its file and what can be done with the file.
    Each area brings its own padding (--pad), so the bar and the foot reach the edges of the sheet. */
 .sheet.book { --pad: 18px; padding: 0; }
 .sheet.book.editable { width: min(92vw, 460px); }
-.sheet-bar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px var(--pad); background: var(--bg); border-bottom: 2px solid var(--fg); }
-.sheet-bar .btn { min-width: 92px; }
-/* Without Open (a book still being prepared), Close keeps to the right */
-.sheet-bar > :only-child { margin-left: auto; }
+.sheet-bar { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 6px; padding: 12px var(--pad); background: var(--bg); border-bottom: 2px solid var(--fg); }
+/* Read, Save and Close in the columns of the foot's three buttons, each in its own even when another is missing */
+.sheet-bar .read { grid-column: 1; }
+.sheet-bar .save { grid-column: 2; }
+.sheet-bar .close { grid-column: 3; }
+/* Save stands out only while there is something to save */
+.sheet-bar .save:not(:disabled) { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+/* Every button in a book's menu is the size of the foot's: small, its name centred and wrapping where room is short */
+.sheet.book .btn { white-space: normal; text-align: center; line-height: 1.2; padding: 4px 12px; }
+.sheet.book :is(.sheet-bar, .file-actions) .btn { padding: 4px 6px; }
+.sheet.book .btn.small { min-height: 36px; font-size: 14px; }
+.book-error { margin: -4px var(--pad) 12px; }
 .book-head { display: flex; align-items: flex-start; gap: 14px; padding: 16px var(--pad); }
 /* For a reader who cannot change the book, its cover stands beside its name */
 .book-head .cover-preview { flex: 0 0 84px; }
@@ -408,11 +416,9 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .book-head h2, .book-head p { margin: 0; overflow-wrap: anywhere; }
 /* The name of an area, like the headings over the library's menus */
 .area-name { margin: 0 0 10px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; line-height: 1.2; color: var(--muted); }
-/* The middle: the cover beside the ways to change it, then the details. One Save keeps both. */
+/* The middle: the cover beside the ways to change it, then the details. One Save in the bar keeps both. */
 .book-edit { padding: 16px var(--pad) var(--pad); border-top: 2px solid var(--line); }
 .book-edit .cover-edit { flex-wrap: nowrap; margin-bottom: 18px; }
-.book-edit .save { margin-top: 4px; }
-.book-edit .save .hint { margin: 0; }
 /* The foot: smaller, on the panel colour */
 .book-foot { padding: 14px var(--pad) 18px; border-top: 2px solid var(--fg); background: var(--panel); }
 .book-foot .facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px 28px; margin-bottom: 14px; font-size: 14px; }
@@ -426,9 +432,8 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .readers .btn { margin-top: 10px; }
 /* Download on the left, Convert again in the middle, Delete on the right; on a narrow sheet their names wrap */
 .file-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.file-actions .btn { white-space: normal; text-align: center; line-height: 1.2; padding: 4px 6px; }
 /* Download alone, for a reader who cannot change the book */
-.file-actions > :only-child { grid-column: 1 / -1; justify-self: start; padding-left: 12px; padding-right: 12px; }
+.sheet.book .file-actions > :only-child { grid-column: 1 / -1; justify-self: start; padding-left: 12px; padding-right: 12px; }
 /* Look up online: the matches found, and what the form takes from them */
 .lookup { margin: -4px 0 14px; }
 .lookup .hint a { font-weight: 600; }
@@ -507,7 +512,6 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .cover-preview .cover.placeholder .a { font-size: 12px; color: var(--muted); }
 .cover-preview .size { margin: 6px 0 0; font-size: 12px; line-height: 1.3; color: var(--muted); text-align: center; }
 .cover-actions { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.cover-actions .btn { justify-content: flex-start; white-space: normal; text-align: left; line-height: 1.2; padding-top: 4px; padding-bottom: 4px; }
 /* A page of a PDF as the cover: the number and how many there are keep together, under the button where the room is short */
 .cover-page { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cover-page input { width: 76px; height: var(--ctl); padding: 8px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); text-align: center; }

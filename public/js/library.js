@@ -1114,28 +1114,32 @@ document.addEventListener('paste', (e) => {
 });
 
 // ---- dialogs ----
+// Close and the backdrop ask `mayLeave()` first, set by a dialog with something that would be lost.
 function dialog(html) {
   els.dialogRoot.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet" role="dialog">${html}</div>`;
   const close = () => { els.dialogRoot.innerHTML = ''; };
-  els.dialogRoot.querySelector('.sheet-backdrop').addEventListener('click', close);
-  els.dialogRoot.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
-  return { root: els.dialogRoot.querySelector('.sheet'), close };
+  const d = { root: els.dialogRoot.querySelector('.sheet'), close, mayLeave: () => true };
+  const leave = () => { if (d.mayLeave()) close(); };
+  els.dialogRoot.querySelector('.sheet-backdrop').addEventListener('click', leave);
+  els.dialogRoot.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', leave));
+  return d;
 }
 
 // A plain click on a series link opens it in place; modified clicks keep their usual meaning.
 const plainClick = (e) => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
 /**
- * A book's menu, in three areas: Open and Close in a bar that stays at the top while the rest scrolls; the
+ * A book's menu, in three areas: Read, Save and Close in a bar that stays at the top while the rest scrolls; the
  * details and the cover, for the uploader or an admin (see editBook()), where other readers see the book's
  * cover and details; and at the foot who is reading the book, its file and what can be done with the file.
  */
 function bookMenu(b) {
   const canEdit = mayEdit(b);
-  const { root, close } = dialog(`
+  const menu = dialog(`
     <div class="sheet-bar">
-      ${b.status === 'ready' ? `<a class="btn primary" href="/read/${b.id}">Open</a>` : ''}
-      <button type="button" class="btn" data-close>Close</button>
+      ${b.status === 'ready' ? `<a class="btn small primary read" href="/read/${b.id}" data-read>Read</a>` : ''}
+      ${canEdit ? '<button type="submit" class="btn small save" form="bk-edit" data-save disabled>Save</button>' : ''}
+      <button type="button" class="btn small close" data-close>Close</button>
     </div>
     <header class="book-head">
       ${canEdit ? '' : `<div class="cover-preview">${coverHtml(b)}</div>`}
@@ -1168,12 +1172,16 @@ function bookMenu(b) {
         ${canEdit ? '<button type="button" class="btn small danger" data-act="delete">Delete from library</button>' : ''}
       </div>
     </footer>`);
+  const { root, close } = menu;
   root.classList.add('book');
   root.classList.toggle('editable', canEdit);
   root.setAttribute('aria-labelledby', 'bk-title');
   showReaders(b, root.querySelector('[data-readers]'));
   root.addEventListener('click', async (ev) => {
+    // Reading the book or going to a series leaves unsaved changes behind too, so they ask first as well.
+    if (ev.target.closest('a[data-read]') && !menu.mayLeave()) { ev.preventDefault(); return; }
     const link = ev.target.closest('a[data-series]');
+    if (link && !menu.mayLeave()) { ev.preventDefault(); return; }
     if (link && plainClick(ev)) { ev.preventDefault(); close(); openSeries(Number(link.dataset.series)); return; }
     const act = ev.target.closest('button[data-act]')?.dataset.act;
     if (!act) return;
@@ -1192,7 +1200,7 @@ function bookMenu(b) {
       await load();
     } catch (err) { toast(err.message); }
   });
-  if (canEdit) editBook(b, root, close);
+  if (canEdit) editBook(b, menu);
 }
 
 /** Who is reading a book, how far they are and when they last read, filled in once the server says. */
@@ -1324,7 +1332,7 @@ function showSize(img, label, text) {
 const genreNames = () => [...new Map(books.filter((b) => b.genre).map((b) => [genreKey(b.genre), b.genre])).values()].sort((x, y) => x.localeCompare(y));
 const genreList = (names) => `<datalist id="genre-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`;
 
-/** The middle of a book's menu, for the uploader or an admin: the cover and the details, which one Save keeps. */
+/** The middle of a book's menu, for the uploader or an admin: the cover and the details, which one Save in the bar keeps. */
 function bookFormHtml(b) {
   const names = [...new Set(books.flatMap((x) => x.series.map((s) => s.name)))].sort((x, y) => x.localeCompare(y));
   const page = b.format !== 'pdf' ? '' : `<div class="cover-page row">
@@ -1332,7 +1340,8 @@ function bookFormHtml(b) {
           <span class="page-no"><input type="number" name="page" value="1" min="1"${b.pageCount ? ` max="${b.pageCount}"` : ''} aria-label="Page of the PDF">
             ${b.pageCount ? `<span class="muted">of ${b.pageCount}</span>` : ''}</span>
         </div>`;
-  return `<form class="book-edit" novalidate>
+  return `<p class="error book-error hidden" data-error></p>
+  <form class="book-edit" id="bk-edit" novalidate>
     <h3 class="area-name">Details and cover</h3>
     <div class="cover-edit">
       <div class="cover-preview"><div data-cover></div><p class="size" data-size></p></div>
@@ -1363,8 +1372,6 @@ function bookFormHtml(b) {
       <p class="muted hint">The number puts a series in order (1, 2, 2.5 …); a book holding several, such as an omnibus, takes a range (1-3). Leave it empty for a collection without an order.</p>
     </fieldset>
     <div class="field f-genre"><label for="ed-genre">Genre</label><input id="ed-genre" name="genre" list="genre-names" value="${escapeHtml(b.genre || '')}" maxlength="100" autocomplete="off"></div>
-    <p class="error hidden" data-error></p>
-    <div class="row save"><button class="btn primary" type="submit">Save</button><p class="muted hint">Nothing changes until you save.</p></div>
     <input type="file" accept="image/*" class="hidden" data-file>
     <datalist id="series-names">${names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>${genreList(genreNames())}
   </form>`;
@@ -1373,19 +1380,22 @@ function bookFormHtml(b) {
 /**
  * The details and the cover in a book's menu at work. Nothing is sent until Save, and Save sends only what
  * was changed: a title, author or series sent counts as edited by hand, and then wins over the book's file
- * whenever it is converted again, so a new cover alone leaves them as the file has them.
+ * whenever it is converted again, so a new cover alone leaves them as the file has them. Save is open only
+ * while something differs from the book as saved, and closing the menu then asks first.
  */
-function editBook(b, root, close) {
+function editBook(b, menu) {
+  const { root, close } = menu;
   const form = root.querySelector('.book-edit');
   const rows = form.querySelector('.series-rows');
-  const error = form.querySelector('[data-error]');
-  const saveBtn = form.querySelector('[type="submit"]');
+  const error = root.querySelector('[data-error]');
+  const saveBtn = root.querySelector('[data-save]');
   const coverBox = form.querySelector('[data-cover]');
   const sizeNote = form.querySelector('.cover-preview [data-size]');
   const note = form.querySelector('[data-note]');
   const busyNote = form.querySelector('[data-busy]');
   const fileInput = form.querySelector('[data-file]');
-  const fail = (message) => { error.textContent = message; error.classList.remove('hidden'); };
+  // What went wrong shows above the details, near Save in the bar.
+  const fail = (message) => { error.textContent = message; error.classList.remove('hidden'); error.scrollIntoView({ block: 'nearest' }); };
 
   // What the form says, read as it is drawn and again on Save, which sends what differs.
   const readDetails = () => ({
@@ -1397,6 +1407,11 @@ function editBook(b, root, close) {
     genre: form.elements.genre.value.trim(),
   });
   const before = readDetails();
+  const differs = (now, key) => JSON.stringify(now[key]) !== JSON.stringify(before[key]);
+  // Something to save: a detail that differs from the book as saved, or a cover chosen.
+  const dirty = () => !!pending || ['title', 'author', 'series', 'genre'].some((key) => differs(readDetails(), key));
+  const markDirty = () => { if (!busy && !saving) saveBtn.disabled = !dirty(); };
+  menu.mayLeave = () => saving || !dirty() || confirm('Close without saving? Your changes to this book will be lost.');
 
   let pending = null; // the cover the book gets when saved, null to leave it: { src, source, says, body }
   let busy = false; // a picture is being prepared
@@ -1424,6 +1439,7 @@ function editBook(b, root, close) {
     if (pending?.src?.startsWith('blob:') && pending.src !== next?.src) URL.revokeObjectURL(pending.src);
     pending = next;
     showCover();
+    markDirty();
   }
 
   // A cover chosen by hand, or null for one the book has already: it takes the place of a match's cover.
@@ -1440,7 +1456,7 @@ function editBook(b, root, close) {
   // While a picture is prepared or the book saved, the cover's buttons and Save wait.
   function lock(on) {
     for (const el of form.querySelectorAll('.cover-actions button, .cover-actions input')) el.disabled = on;
-    saveBtn.disabled = on;
+    saveBtn.disabled = on || !dirty();
   }
 
   // An image read and scaled, or a page of the PDF drawn, by `work`, which gives { blob, says }.
@@ -1502,7 +1518,12 @@ function editBook(b, root, close) {
     usePage();
   });
   // Without a picture, the cover is a tile with the title and author as they are typed.
-  form.addEventListener('input', (ev) => { if (['title', 'author'].includes(ev.target.name) && !coverBox.querySelector('img')) showCover(); });
+  form.addEventListener('input', (ev) => {
+    if (['title', 'author'].includes(ev.target.name) && !coverBox.querySelector('img')) showCover();
+    markDirty();
+  });
+  // A series row removed, or a match chosen, changes the form without typing; checked once every click handler has run.
+  form.addEventListener('click', () => setTimeout(markDirty));
 
   const sendCover = (body) => api(`/api/books/${b.id}/cover`, body instanceof Blob
     ? { method: 'PUT', raw: true, body, headers: { 'Content-Type': body.type || 'application/octet-stream' } }
@@ -1514,10 +1535,9 @@ function editBook(b, root, close) {
     const bad = now.series.find((s) => s.position != null && !/^\d{1,5}([.,]\d+)?(\s*[-–—]\s*\d{1,5}([.,]\d+)?)?$/.test(s.position));
     if (!now.title) return fail('The book needs a title.');
     if (bad) return fail(`The number for "${bad.name}" must be a number, such as 3 or 2.5, or a range for a book holding several, such as 1-3.`);
-    const differs = (key) => JSON.stringify(now[key]) !== JSON.stringify(before[key]);
     // The title, author and series go together, and only when one of them changed; the genre goes on its own.
-    const details = ['title', 'author', 'series'].some(differs) ? { title: now.title, author: now.author, series: now.series } : {};
-    if (differs('genre')) details.genre = now.genre;
+    const details = ['title', 'author', 'series'].some((key) => differs(now, key)) ? { title: now.title, author: now.author, series: now.series } : {};
+    if (differs(now, 'genre')) details.genre = now.genre;
     saving = true;
     lock(true);
     saveBtn.textContent = 'Saving…';
