@@ -50,5 +50,18 @@ export function seriesRoutes(auth, series, catalogues) {
     res.json({ ok: true });
   });
 
+  // A book the series lacks that is shown wrongly: PUT removes the outline at that number, DELETE shows
+  // it again. Missing books have whole numbers (see missing.js). The answer: { removed: [numbers] }.
+  const removal = (change) => (req, res) => {
+    const s = find(req, res);
+    if (!s) return;
+    const position = /^\d{1,5}$/.test(req.params.position) ? Number(req.params.position) : 0;
+    if (position < 1) return res.status(400).json({ error: 'A missing book has a whole number, 1 or more' });
+    change(s.id, position);
+    res.json({ removed: series.removed(s.id) });
+  };
+  r.put('/:id/removed/:position', auth.requireAdmin, removal(series.removeMissing));
+  r.delete('/:id/removed/:position', auth.requireAdmin, removal(series.restoreMissing));
+
   return r;
 }

@@ -140,12 +140,13 @@ export function bookRoutes(db, auth, config, processor, { series, genres }, look
   r.use(auth.requireUser);
 
   // The library. Only here does a book list its possible duplicates, [{ id, reason }] (see duplicates.js),
-  // since finding them compares every book.
+  // since finding them compares every book. `removedMissing` has the numbers at which an admin removed a
+  // book a series lacks, by series id, so the library leaves those out without asking Hardcover or a connection.
   r.get('/', (req, res) => {
     const bookSeries = series.byBook();
     const alike = duplicates.byBook();
     const books = stmts.list.all(req.user.id).map((b) => ({ ...shapeBook(b, bookSeries.get(b.id) || []), duplicates: alike.get(b.id) || [] }));
-    res.json({ books, processing: processor.isBusy(), supported: SUPPORTED_EXTENSIONS });
+    res.json({ books, removedMissing: series.removedMissing(), processing: processor.isBusy(), supported: SUPPORTED_EXTENSIONS });
   });
 
   // Upload: raw body, filename in X-File-Name (URL encoded). A file that is already in the library, under

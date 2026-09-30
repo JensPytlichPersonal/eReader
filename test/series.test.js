@@ -9,6 +9,8 @@ import { detailsFromFilename } from '../server/converters/bundle.js';
 import { convertEpub } from '../server/converters/epub.js';
 import { convertMarkdown } from '../server/converters/markdown.js';
 import { convertPdf } from '../server/converters/pdf.js';
+import { openDatabase } from '../server/db.js';
+import { createSeriesStore } from '../server/series.js';
 
 const calibreXmp = (name, index) => `<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
@@ -232,4 +234,46 @@ test('only a title from the file name loses its number, and the series the book 
   const opf = { title: 'The Gatekeeper', author: '', language: '', series: [{ name: 'Glass Road Saga', position: 1 }], isbns: [] };
   assert.equal(withOpfDetails(same.meta, opf).title, 'The Gatekeeper');
   assert.deepEqual(withOpfDetails(same.meta, opf).series, [{ name: 'Glass Road Saga', position: 1 }]);
+});
+
+test('a missing book an admin removed stays removed for its series and number', () => {
+  const db = openDatabase(':memory:');
+  const store = createSeriesStore(db);
+  const addBook = (id, title, series) => {
+    db.prepare("INSERT INTO books (id, title, format, original_name, added_at) VALUES (?, ?, 'epub', ?, 1)").run(id, title, `${title}.epub`);
+    store.setForBook(id, series);
+  };
+  addBook('a'.repeat(16), 'Consider Phlebas', [{ name: 'Culture', position: 1 }]);
+  addBook('b'.repeat(16), 'Use of Weapons', [{ name: 'Culture', position: 4 }]);
+  addBook('c'.repeat(16), 'Look to Windward', [{ name: 'Culture novels', position: 7 }]);
+  const culture = store.forBook('a'.repeat(16))[0].id;
+  const novels = store.forBook('c'.repeat(16))[0].id;
+  assert.deepEqual(store.removedMissing(), {});
+
+  // Removing twice changes nothing; the numbers come lowest first, by series.
+  store.removeMissing(culture, 3);
+  store.removeMissing(culture, 2);
+  store.removeMissing(culture, 3);
+  store.removeMissing(novels, 5);
+  store.removeMissing(novels, 3);
+  assert.deepEqual(store.removed(culture), [2, 3]);
+  assert.deepEqual(store.removedMissing(), { [culture]: [2, 3], [novels]: [3, 5] });
+  store.restoreMissing(culture, 2);
+  store.restoreMissing(culture, 6);
+  assert.deepEqual(store.removed(culture), [3]);
+
+  // Merging brings the numbers removed from the series merged in, once each.
+  assert.equal(store.rename(novels, 'culture'), culture);
+  assert.deepEqual(store.removedMissing(), { [culture]: [3, 5] });
+
+  // Removing the series removes them too, and so does a series left without books.
+  store.remove(culture);
+  assert.deepEqual(store.removedMissing(), {});
+  addBook('d'.repeat(16), 'Excession', [{ name: 'Culture', position: 5 }]);
+  const again = store.forBook('d'.repeat(16))[0].id;
+  store.removeMissing(again, 2);
+  store.setForBook('d'.repeat(16), []);
+  assert.equal(store.get(again), null);
+  assert.deepEqual(store.removedMissing(), {});
+  db.close();
 });

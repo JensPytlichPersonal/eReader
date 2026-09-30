@@ -391,6 +391,11 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .genre-choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
 .genre-choices .btn { white-space: normal; }
 .genre-choices .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+/* Rename or remove: the missing books removed from a series, each with a button that shows it again */
+.removed-list { margin: 0; padding: 0; list-style: none; border-top: 2px solid var(--line); }
+.removed-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 2px solid var(--line); }
+.removed-list .name { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.removed-list .btn { flex: none; }
 
 /* A book's menu, in three areas: a bar with Read, Save and Close, the details and the cover to change in
    the middle, and at the foot who is reading the book, its file and what can be done with the file.

@@ -350,6 +350,12 @@ can call it something else: the library's *Avatar* is Hardcover's *Forgotten Rea
 through its #4, *Prince of Lies* by James Lowder. When no series fits, and without a token, the
 outlines show only their number.
 
+An outline can be wrong: Hardcover may list a book the series does not have, or the series may skip a
+number. An admin can remove it with *Remove from this series* in the outline's menu. It stays removed
+for that number, for everyone: no outline shows there, neither the gap nor a book Hardcover lists.
+*Rename or remove* on the series' page lists the numbers removed, and *Show again* brings one back.
+Merging two series keeps the numbers removed from both.
+
 Where the series comes from:
 
 | Source | Example |
