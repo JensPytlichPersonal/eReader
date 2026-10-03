@@ -374,7 +374,9 @@
 :root[data-skin="soft"] .sheet-bar .save:not(:disabled) { background: var(--ok); border-color: var(--ok); color: var(--accent-fg); }
 :root[data-skin="soft"] .sheet.book .file-actions > :only-child { padding-left: 12px; padding-right: 12px; }
 :root[data-skin="soft"] .book-foot { border-top: 1px solid var(--line); background: var(--surface-2); }
-:root[data-skin="soft"] .book-foot .facts { font-size: 13.5px; }
+:root[data-skin="soft"] .book-foot .file,
+:root[data-skin="soft"] .sheet.book > .readers { font-size: 13.5px; }
+:root[data-skin="soft"] .book-head:not(.hidden) + .readers { border-top: 1px solid var(--line); }
 :root[data-skin="soft"] .reader-list .pct { color: var(--accent-ink); font-weight: 600; }
 :root[data-skin="soft"] .reader-list .progress { margin-top: 0; }
 :root[data-skin="soft"] .match { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
@@ -394,6 +396,10 @@
 :root[data-skin="soft"] .cover-preview .cover.placeholder { border: 0; border-radius: 0; }
 :root[data-skin="soft"] .book-head .cover-preview img.cover { filter: drop-shadow(0 1px 1px rgba(60,40,20,.3)); }
 :root[data-skin="soft"] .cover-preview .size { font-size: 12px; }
+:root[data-skin="soft"] .cover-button:focus-visible { outline: 2px solid var(--accent); }
+:root[data-skin="soft"] .cover-full { background: var(--scrim); backdrop-filter: blur(2px); }
+:root[data-skin="soft"] .cover-full img { background: none; filter: drop-shadow(0 6px 18px rgba(0,0,0,.45)); }
+:root[data-skin="soft"] .cover-full .hint { color: rgba(255,255,255,.8); }
 :root[data-skin="soft"] .cover-note { color: var(--accent-ink); font-weight: 600; }
 /* Earlier covers: a light shadow round each small picture, a deeper one under the pointer */
 :root[data-skin="soft"] .earlier-name { font-size: 12.5px; font-weight: 600; color: var(--muted); }

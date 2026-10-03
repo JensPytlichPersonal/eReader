@@ -257,16 +257,21 @@ background when the server starts, without converting them again, so copies amon
 
 ## A book's menu
 
-The ⋯ button on a book opens its menu, in three parts:
+The ⋯ button on a book opens its menu, in four parts:
 
 | Part | What it holds |
 | --- | --- |
 | The bar at the top | *Read*, *Save* and *Close*. It stays in place while the rest scrolls. |
+| Who is reading | Who is reading the book, how far they are and when they last read, with *Reset my reading position* for your own place. |
 | Details and cover | The title, author, series and collections, and genre, with **Look up online** (see [Looking up details online](#looking-up-details-online)), and the cover with the ways to change it (see [Covers](#covers)). *Save* in the bar keeps all of it. |
-| The foot | Who is reading the book, how far they are and when they last read, with *Reset my reading position* for your own place. The file's format, size and name, and who added it. *Download original file*, *Convert again* and *Delete from library*. |
+| The foot | The file's format, size and name, and who added it. *Download original file*, *Convert again* and *Delete from library*. |
 
 *Details and cover*, *Convert again* and *Delete from library* are for the uploader of the book or an
-admin. Other readers see the book's cover and details in their place.
+admin, who see the title and author in the form and not again above it. Other readers see the book's
+cover and details in their place, above *Who is reading*.
+
+A click on the cover, or *Show at full size* beside it, shows the cover as large as the screen allows,
+and never larger than the picture. A click or Escape puts it away.
 
 *Save* sends only what was changed. A new cover alone leaves the details as the book's file has them,
 so they do not count as edited by hand, and converting the book again can still bring them up to date.
@@ -521,6 +526,7 @@ in a book's menu (the uploader or an admin can):
 
 | Choice | What it does |
 | --- | --- |
+| Show at full size | Shows the cover, or the one chosen and not saved yet, at full size. |
 | Choose an image | Any picture on the device, or a new photo on a phone. On a laptop you can also paste an image, for example one copied from a web page, or drop one on the page. |
 | Use page | PDFs only: one of the PDF's pages, the first by default, which is usually the cover. |
 | Use the original cover | Goes back to the cover in the book's file. |

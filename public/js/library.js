@@ -1150,9 +1150,10 @@ function dialog(html) {
 const plainClick = (e) => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
 /**
- * A book's menu, in three areas: Read, Save and Close in a bar that stays at the top while the rest scrolls; the
- * details and the cover, for the uploader or an admin (see editBook()), where other readers see the book's
- * cover and details; and at the foot who is reading the book, its file and what can be done with the file.
+ * A book's menu: Read, Save and Close in a bar that stays at the top while the rest scrolls; who is reading
+ * the book; the details and the cover, for the uploader or an admin (see editBook()), where other readers
+ * see the book's cover and details; and at the foot the book's file and what can be done with it. The
+ * uploader and admins see the title and author in the form, so the head then holds only what went wrong.
  */
 function bookMenu(b) {
   const canEdit = mayEdit(b);
@@ -1162,31 +1163,29 @@ function bookMenu(b) {
       ${canEdit ? '<button type="submit" class="btn small save" form="bk-edit" data-save disabled>Save</button>' : ''}
       <button type="button" class="btn small close" data-close>Close</button>
     </div>
-    <header class="book-head">
-      ${canEdit ? '' : `<div class="cover-preview">${coverHtml(b)}</div>`}
+    <header class="book-head${canEdit && b.status !== 'error' && !flagged(b) ? ' hidden' : ''}">
+      ${canEdit ? '' : coverSrc(b) ? `<button type="button" class="cover-preview cover-button" data-full-cover aria-label="Show the cover at full size">${coverHtml(b)}</button>` : `<div class="cover-preview">${coverHtml(b)}</div>`}
       <div class="about">
-        <h2 id="bk-title">${escapeHtml(b.title)}</h2>
-        ${b.author ? `<p class="muted">${escapeHtml(b.author)}</p>` : ''}
-        ${b.series.length ? `<p class="series-links">Part of ${b.series.map(seriesLink).join(', ')}</p>` : ''}
+        <h2 id="bk-title"${canEdit ? ' class="sr-only"' : ''}>${escapeHtml(b.title)}</h2>
+        ${!canEdit && b.author ? `<p class="muted">${escapeHtml(b.author)}</p>` : ''}
+        ${!canEdit && b.series.length ? `<p class="series-links">Part of ${b.series.map(seriesLink).join(', ')}</p>` : ''}
         ${!canEdit && b.genre ? `<p class="muted">${escapeHtml(b.genre)}</p>` : ''}
         ${b.status === 'error' ? `<p class="error">${escapeHtml(b.error || 'Conversion failed')}</p>` : ''}
         ${flagged(b) ? '<p class="flag"><button type="button" class="dup-flag" data-act="duplicates">Compare with possible duplicates</button></p>' : ''}
       </div>
     </header>
+    <section class="readers">
+      <h3 class="area-name">Who is reading</h3>
+      <div data-readers aria-live="polite"></div>
+      ${b.progress ? '<button type="button" class="btn small" data-act="reset">Reset my reading position</button>' : ''}
+    </section>
     ${canEdit ? bookFormHtml(b) : ''}
     <footer class="book-foot">
-      <div class="facts">
-        <section class="readers">
-          <h3 class="area-name">Who is reading</h3>
-          <div data-readers aria-live="polite"></div>
-          ${b.progress ? '<button type="button" class="btn small" data-act="reset">Reset my reading position</button>' : ''}
-        </section>
-        <section class="file">
-          <h3 class="area-name">File</h3>
-          <p>${b.format.toUpperCase()} · ${(b.size / 1048576).toFixed(1)} MB · added by ${escapeHtml(b.addedBy || 'unknown')} ${formatDate(b.addedAt)}</p>
-          <p class="muted">${escapeHtml(b.originalName)}</p>
-        </section>
-      </div>
+      <section class="file">
+        <h3 class="area-name">File</h3>
+        <p>${b.format.toUpperCase()} · ${(b.size / 1048576).toFixed(1)} MB · added by ${escapeHtml(b.addedBy || 'unknown')} ${formatDate(b.addedAt)}</p>
+        <p class="muted">${escapeHtml(b.originalName)}</p>
+      </section>
       <div class="file-actions">
         <a class="btn small" href="/books/${b.id}/original" download="${escapeHtml(b.originalName)}">Download original file</a>
         ${canEdit ? '<button type="button" class="btn small" data-act="reprocess">Convert again</button>' : ''}
@@ -1204,6 +1203,11 @@ function bookMenu(b) {
     const link = ev.target.closest('a[data-series]');
     if (link && !menu.mayLeave()) { ev.preventDefault(); return; }
     if (link && plainClick(ev)) { ev.preventDefault(); close(); openSeries(Number(link.dataset.series)); return; }
+    if (ev.target.closest('[data-full-cover]')) {
+      const img = root.querySelector('.cover-preview img.cover');
+      if (img) showFullCover(img.src);
+      return;
+    }
     const act = ev.target.closest('button[data-act]')?.dataset.act;
     if (!act) return;
     try {
@@ -1237,6 +1241,26 @@ async function showReaders(b, box) {
     html = '<p class="muted">The readers could not be loaded.</p>';
   }
   if (box.isConnected) box.innerHTML = html; // unless the menu was closed meanwhile
+}
+
+/**
+ * A cover at full size over the menu, as large as the screen allows and never larger than the picture.
+ * A click anywhere or Escape puts it away, and leaves the menu as it was.
+ */
+function showFullCover(src) {
+  const view = document.createElement('div');
+  view.className = 'cover-full';
+  view.setAttribute('role', 'dialog');
+  view.setAttribute('aria-label', 'Cover at full size');
+  view.tabIndex = -1;
+  view.innerHTML = `<img alt="" src="${escapeHtml(src)}"><p class="hint">Click or press Escape to close.</p>`;
+  const back = document.activeElement;
+  const done = () => { view.remove(); document.removeEventListener('keydown', onKey, true); back?.focus?.(); };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(); } };
+  view.addEventListener('click', done);
+  document.addEventListener('keydown', onKey, true);
+  els.dialogRoot.append(view);
+  view.focus();
 }
 
 /**
@@ -1365,9 +1389,10 @@ function bookFormHtml(b) {
   <form class="book-edit" id="bk-edit" novalidate>
     <h3 class="area-name">Details and cover</h3>
     <div class="cover-edit">
-      <div class="cover-preview"><div data-cover></div><p class="size" data-size></p></div>
+      <div class="cover-preview"><button type="button" class="cover-button" data-cover data-full-cover aria-label="Show the cover at full size"></button><p class="size" data-size></p></div>
       <div class="cover-actions">
         <p class="cover-note hidden" data-note aria-live="polite"></p>
+        <button type="button" class="btn small" data-full-cover>Show at full size</button>
         <button type="button" class="btn small" data-pick>Choose an image</button>
         ${page}
         <button type="button" class="btn small" data-source="file">Use the original cover</button>
@@ -1458,6 +1483,8 @@ function editBook(b, menu) {
     note.classList.toggle('hidden', !pending);
     form.querySelector('[data-source="file"]').classList.toggle('hidden', (pending ? pending.source : b.coverSource) === 'file' || !b.fileHasCover);
     form.querySelector('[data-source="none"]').classList.toggle('hidden', !img);
+    coverBox.disabled = !img;
+    form.querySelector('.cover-actions [data-full-cover]').classList.toggle('hidden', !img);
     form.querySelector('[data-undo]').classList.toggle('hidden', !pending);
     markEarlier();
   }
