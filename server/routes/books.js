@@ -10,6 +10,7 @@ import { sniffImage, detailsFromFilename } from '../converters/bundle.js';
 import { cleanSeriesName, knownSeriesName, parsePlace } from '../converters/series.js';
 import { LookupError } from '../lookup.js';
 import { fingerprint } from '../duplicates.js';
+import { FixError, parseFixInput } from '../fixes.js';
 
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
 const COVER_TYPES = ['jpg', 'png', 'gif', 'webp'];
@@ -48,7 +49,7 @@ export function parseSeriesInput(input) {
   return { series };
 }
 
-export function bookRoutes(db, auth, config, processor, { series, genres }, lookups, duplicates) {
+export function bookRoutes(db, auth, config, processor, { series, genres, fixes }, lookups, duplicates) {
   const r = Router();
   const stmts = {
     list: db.prepare(`SELECT b.*, u.username AS added_by_name,
@@ -279,7 +280,8 @@ export function bookRoutes(db, auth, config, processor, { series, genres }, look
     if (!req.user.isAdmin && b.added_by !== req.user.id) return res.status(403).json({ error: 'Only the uploader or an admin can delete this book' });
     stmts.delete.run(b.id);
     series.prune();
-    await fsp.rm(bookDir(b.id), { recursive: true, force: true });
+    // Not while a conversion or a fix to its text is writing the book's files.
+    await fixes.withBookLock(b.id, () => fsp.rm(bookDir(b.id), { recursive: true, force: true }));
     res.json({ ok: true });
   });
 
@@ -306,6 +308,54 @@ export function bookRoutes(db, auth, config, processor, { series, genres }, look
     if (!req.user.isAdmin && b.added_by !== req.user.id) return res.status(403).json({ error: 'Only the uploader or an admin can reprocess this book' });
     processor.enqueue(b.id);
     res.status(202).json({ book: shapeBook(stmts.get.get(b.id)) });
+  });
+
+  // ---- fixes to the text, by admins (see fixes.js) ----
+  // A refusal from fixes.js is answered with its own status and words.
+  const refused = (res, err) => {
+    if (!(err instanceof FixError)) throw err;
+    res.status(err.status).json({ error: err.message });
+  };
+
+  // The fixes made to the book's text, newest first. `applied` is false for one whose text the last
+  // conversion did not find.
+  r.get('/:id/fixes', auth.requireAdmin, (req, res) => {
+    const b = stmts.get.get(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' });
+    res.json({ fixes: fixes.list(b.id) });
+  });
+
+  // Fixes the text of one or more paragraphs in a row: { section, paragraph, before, after }, `paragraph`
+  // the number of the first one in the section, `before` their texts as shown and `after` the texts as
+  // fixed, as plain text. Answers the fix, and the book and its manifest with their new version.
+  r.post('/:id/fixes', auth.requireAdmin, async (req, res) => {
+    const b = stmts.get.get(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' });
+    const input = parseFixInput(req.body);
+    if (input.error) return res.status(400).json({ error: input.error });
+    try {
+      const { fix, manifest } = await fixes.create(b.id, input, req.user.id);
+      const updated = stmts.get.get(b.id);
+      if (!updated) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
+      res.status(201).json({ fix, book: shapeBook(updated), manifest });
+    } catch (err) {
+      refused(res, err);
+    }
+  });
+
+  // Undoes a fix, putting the text back as it was.
+  r.delete('/:id/fixes/:fixId', auth.requireAdmin, async (req, res) => {
+    const b = stmts.get.get(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' });
+    const fixId = /^\d+$/.test(req.params.fixId) ? Number(req.params.fixId) : 0;
+    try {
+      const { manifest } = await fixes.undo(b.id, fixId);
+      const updated = stmts.get.get(b.id);
+      if (!updated) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
+      res.json({ book: shapeBook(updated), manifest });
+    } catch (err) {
+      refused(res, err);
+    }
   });
 
   // Keeps an image as the cover picked for the book, and puts away the one it replaces. Checked by

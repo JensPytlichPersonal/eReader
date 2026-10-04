@@ -14,7 +14,7 @@ export const METADATA_VERSION = 2;
 // The formats whose files carry ISBNs.
 const ISBN_FORMATS = ['epub', 'mobi'];
 
-export function createProcessor(db, config, { series, genres }, log = console) {
+export function createProcessor(db, config, { series, genres, fixes }, log = console) {
   const queue = [];
   let running = false;
   const stmts = {
@@ -50,26 +50,34 @@ export function createProcessor(db, config, { series, genres }, log = console) {
       if (!result.sections.length) throw new Error('No readable content found');
       const opf = await readOpf(id);
       if (opf) result.meta = withOpfDetails(result.meta, opf);
-      const manifest = await writeBundle(dir, result);
-      transaction(db, () => {
-        const current = stmts.get.get(id);
-        if (!current) return; // deleted while converting
-        // Details someone edited by hand win over what the file says.
-        const edited = current.edited_at > 0;
-        stmts.finish.run(
-          edited ? current.title : (manifest.title || book.title).slice(0, 500), edited ? current.author : (manifest.author || '').slice(0, 500),
-          manifest.language || '', manifest.format, manifest.totalChars, manifest.sections.length, manifest.pageCount || 0, manifest.cover ? 1 : 0,
-          manifest.convertedAt || now(), METADATA_VERSION, (result.meta.isbns || []).join(' '), id,
-        );
-        if (!edited) series.setForBook(id, result.meta.series);
-        // A book new to the library takes the genre of the other books in its series. Converting again
-        // leaves the genre as it is, so a book someone took out of the series' genre stays out.
-        if (!current.converted_at && !current.genre) {
-          const genre = genres.ofSeries(id);
-          if (genre) genres.set([id], genre);
-        }
+      // From writing the files to saving the book, nothing else writes them: a fix to the text, an undo or
+      // a delete waits for it (see fixes.js).
+      await fixes.withBookLock(id, async () => {
+        if (!stmts.get.get(id)) return; // deleted while converting
+        // The fixes made to the text are applied again to the new files.
+        const fixed = await fixes.reapply(id, dir, await writeBundle(dir, result));
+        const { manifest } = fixed;
+        transaction(db, () => {
+          const current = stmts.get.get(id);
+          if (!current) return; // deleted while converting
+          // Details someone edited by hand win over what the file says.
+          const edited = current.edited_at > 0;
+          stmts.finish.run(
+            edited ? current.title : (manifest.title || book.title).slice(0, 500), edited ? current.author : (manifest.author || '').slice(0, 500),
+            manifest.language || '', manifest.format, manifest.totalChars, manifest.sections.length, manifest.pageCount || 0, manifest.cover ? 1 : 0,
+            manifest.convertedAt || now(), METADATA_VERSION, (result.meta.isbns || []).join(' '), id,
+          );
+          fixed.commit();
+          if (!edited) series.setForBook(id, result.meta.series);
+          // A book new to the library takes the genre of the other books in its series. Converting again
+          // leaves the genre as it is, so a book someone took out of the series' genre stays out.
+          if (!current.converted_at && !current.genre) {
+            const genre = genres.ofSeries(id);
+            if (genre) genres.set([id], genre);
+          }
+        });
+        log.info?.(`[convert] ${id} ok: "${manifest.title}" (${manifest.format}, ${manifest.sections.length} sections)`);
       });
-      log.info?.(`[convert] ${id} ok: "${manifest.title}" (${manifest.format}, ${manifest.sections.length} sections)`);
     } catch (err) {
       log.error?.(`[convert] ${id} failed: ${err.message}`);
       stmts.setStatus.run('error', String(err.message || err).slice(0, 1000), id);

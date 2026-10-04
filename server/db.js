@@ -119,6 +119,24 @@ CREATE TABLE IF NOT EXISTS bookmarks (
 );
 CREATE INDEX IF NOT EXISTS bookmarks_user_book ON bookmarks(user_id, book_id);
 
+-- Fixes an admin made to the text of a book, such as a word misread by OCR (see fixes.js). They are kept
+-- apart from the converted book and applied again, in the order they were made, each time it is converted.
+CREATE TABLE IF NOT EXISTS text_fixes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  old_text TEXT NOT NULL,                   -- JSON list: the paragraphs as they were (collapsed text)
+  new_text TEXT NOT NULL,                   -- JSON list: the paragraphs as fixed, [] when they were removed
+  context_before TEXT NOT NULL DEFAULT '',  -- the paragraph just before them, to tell repeated text apart
+  context_after TEXT NOT NULL DEFAULT '',   -- the paragraph just after them
+  section INTEGER NOT NULL,                 -- where the fixed paragraphs are now: section, and paragraph number in it
+  paragraph INTEGER NOT NULL,
+  renames TEXT NOT NULL DEFAULT '[]',       -- JSON [{ from, to }]: chapter titles the fix changed
+  applied INTEGER NOT NULL DEFAULT 1,       -- 0 when the last conversion did not find the text
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS text_fixes_book ON text_fixes(book_id);
+
 -- Settings an admin changes from the app, such as the Hardcover token: one row per setting.
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
