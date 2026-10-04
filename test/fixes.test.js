@@ -23,6 +23,27 @@ test('paragraphs are the elements holding text and no other blocks, read with wh
   assert.equal(collapse(' a \n\t b\u00a0 '), 'a b');
 });
 
+test('a line break reads as a space, and stays where it is unless the space it stands for is taken out', () => {
+  assert.deepEqual(texts('<p>one<br/>two</p><p>one <br/>\n two</p><p><i>one</i><br/><br/>two<br/></p>'), ['one two', 'one two', 'one two']);
+  // A word fixed next to a line break keeps it.
+  assert.equal(fix('<p>line onf<br/>lime two</p>', ['line onf lime two'], ['line one line two']).html, '<p>line one<br />line two</p>');
+  assert.equal(fix('<p>line one<br/>two</p>', ['line one two'], ['line one, two']).html, '<p>line one,<br />two</p>');
+  assert.equal(fix('<p>line one<br/>two</p>', ['line one two'], ['line one and two']).html, '<p>line one<br />and two</p>');
+  assert.equal(fix('<p><i>one</i> <br/>two</p>', ['one two'], ['one too']).html, '<p><i>one</i> <br />too</p>');
+  // Taking out the space it stands for takes the line break out; text never goes into it.
+  assert.equal(fix('<p>one<br/>two</p>', ['one two'], ['onetwo']).html, '<p>onetwo</p>');
+  assert.equal(fix('<p>one <br/>\ntwo</p>', ['one two'], ['one-two']).html, '<p>one-two</p>');
+  // Before a line break the only text node is the italic word, so a mark added there is italic too.
+  assert.equal(fix('<p><i>one</i><br/>two</p>', ['one two'], ['one, two']).html, '<p><i>one,</i><br />two</p>');
+  assert.equal(fix('<p><i>one</i><br/>two</p>', ['one two'], ['one/two']).html, '<p><i>one</i>/two</p>');
+  // A passage moved across a line break keeps its words apart, and its formatting; the break stays behind.
+  const poem = '<p>Start here.</p><p class="v"><i>The first line of a poem<br/>and the second line too</i></p>';
+  assert.equal(fix(poem, ['Start here.', 'The first line of a poem and the second line too'], ['Start here. The first line of a poem and the second line too']).html,
+    '<p>Start here. <i>The first line of a poem and the second line too</i></p>');
+  // The reader counts nothing for a line break.
+  assert.equal(positionText(parseSection('<p>one<br/>two</p>').children), 'onetwo');
+});
+
 test('a word fixed in a plain paragraph changes only those characters', () => {
   const { html } = fix('<p>Alorn sat in tbe hall.</p>', ['Alorn sat in tbe hall.'], ['Alorn sat in the hall.']);
   assert.equal(html, '<p>Alorn sat in the hall.</p>');
@@ -134,7 +155,7 @@ test('a paragraph in a table is fixed on its own', () => {
   const html = '<table><tr><td>One</td><td>Twoo</td></tr></table>';
   assert.equal(fix(html, ['Twoo'], ['Two']).html, '<table><tr><td>One</td><td>Two</td></tr></table>');
   for (const [start, count, after] of [[0, 2, ['One Two']], [0, 1, ['One', 'Uno']], [1, 1, []]]) {
-    assert.throws(() => fixHtml(html, start, count, after), (err) => err instanceof FixError && err.status === 400 && err.message === 'A paragraph in a table is fixed on its own.');
+    assert.throws(() => fixHtml(html, start, count, after), (err) => err instanceof FixError && err.status === 400 && err.message === 'A paragraph in a table is fixed on its own');
   }
 });
 
@@ -188,15 +209,15 @@ test('a stored fix is found among repeated paragraphs by the paragraphs around i
 test('a fix is checked before it is made', () => {
   const ok = parseFixInput({ section: 0, paragraph: 2, before: [' Tbe  end. '], after: ['The\nend.', '', '\u0007 '] });
   assert.deepEqual(ok, { section: 0, paragraph: 2, before: ['Tbe end.'], after: ['The end.'] });
-  assert.equal(parseFixInput({ section: 0, paragraph: 0, before: ['A b.'], after: ['A  b.', ''] }).error, 'Nothing has changed.');
+  assert.equal(parseFixInput({ section: 0, paragraph: 0, before: ['A b.'], after: ['A  b.', ''] }).error, 'Nothing has changed');
   assert.deepEqual(parseFixInput({ section: 0, paragraph: 0, before: ['Gone.'], after: [] }).after, []);
   for (const body of [null, { section: -1, paragraph: 0, before: ['a'], after: [] }, { section: 0, paragraph: 0, before: [], after: [] },
     { section: 0, paragraph: 0, before: ['a'], after: 'b' }, { section: 0, paragraph: 0, before: [1], after: [] }, { section: 0, paragraph: 0, before: ['  '], after: ['b'] }]) {
     assert.ok(parseFixInput(body).error, JSON.stringify(body));
   }
-  assert.equal(parseFixInput({ section: 0, paragraph: 0, before: ['a'], after: ['x'.repeat(200001)] }).error, 'That is too much text to fix at once.');
-  assert.equal(parseFixInput({ section: 0, paragraph: 0, before: new Array(21).fill('a'), after: [] }).error, 'That is too much text to fix at once.');
-  assert.equal(parseFixInput({ section: 0, paragraph: 0, before: ['a'], after: new Array(41).fill('b') }).error, 'That is too much text to fix at once.');
+  assert.equal(parseFixInput({ section: 0, paragraph: 0, before: ['a'], after: ['x'.repeat(200001)] }).error, 'That is too much text to fix at once');
+  assert.equal(parseFixInput({ section: 0, paragraph: 0, before: new Array(21).fill('a'), after: [] }).error, 'That is too much text to fix at once');
+  assert.equal(parseFixInput({ section: 0, paragraph: 0, before: ['a'], after: new Array(41).fill('b') }).error, 'That is too much text to fix at once');
 });
 
 test('a very long change is taken as one block between what stays the same', () => {

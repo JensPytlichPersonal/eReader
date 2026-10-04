@@ -19,11 +19,13 @@ export const UNFIXED_DIR = 'unfixed';
 
 // What counts as a paragraph, and its text. The reader finds paragraphs and reads their text the same
 // way (public/js/reader.js), so the two must stay in step: an element with one of these tags, holding no
-// block (BLOCK_TAGS in converters/html.js) other than br and img, not inside a pre, with text.
+// block (BLOCK_TAGS in converters/html.js) other than br and img, not inside a pre, with text. Its text is
+// its text nodes in order with each <br> read as one white-space character (so not plain textContent,
+// which leaves line breaks out and glues the words around them), then collapsed (see collapse).
 export const PARAGRAPH_TAGS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'dt', 'dd', 'td', 'th', 'caption', 'figcaption',
   'blockquote', 'div', 'section', 'article', 'aside', 'header', 'footer', 'address', 'summary'];
 const PARAGRAPHS = new Set(PARAGRAPH_TAGS);
-/** A paragraph's text: its text content, every run of white space one space, none around it. */
+/** Text collapsed: every run of white space one space, none around it. */
 export const collapse = (text) => text.replace(/\s+/g, ' ').trim();
 
 const HEADING = /^h[1-6]$/;
@@ -54,19 +56,19 @@ export class FixError extends Error {
 export function parseFixInput(body) {
   const { section, paragraph, before, after } = body || {};
   if (!Number.isInteger(section) || section < 0 || !Number.isInteger(paragraph) || paragraph < 0) {
-    return { error: 'section and paragraph must be whole numbers.' };
+    return { error: 'section and paragraph must be whole numbers' };
   }
   const texts = (list) => Array.isArray(list) && list.every((t) => typeof t === 'string');
-  if (!texts(before) || !texts(after)) return { error: 'before and after must be lists of paragraphs.' };
-  if (!before.length) return { error: 'Send the paragraphs as they were.' };
+  if (!texts(before) || !texts(after)) return { error: 'before and after must be lists of paragraphs' };
+  if (!before.length) return { error: 'Send the paragraphs as they were' };
   if (before.length > MAX_BEFORE || after.length > MAX_AFTER || after.reduce((n, t) => n + t.length, 0) > MAX_AFTER_CHARS) {
-    return { error: 'That is too much text to fix at once.' };
+    return { error: 'That is too much text to fix at once' };
   }
   const old = before.map(collapse);
-  if (old.some((t) => !t)) return { error: 'Send the paragraphs as they were.' };
+  if (old.some((t) => !t)) return { error: 'Send the paragraphs as they were' };
   // Half a character pair could not be written to the file as it is.
   const next = after.map((t) => collapse(t.replace(CONTROL, '').toWellFormed())).filter(Boolean);
-  if (old.length === next.length && old.every((t, i) => t === next[i])) return { error: 'Nothing has changed.' };
+  if (old.length === next.length && old.every((t, i) => t === next[i])) return { error: 'Nothing has changed' };
   return { section, paragraph, before: old, after: next };
 }
 
@@ -76,6 +78,22 @@ export function parseFixInput(body) {
 export const parseSection = (html) => parseDocument(html, { decodeEntities: true });
 
 const holdsBlock = (el) => !!findOne((e) => BLOCK_TAGS.has(e.name) && e.name !== 'br' && e.name !== 'img', el.children, true);
+const isBreak = (node) => isTag(node) && node.name === 'br';
+
+// The text nodes and line breaks of an element in order: what its text is read from.
+function piecesOf(el, out = []) {
+  for (const c of el.children) {
+    if (isText(c) || isBreak(c)) out.push(c);
+    else if (isTag(c)) piecesOf(c, out);
+  }
+  return out;
+}
+// The one white-space character a <br> stands for in a paragraph's text.
+const BREAK = '\n';
+const pieceText = (node) => (isText(node) ? node.data : BREAK);
+
+/** A paragraph's text (see PARAGRAPH_TAGS). */
+export const paragraphText = (el) => collapse(piecesOf(el).map(pieceText).join(''));
 
 /** The paragraphs of a section in document order: [{ el, text }]. */
 export function paragraphsOf(root) {
@@ -84,7 +102,7 @@ export function paragraphsOf(root) {
     for (const node of nodes) {
       if (!isTag(node) || node.name === 'pre') continue;
       if (PARAGRAPHS.has(node.name) && !holdsBlock(node)) {
-        const text = collapse(textContent(node));
+        const text = paragraphText(node);
         if (text) out.push({ el: node, text });
       } else visit(node.children);
     }
@@ -261,15 +279,17 @@ function textNodesOf(el, out = []) {
 
 /**
  * Where each character of a paragraph's collapsed text comes from in its text nodes: character i is
- * raw[from[i]] up to raw[to[i]], raw being the text nodes one after the other. A space covers its whole
- * run of white space, which may go across text nodes.
+ * raw[from[i]] up to raw[to[i]], raw being the text nodes one after the other, with a <br> as one
+ * white-space character. A space covers its whole run of white space, which may go across text nodes and
+ * line breaks.
  */
 function textMap(el) {
   const nodes = [];
   let raw = '';
-  for (const node of textNodesOf(el)) {
-    nodes.push({ node, start: raw.length, length: node.data.length });
-    raw += node.data;
+  for (const node of piecesOf(el)) {
+    const data = pieceText(node);
+    nodes.push({ node, start: raw.length, length: data.length, br: !isText(node) });
+    raw += data;
   }
   const from = [];
   const to = [];
@@ -285,8 +305,8 @@ function textMap(el) {
   return { el, nodes, from: from.slice(first, last), to: to.slice(first, last) };
 }
 
-// The text node holding the raw character at `pos`, or, with `ending`, the one ending at `pos`.
-function locate(map, pos, ending = false) {
+// The number of the piece in the map holding the raw character at `pos`, or, with `ending`, the one ending at `pos`.
+function pieceAt(map, pos, ending = false) {
   let lo = 0;
   let hi = map.nodes.length - 1;
   while (lo < hi) {
@@ -294,22 +314,28 @@ function locate(map, pos, ending = false) {
     const n = map.nodes[mid];
     if (ending ? n.start < pos : n.start <= pos) lo = mid; else hi = mid - 1;
   }
-  const n = map.nodes[lo];
-  return { node: n.node, offset: pos - n.start };
+  return lo;
 }
+const placeIn = (piece, pos) => ({ node: piece.node, offset: pos - piece.start });
 
 function depthIn(node, el) {
   let d = 0;
   for (let p = node.parent; p && p !== el; p = p.parent) d++;
   return d;
 }
+// Of two places where text nodes meet, the one in fewer inline elements, the one before on a tie, so
+// words added at the edge of italics are plain.
+const closer = (map, before, after) => (depthIn(before.node, map.el) <= depthIn(after.node, map.el) ? before : after);
 
-// Takes the raw characters `from` up to `to` out of the paragraph's text nodes.
+// Takes the raw characters `from` up to `to` out of the paragraph. Taking out the space a <br> stands
+// for takes out the line break.
 function removeRaw(map, from, to) {
   for (const n of map.nodes) {
     const a = Math.max(from, n.start);
     const b = Math.min(to, n.start + n.length);
-    if (a < b) n.node.data = n.node.data.slice(0, a - n.start) + n.node.data.slice(b - n.start);
+    if (a >= b) continue;
+    if (n.br) detach(n.node);
+    else n.node.data = n.node.data.slice(0, a - n.start) + n.node.data.slice(b - n.start);
   }
 }
 
@@ -324,41 +350,61 @@ function put({ node, offset }, { lead, nodes, trail }) {
   insertAfter(node, trail + rest ? [...nodes, textNode(trail + rest)] : nodes);
 }
 
-/** Writes one change (see diffText) into a paragraph, through its map. */
+/**
+ * Writes one change (see diffText) into a paragraph, through its map. Text always goes into a text node:
+ * a <br> holds none, so at a line break the text node beside it is used, as where two text nodes meet.
+ */
 function applyChange(map, change) {
-  const { from, to } = map;
+  const { from, to, nodes } = map;
   let place;
   if (change.end > change.start) {
-    // New words go where the first of the words they replace was, and take its formatting.
-    place = locate(map, from[change.start]);
-    removeRaw(map, from[change.start], to[change.end - 1]);
+    // New words go where the first of the words they replace was, and take its formatting. A space a
+    // line break stands for has none: the text nodes before and after the breaks are chosen between.
+    const pos = from[change.start];
+    let i = pieceAt(map, pos);
+    if (!nodes[i].br) place = placeIn(nodes[i], pos);
+    else {
+      const before = nodes[pieceAt(map, pos, true)];
+      while (i < nodes.length - 1 && nodes[i].br) i++;
+      const after = nodes[i];
+      if (after.br) place = placeIn(before, pos);
+      else if (before.br) place = placeIn(after, after.start);
+      else place = closer(map, placeIn(before, pos), placeIn(after, after.start));
+    }
+    removeRaw(map, pos, to[change.end - 1]);
   } else if (change.start === 0) {
-    place = locate(map, from[0]);
+    place = placeIn(nodes[pieceAt(map, from[0])], from[0]);
   } else if (change.start === from.length) {
-    place = locate(map, to[from.length - 1], true);
+    const pos = to[from.length - 1];
+    place = placeIn(nodes[pieceAt(map, pos, true)], pos);
   } else {
-    // Between two text nodes, the one in fewer inline elements, so words added at the edge of italics are plain.
-    const before = locate(map, to[change.start - 1], true);
-    const after = locate(map, from[change.start]);
-    place = before.node === after.node || depthIn(before.node, map.el) <= depthIn(after.node, map.el) ? before : after;
+    const pos = from[change.start];
+    const before = nodes[pieceAt(map, pos, true)];
+    const after = nodes[pieceAt(map, pos)];
+    if (before === after || after.br) place = placeIn(before, pos);
+    else if (before.br) place = placeIn(after, pos);
+    else place = closer(map, placeIn(before, pos), placeIn(after, pos));
   }
   if (change.content) put(place, change.content);
 }
 
 /**
- * A copy of the part of a paragraph from raw character `from` up to `to`, the way Range.cloneContents
- * copies it: an element cut by the edges is copied with only its part. Only text and the elements around
- * it are copied, without ids: pictures, anchors and page marks stay where they were.
+ * A copy of the part of a paragraph from raw character `from` up to `to` (see textMap), the way
+ * Range.cloneContents copies it: an element cut by the edges is copied with only its part. Only text and
+ * the elements around it are copied, without ids: pictures, anchors and page marks stay where they were.
+ * A line break is copied as a plain space, so the copy reads the same; the break itself stays.
  */
 function copyRange(el, from, to) {
   let pos = 0;
   const copy = (node) => {
-    if (isText(node)) {
+    if (isText(node) || isBreak(node)) {
+      const data = pieceText(node);
       const start = pos;
-      pos += node.data.length;
+      pos += data.length;
       const a = Math.max(from, start);
       const b = Math.min(to, pos);
-      return a < b ? textNode(node.data.slice(a - start, b - start)) : null;
+      if (a >= b) return null;
+      return textNode(isText(node) ? data.slice(a - start, b - start) : ' ');
     }
     if (!isTag(node)) return null;
     const out = element(node.name, withoutId(node.attribs));
@@ -371,7 +417,8 @@ function copyRange(el, from, to) {
   return el.children.map(copy).filter(Boolean);
 }
 
-// Takes out the inline elements of a paragraph that had text and have none now, unless they hold what is not text.
+// Takes out the inline elements of a paragraph that had text or a line break and have no text now, unless
+// they hold what is not text.
 function removeEmptied(el, hadText) {
   for (const child of [...el.children]) {
     if (!isTag(child)) continue;
@@ -396,12 +443,12 @@ export function applyFix(root, start, count, after) {
   const run = paras.slice(start, start + count);
   if (!count || run.length !== count) throw new FixError(409, STALE);
   if ((count !== 1 || after.length !== 1) && run.some((p) => inTable(p.el))) {
-    throw new FixError(400, 'A paragraph in a table is fixed on its own.');
+    throw new FixError(400, 'A paragraph in a table is fixed on its own');
   }
   const { oldOf, removed } = pairParagraphs(run.map((p) => p.text), after);
   const maps = run.map((p) => textMap(p.el));
   const hadText = new Set();
-  for (const p of run) for (const e of findAll(() => true, p.el.children)) if (textContent(e)) hadText.add(e);
+  for (const p of run) for (const e of findAll(() => true, p.el.children)) if (piecesOf(e).some((n) => isBreak(n) || n.data)) hadText.add(e);
 
   // What each pair changes, and the text taken out of the passage.
   const edits = [];
@@ -471,7 +518,7 @@ export function applyFix(root, start, count, after) {
   // A guard against mistakes here: the section must now read as asked, and the same everywhere else.
   const texts = paragraphsOf(root).map((p) => p.text);
   const expected = [...paras.slice(0, start).map((p) => p.text), ...after, ...paras.slice(start + count).map((p) => p.text)];
-  if (texts.length !== expected.length || texts.some((t, x) => t !== expected[x])) throw new FixError(500, 'The text could not be fixed.');
+  if (texts.length !== expected.length || texts.some((t, x) => t !== expected[x])) throw new FixError(500, 'The text could not be fixed');
 
   const renames = [];
   for (const { i, j } of edits) {
@@ -660,7 +707,7 @@ export function createFixes(db, config, log = console) {
     const b = stmts.book.get(id);
     if (!b) throw new FixError(404, 'No such book');
     if (b.status === 'processing') throw new FixError(409, 'The book is being converted. Try again in a moment.');
-    if (b.status !== 'ready') throw new FixError(409, 'The book could not be converted, so its text cannot be fixed.');
+    if (b.status !== 'ready') throw new FixError(409, 'The book could not be converted, so its text cannot be fixed');
   }
 
   function shiftPositions(id, section, shift) {
@@ -675,7 +722,7 @@ export function createFixes(db, config, log = console) {
    * place). Returns its new place, { section, paragraph, contextBefore, contextAfter, renames }, or null
    * when its text is not there or it cannot be made.
    */
-  function applyStored(fix, sections) {
+  function applyStored(bookId, fix, sections) {
     const found = findRun(sections, fix);
     if (!found) return null;
     const sec = sections.find((s) => s.section === found.section);
@@ -684,7 +731,7 @@ export function createFixes(db, config, log = console) {
       result = fixHtml(sec.html, found.index, fix.before.length, fix.after);
     } catch (err) {
       if (!(err instanceof FixError)) throw err;
-      if (err.status === 500) log.error?.(`[fixes] fix ${fix.id} could not be applied in section ${found.section}`);
+      if (err.status === 500) log.error?.(`[fixes] ${bookId}: fix ${fix.id} could not be applied in section ${found.section}`);
       return null;
     }
     const place = {
@@ -798,7 +845,7 @@ export function createFixes(db, config, log = console) {
       const sec = { section: S, html: unfixed, nodes, texts: paragraphsOf({ children: nodes }).map((p) => p.text) };
       const places = [];
       for (const fix of others) {
-        const place = applyStored(fix, [sec]);
+        const place = applyStored(bookId, fix, [sec]);
         if (!place) throw new FixError(409, 'A later fix changed this text. Undo that one first.');
         places.push([fix.id, place]);
       }
@@ -849,8 +896,14 @@ export function createFixes(db, config, log = console) {
       const html = await fsp.readFile(path.join(dir, 'sections', `${i}.html`), 'utf8');
       sections.push({ section: i, html, converted: html, nodes: null, fixed: false, texts: paragraphsOf(parseSection(html)).map((p) => p.text) });
     }
+    // A fix that fails in any way is only marked not applied: it never makes the conversion fail.
     const results = rows.map((row) => {
-      const place = applyStored(stored(row), sections);
+      let place = null;
+      try {
+        place = applyStored(bookId, stored(row), sections);
+      } catch (err) {
+        log.error?.(`[fixes] ${bookId}: fix ${row.id} could not be applied: ${err.message}`);
+      }
       if (place) renameTitles(manifest, place.section, place.renames);
       return [row.id, place];
     });

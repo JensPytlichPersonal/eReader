@@ -89,7 +89,7 @@ test('only admins see, make and undo fixes', async () => {
   assert.equal((await anna(`/api/books/${id}/fixes/${made.data.fix.id}`, { method: 'DELETE' })).status, 403);
   assert.equal((await jens(`/api/books/${id}/fixes`)).data.fixes.length, 1);
   assert.equal((await jens('/api/books/0000000000000000/fixes')).status, 404);
-  assert.equal((await fixText(id, { section: 0, paragraph: 1, before: [GREAT_HALL], after: [` ${GREAT_HALL}\n`] })).data.error, 'Nothing has changed.');
+  assert.equal((await fixText(id, { section: 0, paragraph: 1, before: [GREAT_HALL], after: [` ${GREAT_HALL}\n`] })).data.error, 'Nothing has changed');
   assert.equal((await fixText(id, { section: 0, paragraph: 1, before: 'x', after: [] })).status, 400);
   assert.equal((await undo(id, 9999)).status, 404);
 });
@@ -178,7 +178,7 @@ test('a book being converted, or that could not be, cannot have its text fixed',
   db.prepare("UPDATE books SET status = 'error' WHERE id = ?").run(id);
   r = await fixText(id, body);
   assert.equal(r.status, 409);
-  assert.equal(r.data.error, 'The book could not be converted, so its text cannot be fixed.');
+  assert.equal(r.data.error, 'The book could not be converted, so its text cannot be fixed');
   db.prepare("UPDATE books SET status = 'ready' WHERE id = ?").run(id);
   assert.equal((await fixText(id, body)).status, 201);
 });
@@ -208,6 +208,26 @@ test('converting again applies the fixes again, and marks those whose text is go
   assert.deepEqual(list.map((f) => f.applied), [false]);
   assert.equal((await undo(id, list[0].id)).status, 200);
   assert.deepEqual((await jens(`/api/books/${id}/fixes`)).data.fixes, []);
+});
+
+test('a stored fix that fails is marked not applied, and the book is still converted with the others', async () => {
+  const id = await upload('Broken.md', Buffer.from('# Tale\n\nOnce tbere was a king.\n\nHe ruled well.\n\nThe end came lafe.\n'));
+  const first = await fixText(id, { section: 0, paragraph: 1, before: ['Once tbere was a king.'], after: ['Once there was a king.'] });
+  assert.equal(first.status, 201);
+  // A row no fix could have written: its new text is not JSON.
+  const broken = Number(db.prepare(`INSERT INTO text_fixes (book_id, old_text, new_text, section, paragraph, created_at)
+    VALUES (?, ?, ?, 0, 2, ?)`).run(id, JSON.stringify(['He ruled well.']), 'not json', Date.now()).lastInsertRowid);
+  const last = await fixText(id, { section: 0, paragraph: 3, before: ['The end came lafe.'], after: ['The end came late.'] });
+  assert.equal(last.status, 201);
+
+  const again = await reprocess(id);
+  assert.equal(again.book.status, 'ready');
+  const html = await section(id);
+  assert.match(html, /Once there was a king\./);
+  assert.match(html, /He ruled well\./);
+  assert.match(html, /The end came late\./);
+  const applied = (fixId) => db.prepare('SELECT applied FROM text_fixes WHERE id = ?').get(fixId).applied;
+  assert.deepEqual([applied(first.data.fix.id), applied(broken), applied(last.data.fix.id)], [1, 0, 1]);
 });
 
 test('undo puts the text back as it was, and moves places back', async () => {
