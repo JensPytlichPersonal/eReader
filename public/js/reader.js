@@ -1,7 +1,7 @@
 // The reader: paginates normalised book sections with CSS columns, tracks the position as
 // (section, character offset) so it is stable across devices, fonts and screen sizes, and
 // keeps that position in sync with the server.
-import { api, toast, escapeHtml, guessDeviceName, registerServiceWorker, formatDate } from './api.js';
+import { api, ApiError, toast, escapeHtml, guessDeviceName, registerServiceWorker, formatDate } from './api.js';
 import { loadSettings, saveSettings, applyTheme, resolveSkin, applyTypography, fontOptions, fontReady, adoptAccountFont, saveAccountFont, effectiveTheme } from './settings.js';
 import { PdfPageView } from './pdf-view.js';
 
@@ -21,6 +21,8 @@ const els = {
   topbar: $('topbar'), bottombar: $('bottombar'), title: $('title'), slider: $('slider'), pos: $('pos'),
   statusLeft: $('status-left'), statusRight: $('status-right'), loading: $('loading'),
   toc: $('toc'), bookmarks: $('bookmarks'), backdrop: $('panel-backdrop'), tapHint: $('tap-hint'),
+  fixbar: $('fixbar'), fixText: $('fix-text'), fixHint: $('fix-hint'), fixAdd: $('fix-add'),
+  fixBefore: $('fix-add-before'), fixAfter: $('fix-add-after'), fixSave: $('fix-save'),
 };
 
 let settings = loadSettings();
@@ -37,6 +39,9 @@ const state = {
   bookmarks: [], history: [],
   barsVisible: false,
 };
+// Fixing the text (see below): whether fix mode is on, the passage open in the fix panel, whether it is being
+// saved, whether a fix was saved since fix mode began, and the paragraphs of the section shown, as last counted.
+const fix = { on: false, passage: null, saving: false, saved: false, counted: null };
 
 // ---------------------------------------------------------------- utilities
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
@@ -66,6 +71,8 @@ function positionFromPercent(p) {
 // ---------------------------------------------------------------- layout
 function layout() {
   applyTypography(settings);
+  // While fixing the text, the page starts under the fix bar (body.fixing in reader.css), so no line is hidden by it.
+  if (fix.on) document.documentElement.style.setProperty('--fixbar-h', `${els.fixbar.offsetHeight}px`);
   const vp = els.viewport;
   const cs = getComputedStyle(vp);
   const padL = parseFloat(cs.paddingLeft), padR = parseFloat(cs.paddingRight), padT = parseFloat(cs.paddingTop), padB = parseFloat(cs.paddingBottom);
@@ -346,6 +353,7 @@ async function loadSection(idx) {
   els.content.classList.add('loading');
   const html = await fetchSection(idx);
   if (token !== state.loadToken) return false;
+  state.sectionSource = html; // as fetched, without what the reader adds: where fixes count paragraphs
   state.sectionHtml = html + (idx === sections().length - 1 ? '<p class="section-end">— The end —</p>' : '');
   els.content.innerHTML = state.sectionHtml;
   els.content.lang = state.manifest.language || 'en';
@@ -454,6 +462,7 @@ async function relayout() {
   placeFootnotes();
   measure();
   await restore(loc);
+  if (fix.passage) markFixPassage(); // the page was drawn again
 }
 
 // ---------------------------------------------------------------- footnotes at the foot of their column
@@ -731,7 +740,8 @@ async function reloadHere() {
 }
 
 async function checkRemote() {
-  if (document.visibilityState !== 'visible' || !state.manifest) return;
+  // Not while a paragraph is open to be fixed: the page under it stays.
+  if (document.visibilityState !== 'visible' || !state.manifest || fix.passage) return;
   try {
     const { progress } = await api(`/api/books/${bookId}/progress`, { noRedirect: true });
     if (progress && progress.updatedAt > state.known) {
@@ -796,18 +806,24 @@ async function showPdfPage(pageNo, { record }) {
 
 // ---------------------------------------------------------------- panels
 function openPanel(id) {
-  closePanels();
+  if (!closePanels()) return false;
   $(id).classList.remove('hidden');
   els.backdrop.classList.remove('hidden');
   if (id === 'panel-toc') markCurrentToc();
   if (id === 'panel-bookmarks') renderBookmarks();
+  return true;
 }
+/** Closes the panels. A fix not saved is left behind only when the admin says so; false when they did not. */
 function closePanels() {
+  if (fix.saving || (fixChanged() && !confirm('Leave without saving this fix?'))) return false;
   document.querySelectorAll('.panel').forEach((p) => p.classList.add('hidden'));
   els.backdrop.classList.add('hidden');
+  if (fix.passage) { fix.passage = null; markFixPassage(); }
+  return true;
 }
 function toggleBars(force) {
-  state.barsVisible = force ?? !state.barsVisible;
+  // Fix mode has a bar of its own.
+  state.barsVisible = !fix.on && (force ?? !state.barsVisible);
   els.topbar.classList.toggle('hidden', !state.barsVisible);
   els.bottombar.classList.toggle('hidden', !state.barsVisible);
   if (!state.barsVisible) closePanels();
@@ -948,7 +964,8 @@ function bindSettings() {
     $('pdfmode-seg').addEventListener('click', async (e) => {
       const mode = e.target.closest('button[data-v]')?.dataset.v;
       if (!mode || mode === state.mode) return;
-      if (mode === 'pages') { if (!(await enterPagesMode())) return; } else { leavePagesMode(); await relayout(); }
+      // The pages hold no paragraphs to tap, so fix mode ends with them.
+      if (mode === 'pages') { if (!(await enterPagesMode())) return; leaveFixMode(); } else { leavePagesMode(); await relayout(); }
       rememberPdfMode(mode);
     });
     check('opt-pdf-invert', 'pdfInvert', () => { if (state.mode === 'pages') showPdfPage(state.pdfPage, { record: false }); });
@@ -968,6 +985,250 @@ function bindSettings() {
   $('book-info').innerHTML = [...inSeries, escapeHtml(facts.filter(Boolean).join(' · '))].join(' · ');
 }
 
+// ---------------------------------------------------------------- fixing the text
+// Admins fix the text of a book here (see server/fixes.js): Fix text in the Aa panel starts fix mode, where a tap
+// opens the paragraph under it in the fix panel, and Save sends the paragraphs as shown and as fixed. The server finds
+// them by their number in the section, so they are counted as it counts them: in the section as fetched, without the
+// footnote copies and the line at the end that the reader adds. These two lists must stay in step with PARAGRAPH_TAGS
+// in server/fixes.js and BLOCK_TAGS in server/converters/html.js.
+const PARAGRAPH_TAGS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'dt', 'dd', 'td', 'th', 'caption', 'figcaption',
+  'blockquote', 'div', 'section', 'article', 'aside', 'header', 'footer', 'address', 'summary'];
+const BLOCK_TAGS = ['p', 'div', 'section', 'article', 'aside', 'header', 'footer', 'main', 'nav',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col', 'figure', 'figcaption',
+  'hr', 'br', 'img', 'address', 'details', 'summary', 'hgroup'];
+const PARAGRAPHS = new Set(PARAGRAPH_TAGS);
+// A paragraph holds no block but line breaks and pictures.
+const INNER_BLOCKS = BLOCK_TAGS.filter((t) => t !== 'br' && t !== 'img').join(',');
+const collapse = (text) => text.replace(/\s+/g, ' ').trim();
+const FIX_HINT = 'A blank line separates paragraphs. Empty a paragraph to remove it.';
+const FIX_HINT_TABLE = 'A paragraph in a table is fixed on its own.';
+// The most paragraphs the server fixes at once (MAX_BEFORE in server/fixes.js).
+const FIX_MOST = 20;
+
+/** A paragraph's text: its text nodes in order, a line break read as a space, collapsed. Not textContent, which drops line breaks. */
+function paragraphText(el) {
+  let raw = '';
+  const walk = (node) => {
+    for (const c of node.childNodes) {
+      if (c.nodeType === Node.TEXT_NODE) raw += c.data;
+      else if (c.nodeType === Node.ELEMENT_NODE) { if (c.localName === 'br') raw += '\n'; else walk(c); }
+    }
+  };
+  walk(el);
+  return collapse(raw);
+}
+/** An element on the page that is a paragraph by the rule above, or a piece of one that placing footnotes split. */
+const isParagraph = (el) => PARAGRAPHS.has(el.localName) && !el.querySelector(INNER_BLOCKS) && !el.closest('pre') && !!paragraphText(el);
+
+let inertDoc = null;
+/**
+ * The paragraphs of the section shown, as the server counts them: [{ text, start, end, table }], `start` to `end`
+ * where their text is, counted as indexNodes() counts places. Footnotes placed on the page split paragraphs but keep
+ * every place where it was, so a place tells which paragraph a piece of the page belongs to.
+ */
+function sectionParagraphs() {
+  const html = state.sectionSource;
+  if (fix.counted?.html === html) return fix.counted.paras;
+  // Read in a document of its own, so the pictures in it do not load.
+  inertDoc ??= document.implementation.createHTMLDocument('');
+  const root = inertDoc.createElement('div');
+  root.innerHTML = html;
+  const found = new Map();
+  const visit = (parent) => {
+    for (const el of parent.children) {
+      if (el.localName === 'pre') continue;
+      if (PARAGRAPHS.has(el.localName) && !el.querySelector(INNER_BLOCKS)) {
+        const text = paragraphText(el);
+        if (text) found.set(el, { text, start: 0, end: 0, table: !!el.closest('table') });
+      } else visit(el);
+    }
+  };
+  visit(root);
+  let at = 0;
+  const count = (parent) => {
+    for (const n of parent.childNodes) {
+      if (n.nodeType === Node.TEXT_NODE) at += n.data.length;
+      if (n.nodeType !== Node.ELEMENT_NODE) continue;
+      const p = found.get(n);
+      if (p) p.start = at;
+      if (n.localName === 'img') at += 1; else count(n);
+      if (p) p.end = at;
+    }
+  };
+  count(root);
+  fix.counted = { html, paras: [...found.values()] };
+  return fix.counted.paras;
+}
+
+/** Starts fix mode: the fix bar at the top, and taps that open paragraphs. A PDF shown as its pages switches to its text. */
+async function startFixing() {
+  if (!closePanels()) return;
+  toggleBars(false);
+  if (fix.on) return;
+  fix.on = true;
+  document.body.classList.add('fixing');
+  els.fixbar.classList.remove('hidden');
+  const fromPages = state.mode === 'pages';
+  if (fromPages) leavePagesMode();
+  await relayout();
+  if (fromPages) rememberPdfMode('text');
+}
+function leaveFixMode() {
+  fix.on = false;
+  document.body.classList.remove('fixing');
+  els.fixbar.classList.add('hidden');
+}
+/** Done: leaves fix mode, once a fix not saved may be left behind, and gives the page back its room. */
+async function stopFixing() {
+  if (!closePanels()) return;
+  leaveFixMode();
+  await relayout();
+  // Each fix gave the book a new version, so this device keeps the whole book again for reading offline.
+  if (fix.saved) { fix.saved = false; keepOffline().catch(() => {}); }
+}
+
+/** Opens the paragraph a tap in fix mode landed on, or for a footnote shown at the foot of a page, the note itself. */
+function openFixAt(target) {
+  if (!(target instanceof Element) || !els.content.contains(target)) return;
+  const copy = target.closest('.fn-area [data-fn]');
+  let el = null;
+  if (copy) el = els.content.querySelector(`.endnotes [id="${CSS.escape(copy.dataset.fn)}"]`);
+  else if (!target.closest('.fn-area, .section-end')) {
+    for (let n = target; n && n !== els.content; n = n.parentElement) if (isParagraph(n)) { el = n; break; }
+  }
+  if (!el) return;
+  const paras = sectionParagraphs();
+  const at = offsetOfElement(el);
+  const i = paras.findIndex((p) => at >= p.start && at < p.end);
+  if (i < 0 || !openPanel('panel-fix')) return;
+  fix.passage = { section: state.section, paras, first: i, last: i, noteId: copy?.dataset.fn || null };
+  els.fixText.value = paras[i].text;
+  els.fixText.lang = state.manifest.language || '';
+  showFixPassage();
+  // On a touch screen the keyboard would cover the page at once, so the box waits for a tap there.
+  if (matchMedia('(pointer: fine)').matches) els.fixText.focus({ preventScroll: true });
+}
+
+const shownTexts = (p) => p.paras.slice(p.first, p.last + 1).map((x) => x.text);
+const inTable = (p) => p.paras[p.first].table;
+/** The paragraphs Save would send: the box split at blank lines, or a table's paragraph as one. */
+function fixAfter() {
+  const text = els.fixText.value;
+  const parts = inTable(fix.passage) ? [text] : text.split(/\n\s*\n/);
+  return parts.map(collapse).filter(Boolean);
+}
+/** Whether the box says something other than the paragraphs shown. */
+function fixChanged() {
+  if (!fix.passage) return false;
+  const before = shownTexts(fix.passage);
+  const after = fixAfter();
+  return before.length !== after.length || before.some((t, i) => t !== after[i]);
+}
+// Save sends the box once it says something new. A paragraph in a table cannot be removed, so it is never sent empty.
+const fixReady = () => fixChanged() && !(inTable(fix.passage) && !fixAfter().length);
+const updateFixSave = () => { els.fixSave.disabled = fix.saving || !fixReady(); };
+
+/** The panel for the passage: the hint, the paragraphs that can be added to it, Save, and the outline on the page. */
+function showFixPassage() {
+  const p = fix.passage;
+  const table = inTable(p);
+  // A paragraph in a table is fixed on its own, so none is added to it, and it is added to none. Nor is one added
+  // past the most the server fixes at once.
+  const room = p.last - p.first + 1 < FIX_MOST;
+  const addable = (i) => room && !table && !!p.paras[i] && !p.paras[i].table;
+  els.fixBefore.classList.toggle('hidden', !addable(p.first - 1));
+  els.fixAfter.classList.toggle('hidden', !addable(p.last + 1));
+  els.fixAdd.classList.toggle('hidden', !addable(p.first - 1) && !addable(p.last + 1));
+  els.fixHint.textContent = table ? FIX_HINT_TABLE : FIX_HINT;
+  updateFixSave();
+  markFixPassage();
+}
+/** Outlines the passage's paragraphs on the page, and the footnote copy it was opened from. */
+function markFixPassage() {
+  els.content.querySelectorAll('.fix-on').forEach((e) => e.classList.remove('fix-on'));
+  const p = fix.passage;
+  if (!p || p.section !== state.section || state.mode !== 'text') return;
+  const run = p.paras.slice(p.first, p.last + 1);
+  for (const el of els.content.querySelectorAll(PARAGRAPH_TAGS.join(','))) {
+    if (el.closest('.fn-area') || !isParagraph(el)) continue;
+    const at = offsetOfElement(el);
+    if (run.some((r) => at >= r.start && at < r.end)) el.classList.add('fix-on');
+  }
+  if (p.noteId) els.content.querySelector(`.fn-area [data-fn="${CSS.escape(p.noteId)}"]`)?.classList.add('fix-on');
+}
+
+/** Adds the paragraph before or after the passage to the box, a blank line between. */
+function addToFix(where) {
+  const p = fix.passage;
+  if (where === 'before') {
+    p.first -= 1;
+    els.fixText.value = `${p.paras[p.first].text}\n\n${els.fixText.value.trimStart()}`;
+  } else {
+    p.last += 1;
+    els.fixText.value = `${els.fixText.value.trimEnd()}\n\n${p.paras[p.last].text}`;
+  }
+  showFixPassage();
+}
+
+/**
+ * Sends the fix. On success the book takes its new version, so the section is fetched again past the offline cache,
+ * and the page where the passage starts is shown; the panel closes and fix mode goes on.
+ */
+async function saveFix() {
+  const p = fix.passage;
+  if (!p || fix.saving || !fixReady()) return;
+  const after = fixAfter();
+  if (!after.length && !confirm(p.last > p.first ? 'Remove these paragraphs from the book?' : 'Remove this paragraph from the book?')) return;
+  // The page to show again: where the passage starts, which a fix never moves, or for a note opened from the foot of
+  // a page, that page.
+  const offset = p.noteId ? state.locator.offset : p.paras[p.first].start;
+  const body = { section: p.section, paragraph: p.first, before: shownTexts(p), after };
+  fix.saving = true;
+  updateFixSave();
+  let answer;
+  try {
+    answer = await api(`/api/books/${bookId}/fixes`, { method: 'POST', body });
+  } catch (err) {
+    toast(err instanceof ApiError ? err.message : 'No connection. The fix was not saved', 5000);
+    return;
+  } finally {
+    fix.saving = false;
+    updateFixSave();
+  }
+  state.manifest = answer.manifest;
+  state.book = answer.book;
+  state.cache.clear();
+  fix.saved = true;
+  fix.passage = null; // saved, so closed without asking
+  markFixPassage();
+  closePanels();
+  renderToc(); // a chapter's title may have changed
+  try {
+    if (await loadSection(p.section)) await restore({ section: p.section, offset }, { record: true });
+  } catch {
+    els.content.classList.remove('loading');
+    toast('Saved. Reload the book to see the fix.', 5000);
+    return;
+  }
+  updateStatus();
+  toast('Saved');
+  // The server moved this reader's bookmarks after the passage with the text.
+  api(`/api/books/${bookId}/bookmarks`).then((r) => { state.bookmarks = r.bookmarks; }).catch(() => {});
+}
+
+function bindFixing() {
+  $('btn-fix').addEventListener('click', startFixing);
+  $('fix-prev').addEventListener('click', () => prev());
+  $('fix-next').addEventListener('click', () => next());
+  $('fix-done').addEventListener('click', stopFixing);
+  $('fix-cancel').addEventListener('click', closePanels);
+  els.fixSave.addEventListener('click', saveFix);
+  els.fixText.addEventListener('input', updateFixSave);
+  els.fixBefore.addEventListener('click', () => addToFix('before'));
+  els.fixAfter.addEventListener('click', () => addToFix('after'));
+}
+
 // ---------------------------------------------------------------- input
 function bindInput() {
   // Taps: left/right zones turn pages, the middle toggles the bars.
@@ -981,6 +1242,13 @@ function bindInput() {
     else toggleBars();
   };
   vp.addEventListener('click', (e) => {
+    // While fixing the text a tap opens the paragraph under it, and nothing else: no page turns, bars or links.
+    if (fix.on) {
+      e.preventDefault();
+      if (touch?.handled) { touch = null; return; }
+      openFixAt(e.target);
+      return;
+    }
     const a = e.target.closest('a');
     if (a) {
       if (a.dataset.sec != null) {
@@ -996,7 +1264,7 @@ function bindInput() {
   const swipeRoot = document.body;
   swipeRoot.addEventListener('touchstart', (e) => { if (e.touches.length === 1) touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(), handled: false }; }, { passive: true });
   swipeRoot.addEventListener('touchend', (e) => {
-    if (!touch || !settings.swipe || e.target.closest('.panel, .bar')) return;
+    if (!touch || !settings.swipe || e.target.closest('.panel, .bar') || fix.passage) return;
     const dx = e.changedTouches[0].clientX - touch.x;
     const dy = e.changedTouches[0].clientY - touch.y;
     if (Math.abs(dx) > 60 && Math.abs(dy) < 80 && Date.now() - touch.t < 800) {
@@ -1008,6 +1276,8 @@ function bindInput() {
   }, { passive: true });
 
   document.addEventListener('keydown', (e) => {
+    // The fix panel takes no keys but Escape, which asks before leaving a fix behind, also from the box.
+    if (fix.passage) { if (e.key === 'Escape') closePanels(); return; }
     if (e.target.matches('input, select, textarea')) return;
     const anyPanel = [...document.querySelectorAll('.panel')].some((p) => !p.classList.contains('hidden'));
     switch (e.key) {
@@ -1171,6 +1441,8 @@ async function init() {
   state.bookmarks = bookmarks || [];
   const user = await account;
   if (adoptAccountFont(user)) settings.font = user.font;
+  // Fixing the text is for admins, and needs the server: without an answer about the reader, it is not offered.
+  $('btn-fix').classList.toggle('hidden', !user?.isAdmin);
   await fontReady(settings);
   els.title.textContent = book.title || manifest.title;
   if (manifest.hasStyles) { const l = $('book-styles'); l.href = bookUrl('styles.css'); l.disabled = false; }
@@ -1186,6 +1458,7 @@ async function init() {
   renderToc();
   bindSettings();
   bindInput();
+  bindFixing();
   layout();
   if (manifest.format === 'pdf' && initialPdfMode() === 'pages') {
     state.locator = { section: clamp(start.section, 0, sections().length - 1), offset: start.offset || 0 };

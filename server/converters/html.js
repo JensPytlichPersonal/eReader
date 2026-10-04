@@ -6,6 +6,7 @@ import { hasWatermark, stripWatermarks, isWatermarkLink, isCreditLine, CREDIT_RE
 
 const { isTag, isText, textContent, removeElement, replaceElement, getElementsByTagName, findOne } = DomUtils;
 
+// public/js/reader.js keeps a copy of this list to count paragraphs as fixes.js does; the two must stay in step.
 export const BLOCK_TAGS = new Set(['p', 'div', 'section', 'article', 'aside', 'header', 'footer', 'main', 'nav',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'ul', 'ol', 'li', 'dl', 'dt', 'dd',
   'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col', 'figure', 'figcaption',

@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   fixHtml, paragraphsOf, parseSection, collapse, startKey, pairParagraphs, diffText, parseFixInput,
-  positionText, positionShift, shiftOffset, findRun, renameTitles, FixError,
+  positionText, positionShift, shiftOffset, findRun, renameTitles, FixError, PARAGRAPH_TAGS,
 } from '../server/fixes.js';
+import { BLOCK_TAGS } from '../server/converters/html.js';
 
 const texts = (html) => paragraphsOf(parseSection(html)).map((p) => p.text);
 // Fixes the paragraphs of `html` that read as `before` (one run of them) to read as `after`.
@@ -228,4 +230,16 @@ test('a very long change is taken as one block between what stays the same', () 
   assert.equal(changes[0].start, 5);
   const { html } = fix(`<p>Keep ${before} end</p>`, [`Keep ${before} end`], [`Keep ${after} end`]);
   assert.equal(html, `<p>Keep ${after} end</p>`);
+});
+
+test('the reader counts paragraphs with the same tags as the server', () => {
+  // public/js/reader.js runs in the browser, so its copies of the lists are read from its source.
+  const source = fs.readFileSync(new URL('../public/js/reader.js', import.meta.url), 'utf8');
+  const list = (name) => {
+    const found = source.match(new RegExp(`const ${name} = \\[([^\\]]*)\\];`));
+    assert.ok(found, `${name} is not in reader.js`);
+    return [...found[1].matchAll(/'([a-z0-9]+)'/g)].map((m) => m[1]);
+  };
+  assert.deepEqual(list('PARAGRAPH_TAGS'), PARAGRAPH_TAGS);
+  assert.deepEqual(new Set(list('BLOCK_TAGS')), BLOCK_TAGS);
 });

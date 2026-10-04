@@ -438,6 +438,18 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .reader-list .pct, .reader-list .when { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .reader-list .when { color: var(--muted); }
 .readers .btn { margin-top: 10px; }
+/* Fixes to the text, for admins, between the details and the foot: what each fix changed, the words taken out
+   struck through and those put in underlined, who made it and when, and Undo */
+.sheet.book > .fixes { padding: 14px var(--pad) 16px; border-top: 2px solid var(--line); font-size: 14px; }
+.fixes .area-name { margin-bottom: 8px; }
+.fix-list { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.fix-list li { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.fix-list p { margin: 0; overflow-wrap: anywhere; }
+.fix-list del { text-decoration: line-through; text-decoration-thickness: 2px; }
+.fix-list ins { text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 3px; }
+.fix-list .who { font-size: 13px; color: var(--muted); }
+.fix-list .not-applied { font-weight: 600; }
+.fix-list .btn { margin-top: 2px; }
 /* Download on the left, Convert again in the middle, Delete on the right; on a narrow sheet their names wrap */
 .file-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 /* Download alone, for a reader who cannot change the book */

@@ -36,6 +36,10 @@
     <button class="btn small" id="btn-next-chapter" aria-label="Next chapter">&#187;</button>
   </div>
 </footer>
+<header id="fixbar" class="bar hidden" aria-label="Fixing the text">
+  <span class="title">Tap a paragraph to fix it</span>
+  <div class="buttons"><button class="btn small" id="fix-prev">Previous page</button><button class="btn small" id="fix-next">Next page</button><button class="btn small" id="fix-done">Done</button></div>
+</header>
 
 <div id="panel-backdrop" class="panel-backdrop hidden"></div>
 <aside id="panel-toc" class="panel hidden" aria-label="Contents">
@@ -47,6 +51,15 @@
   <div class="body">
     <button class="btn primary" id="btn-add-bookmark" style="width:100%;margin-bottom:12px">Bookmark this page</button>
     <div id="bookmarks"></div>
+  </div>
+</aside>
+<aside id="panel-fix" class="panel fix hidden" aria-label="Fix text">
+  <header><span>Fix text</span><button class="btn small" data-close>Close</button></header>
+  <div class="body">
+    <textarea id="fix-text" aria-label="The text of the paragraphs" aria-describedby="fix-hint"></textarea>
+    <p class="hint" id="fix-hint"></p>
+    <div class="row" id="fix-add"><button class="btn small" id="fix-add-before">Add the paragraph before</button><button class="btn small" id="fix-add-after">Add the paragraph after</button></div>
+    <div class="row actions"><button class="btn primary" id="fix-save" disabled>Save</button><button class="btn" id="fix-cancel">Cancel</button></div>
   </div>
 </aside>
 <aside id="panel-settings" class="panel settings hidden" aria-label="Display settings">
@@ -88,7 +101,7 @@
     </div>
     <div class="group"><label for="device-name">This device's name</label><input type="text" id="device-name" placeholder="e.g. Boox, iPhone, Laptop"></div>
     <div class="group"><span class="lbl">Book</span>
-      <div class="row"><a class="btn small" id="btn-download" href="#" download>Download original</a><button class="btn small" id="btn-readers">Who else is reading</button><button class="btn small" id="btn-reload">Reload</button></div>
+      <div class="row"><a class="btn small" id="btn-download" href="#" download>Download original</a><button class="btn small" id="btn-readers">Who else is reading</button><button class="btn small" id="btn-reload">Reload</button><button class="btn small hidden" id="btn-fix">Fix text</button></div>
       <p class="muted" id="book-info" style="font-size:13px"></p>
     </div>
   </div>

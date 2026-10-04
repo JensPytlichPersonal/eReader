@@ -379,6 +379,14 @@
 :root[data-skin="soft"] .book-head:not(.hidden) + .readers { border-top: 1px solid var(--line); }
 :root[data-skin="soft"] .reader-list .pct { color: var(--accent-ink); font-weight: 600; }
 :root[data-skin="soft"] .reader-list .progress { margin-top: 0; }
+/* Fixes to the text: hairlines between them, the words taken out in the danger colour, those put in on the accent's tint */
+:root[data-skin="soft"] .sheet.book > .fixes { border-top: 1px solid var(--line); font-size: 13.5px; }
+:root[data-skin="soft"] .fix-list { gap: 12px; }
+:root[data-skin="soft"] .fix-list li + li { padding-top: 12px; border-top: 1px solid var(--line); }
+:root[data-skin="soft"] .fix-list del { color: var(--danger); text-decoration-thickness: 1px; }
+:root[data-skin="soft"] .fix-list ins { padding: 0 2px; border-radius: 3px; background: var(--accent-soft); color: var(--accent-ink); text-decoration: none; }
+:root[data-skin="soft"] .fix-list .who { font-size: 12.5px; }
+:root[data-skin="soft"] .fix-list .not-applied { color: var(--accent-ink); }
 :root[data-skin="soft"] .match { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
 :root[data-skin="soft"] .match.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 @media (hover: hover) {
@@ -487,6 +495,15 @@
 :root[data-skin="soft"] .settings .check input:checked { background: var(--accent); }
 :root[data-skin="soft"] .settings .check input:checked::after { transform: translateX(16px); }
 :root[data-skin="soft"] .bookmarks .bm { border-bottom: 1px solid var(--line); }
+/* Fixing the text: the bar like the others with Done in the accent, the paragraphs being fixed ringed in it, the box a field */
+:root[data-skin="soft"] #fixbar { border-bottom-width: 1px; }
+:root[data-skin="soft"] #fixbar .title { padding: 0 6px; font-weight: 600; font-size: 14px; }
+:root[data-skin="soft"] #fixbar .buttons { gap: 2px; }
+:root[data-skin="soft"] #fix-done { color: var(--accent-ink); }
+:root[data-skin="soft"] .book-content .fix-on { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+:root[data-skin="soft"] .panel.fix textarea { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background-color: var(--bg); color: var(--fg); }
+:root[data-skin="soft"] .panel.fix textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+:root[data-skin="soft"] .panel.fix .hint { font-size: 12.5px; }
 /* The tap zones, the page of a PDF, and the loading screen */
 :root[data-skin="soft"] #tap-hint div { border: 1.5px dashed var(--line-2); border-radius: 12px; }
 :root[data-skin="soft"] #tap-hint div span { background: var(--accent); color: var(--accent-fg); font-weight: 600; }

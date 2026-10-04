@@ -44,6 +44,8 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   series with all its books, and *Set genre* gives them one.
 - **Details from Open Library and Hardcover.** When a book's title, author, series or cover is missing
   or wrong, look it up online from its details and pick the matching book to fill them in.
+- **Fix the text.** An admin can correct a wrong word or a mixed-up paragraph from the reader, in a book
+  of any format, and the fix is kept when the book is converted again.
 - **Covers.** EPUB and MOBI books bring their own. Where one is missing (most PDFs) or wrong, pick an
   image, use a page of the PDF, or show the title instead.
 - **List or cards.** The View menu shows the library as a list or as cards in three sizes. On a phone
@@ -257,13 +259,14 @@ background when the server starts, without converting them again, so copies amon
 
 ## A book's menu
 
-The ⋯ button on a book opens its menu, in four parts:
+The ⋯ button on a book opens its menu, in four parts, and a fifth for admins:
 
 | Part | What it holds |
 | --- | --- |
 | The bar at the top | *Read*, *Save* and *Close*. It stays in place while the rest scrolls. |
 | Who is reading | Who is reading the book, how far they are and when they last read, with *Reset my reading position* for your own place. |
 | Details and cover | The title, author, series and collections, and genre, with **Look up online** (see [Looking up details online](#looking-up-details-online)), and the cover with the ways to change it (see [Covers](#covers)). *Save* in the bar keeps all of it. |
+| Fixes to the text | For admins, when the book's text has been fixed: what each fix changed, who made it and when, and *Undo* (see [Fixing the text](#fixing-the-text)). |
 | The foot | The file's format, size and name, and who added it. *Download original file*, *Convert again* and *Delete from library*. |
 
 *Details and cover*, *Convert again* and *Delete from library* are for the uploader of the book or an
@@ -300,7 +303,8 @@ text an OCR engine read from the pages, invisible under the images, and that tex
 places each word by the box around it, so on a scan the converter groups words into lines by how their boxes overlap,
 tells headings by their size together with their centring or the space around them, starts paragraphs at indented
 lines, keeps quote marks with their words, and drops what the engine read into pictures and specks. Running heads go
-even when the engine misread their page number. Mistakes in the words themselves stay as the engine made them.
+even when the engine misread their page number. Mistakes in the words themselves stay as the engine made them until an
+admin fixes them (see [Fixing the text](#fixing-the-text)).
 
 Books from OceanofPDF have an "OceanofPDF.com" link stamped into every chapter (or onto the pages
 of a PDF) and the site's name at the start of the file name. Conversion removes the stamp in every
@@ -314,8 +318,62 @@ pages* view still shows the stamp.
 
 Converted books are stored as small HTML sections under `data/books/<id>/`. If a book converts
 badly, choose *Convert again* from its menu, or re-run every book with `npm run reprocess` after an
-update to the converters. Details edited by hand (title, author, series, cover) are kept when a book
-is converted again.
+update to the converters. Details edited by hand (title, author, series, cover) and fixes to the text are
+kept when a book is converted again.
+
+## Fixing the text
+
+Books carry wrong words, such as "tbe" for "the" in a scanned book the OCR engine misread, or a typo from the
+original. Sometimes a paragraph is mixed up, as when a footnote from the foot of a printed page lands in the middle
+of a sentence. An admin can fix the text from the reader, in a book of any format. The fix changes the text everyone
+reads; the book's file is never changed.
+
+To start, open the book and choose **Aa** > *Fix text*. A bar at the top says "Tap a paragraph to fix it", with
+*Previous page*, *Next page* and *Done*. While it shows, a tap on the text opens the paragraph under it in a box,
+instead of turning the page, showing the menu or following a link. A tap on a footnote at the foot of a page opens
+the note itself. A tap beside the text does nothing. Swipes and the keys still turn pages. A PDF shown as *Original
+pages* switches to its *Text* view first, and keeps it. *Done* goes back to reading.
+
+The box holds the text of the paragraphs, a blank line between them, and the paragraphs are outlined on the page:
+
+- Correct a word by typing over it.
+- Join two paragraphs by taking out the blank line between them, or split one with a blank line.
+- Empty a paragraph to remove it. Removing everything in the box asks first.
+- *Add the paragraph before* and *Add the paragraph after* put the next paragraph in the box too, so text can move
+  from one paragraph to another. A footnote in the middle of a sentence is fixed this way: open the paragraph before
+  it and add the note and the paragraph after, move the rest of the sentence back up, and keep the note as a
+  paragraph of its own or empty it.
+
+*Save* can be pressed only while the paragraphs differ from those shown. *Cancel*, *Close*, a tap beside the box or
+Escape with changes not saved asks first whether to leave them. Once saved, the page shows the fixed text, and fix
+mode goes on.
+
+Each paragraph keeps its look, such as a heading, a quote or a list item. A paragraph is recognised by how it
+starts, or by its place among the others when its start was changed. A new paragraph takes the look of the one before
+it, and is a plain paragraph after a heading. Words not changed keep their italics, bold and links, and so does text
+moved unchanged from one paragraph to another. New words take the formatting of the words they replace. A line break
+inside a paragraph shows as a space in the box. Pictures, anchors and the page marks of a PDF don't show in the box
+and stay where they are.
+
+A fixed chapter title also fixes its line in the contents and the chapter's name at the foot of the page, where those
+read the same as the old title.
+
+What the box can't do:
+
+- A paragraph in a table is fixed on its own, and line breaks in its box count as spaces.
+- The box can't reach across where the app splits a long chapter into parts, so *Add the paragraph before* or *after*
+  isn't offered there.
+- The box can't make a heading.
+
+The fixes are listed under *Fixes to the text* in the book's menu, newest first, for admins: the words taken out and
+those put in, with some of the text around them, who made the fix and when, and *Undo*, which puts the text back as it
+was. A later fix to the same text has to be undone first.
+
+*Convert again* and `npm run reprocess` apply the fixes again to the new text, in the order they were made, each where
+its text is found. A fix whose text is no longer there is marked *Not applied*, with *Remove* to take it off the list.
+
+Reading positions and bookmarks move with the text, so every reader stays where they were. Every device fetches the
+fixed book the next time it opens it.
 
 ## Series and collections
 
@@ -566,7 +624,7 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, and `genres.js`, which keeps the books' genres
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, `genres.js`, which keeps the books' genres, and `fixes.js`, which keeps the fixes to the books' text
 - `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and the patterns for watermarks and credit lines, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
 - `public/` the web app: library (`js/library.js`, which places the books a series lacks with `js/missing.js` and sorts books into sections by author or genre with `js/groups.js`), reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)
