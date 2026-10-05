@@ -71,8 +71,7 @@ function positionFromPercent(p) {
 // ---------------------------------------------------------------- layout
 function layout() {
   applyTypography(settings);
-  // While fixing the text, the page starts under the fix bar (body.fixing in reader.css), so no line is hidden by it.
-  if (fix.on) document.documentElement.style.setProperty('--fixbar-h', `${els.fixbar.offsetHeight}px`);
+  if (fix.on) makeFixRoom();
   const vp = els.viewport;
   const cs = getComputedStyle(vp);
   const padL = parseFloat(cs.paddingLeft), padR = parseFloat(cs.paddingRight), padT = parseFloat(cs.paddingTop), padB = parseFloat(cs.paddingBottom);
@@ -1063,6 +1062,36 @@ function sectionParagraphs() {
   return fix.counted.paras;
 }
 
+/** A section's HTML as indexNodes() counts places in it: its text, with one character for each picture. */
+function placeText(html) {
+  inertDoc ??= document.implementation.createHTMLDocument('');
+  const root = inertDoc.createElement('div');
+  root.innerHTML = html;
+  let out = '';
+  const walk = (node) => {
+    for (const n of node.childNodes) {
+      if (n.nodeType === Node.TEXT_NODE) out += n.data;
+      else if (n.nodeType === Node.ELEMENT_NODE) { if (n.localName === 'img') out += '\uFFFC'; else walk(n); }
+    }
+  };
+  walk(root);
+  return out;
+}
+/**
+ * A place in a section after a fix changed its text from `before` to `after` (see placeText): a place after the
+ * change moves with the text, one inside it goes to where it starts. The server moves stored places the same way
+ * (positionShift in server/fixes.js).
+ */
+function placeAfterFix(offset, before, after) {
+  const most = Math.min(before.length, after.length);
+  let p = 0;
+  while (p < most && before[p] === after[p]) p++;
+  let s = 0;
+  while (s < most - p && before[before.length - 1 - s] === after[after.length - 1 - s]) s++;
+  if (offset >= before.length - s) return Math.max(0, offset + after.length - before.length);
+  return offset > p ? p : offset;
+}
+
 /** Starts fix mode: the fix bar at the top, and taps that open paragraphs. A PDF shown as its pages switches to its text. */
 async function startFixing() {
   if (!closePanels()) return;
@@ -1075,6 +1104,23 @@ async function startFixing() {
   if (fromPages) leavePagesMode();
   await relayout();
   if (fromPages) rememberPdfMode('text');
+}
+// The space between the fix bar and the first line of the page.
+const FIX_GAP = 4;
+/**
+ * Room for the fix bar above the page (body.fixing in reader.css). The page moves down under the bar and gives up as
+ * much of the margin below it, so it keeps its height: the book is not cut into pages again, and every line stays on
+ * the page it was on. Only where the margins are too small for the bar does the page get shorter.
+ */
+function makeFixRoom() {
+  const root = document.documentElement.style;
+  root.setProperty('--fix-shift', '0px');
+  root.setProperty('--fix-lend', '0px');
+  const top = parseFloat(getComputedStyle(els.viewport).paddingTop); // the margin above the page, with the safe area
+  const margin = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--margin-y')) || 0;
+  const shift = Math.max(0, Math.ceil(els.fixbar.offsetHeight + FIX_GAP - top));
+  root.setProperty('--fix-shift', `${shift}px`);
+  root.setProperty('--fix-lend', `${Math.min(shift, margin)}px`);
 }
 function leaveFixMode() {
   fix.on = false;
@@ -1182,9 +1228,10 @@ async function saveFix() {
   if (!p || fix.saving || !fixReady()) return;
   const after = fixAfter();
   if (!after.length && !confirm(p.last > p.first ? 'Remove these paragraphs from the book?' : 'Remove this paragraph from the book?')) return;
-  // The page to show again: where the passage starts, which a fix never moves, or for a note opened from the foot of
-  // a page, that page.
-  const offset = p.noteId ? state.locator.offset : p.paras[p.first].start;
+  // The page to show again is the one shown now, found by its first place, which moves with the text if the fix
+  // changed something before it.
+  const place = state.locator.offset;
+  const placesBefore = placeText(state.sectionSource);
   const body = { section: p.section, paragraph: p.first, before: shownTexts(p), after };
   fix.saving = true;
   updateFixSave();
@@ -1207,7 +1254,9 @@ async function saveFix() {
   closePanels();
   renderToc(); // a chapter's title may have changed
   try {
-    if (await loadSection(p.section)) await restore({ section: p.section, offset }, { record: true });
+    if (await loadSection(p.section)) {
+      await restore({ section: p.section, offset: placeAfterFix(place, placesBefore, placeText(state.sectionSource)) }, { record: true });
+    }
   } catch {
     els.content.classList.remove('loading');
     toast('Saved. Reload the book to see the fix.', 5000);

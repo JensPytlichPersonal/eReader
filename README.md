@@ -332,10 +332,13 @@ of a sentence. An admin can fix the text from the reader, in a book of any forma
 reads; the book's file is never changed.
 
 To start, open the book and choose **Aa** > *Fix text*. A bar at the top says "Tap a paragraph to fix it", with
-*Previous page*, *Next page* and *Done*. While it shows, a tap on the text opens the paragraph under it in a box,
-instead of turning the page, showing the menu or following a link. A tap on a footnote at the foot of a page opens
-the note itself. A tap beside the text does nothing. Swipes and the keys still turn pages. A PDF shown as *Original
-pages* switches to its *Text* view first, and keeps it. *Done* goes back to reading.
+*Previous page*, *Next page* and *Done* (on a phone, "Tap a paragraph", *Previous*, *Next* and *Done*). The page
+moves down under the bar into the margins, but keeps its lines, so the text you were looking at stays on the page. With
+the narrow margins of the **Aa** panel there is not room enough, and the page gets a little shorter. While the bar
+shows, a tap on the text opens the paragraph under it in a box, instead of turning the page, showing the menu or
+following a link. A tap on a footnote at the foot of a page opens the note itself. A tap beside the text does nothing.
+Swipes and the keys still turn pages. A PDF shown as *Original pages* switches to its *Text* view first, and keeps
+it. *Done* goes back to reading.
 
 The box holds the text of the paragraphs, a blank line between them, and the paragraphs are outlined on the page:
 
@@ -348,8 +351,8 @@ The box holds the text of the paragraphs, a blank line between them, and the par
   paragraph of its own or empty it.
 
 *Save* can be pressed only while the paragraphs differ from those shown. *Cancel*, *Close*, a tap beside the box or
-Escape with changes not saved asks first whether to leave them. Once saved, the page shows the fixed text, and fix
-mode goes on.
+Escape with changes not saved asks first whether to leave them. Once saved, the same page shows the fixed text, and
+fix mode goes on.
 
 Each paragraph keeps its look, such as a heading, a quote or a list item. A paragraph is recognised by how it
 starts, or by its place among the others when its start was changed. A new paragraph takes the look of the one before
