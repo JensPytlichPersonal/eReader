@@ -1,4 +1,5 @@
-// Builds a small text-only PDF for tests, optionally with a document title/author and an XMP metadata packet.
+// Builds a small text-only PDF for tests, optionally with a document title/author and an XMP metadata packet. A
+// line is its text, in 12 point, or { text, size } for another size, as a heading.
 export function makePdf(pages, { title, author, xmp } = {}) {
   const objs = [];
   const add = (s) => { objs.push(s); return objs.length; };
@@ -7,7 +8,11 @@ export function makePdf(pages, { title, author, xmp } = {}) {
   const contentIds = [];
   for (const lines of pages) {
     let stream = 'BT /F1 12 Tf 72 720 Td 14 TL\n';
-    for (const l of lines) stream += `(${l.replace(/[()\\]/g, '\\$&')}) Tj T*\n`;
+    for (const l of lines) {
+      const { text, size = 12 } = typeof l === 'string' ? { text: l } : l;
+      const line = `(${text.replace(/[()\\]/g, '\\$&')}) Tj T*`;
+      stream += size === 12 ? `${line}\n` : `/F1 ${size} Tf ${size + 2} TL ${line} /F1 12 Tf 14 TL\n`;
+    }
     stream += 'ET';
     contentIds.push(add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`));
     pageIds.push(objs.length + 1);

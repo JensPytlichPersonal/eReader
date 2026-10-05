@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { normalizeDocument, isSceneBreak, SCENE_BREAK, chooseCuts } from './html.js';
-import { assembleSections, SECTION_BUDGET } from './bundle.js';
+import { assembleSections, SECTION_BUDGET, isChapterTitle, isChapterLine, chooseTitles } from './bundle.js';
 import { encodePng } from './png.js';
 import { isWatermark } from './watermarks.js';
 import { seriesFromXmp } from './series.js';
@@ -566,20 +566,53 @@ function backLinkFootnotes(blocks) {
 }
 
 /**
- * Where sections start, as indexes into `pages`: at each chapter page, and where a longer run of pages
- * between them is cut into near-equal parts (see chooseCuts). Such a cut goes best before a page that
- * starts with a heading or a scene break, then before any page that starts a paragraph of its own, and
- * before a page that carries on a paragraph, or follows a heading, only when no other is near.
+ * The chapter titles in the text, such as "Chapter Eleven" or "Prologue": a heading, or a line of its own, that
+ * names a chapter (see isChapterTitle in bundle.js). Each is { i, k, title }: the page's index, and the index of
+ * the block a chapter begins at among the page's body blocks, which takes in the headings and pictures just
+ * before its title, such as a part's name. Which count is chooseTitles' to say.
+ */
+function chapterTitles(bodies) {
+  const titles = [];
+  let at = 0;
+  bodies.forEach((body, i) => body.forEach((b, k) => {
+    const text = b.text.replace(/\s+/g, ' ').trim();
+    if ((b.type === 'h' && isChapterTitle(text)) || (b.type === 'p' && !b.bullet && isChapterLine(text))) titles.push({ i, k, at, title: text });
+    at += b.text.length;
+  }));
+  const chosen = chooseTitles(titles.map((t, j) => ({ at: t.at, end: titles[j + 1]?.at ?? at, key: t.title.toLowerCase() })));
+  return titles.filter((t, j) => {
+    if (!chosen.has(j)) return false;
+    while (t.k > 0 && (bodies[t.i][t.k - 1].type === 'h' || bodies[t.i][t.k - 1].type === 'img')) t.k--;
+    return true;
+  });
+}
+
+/**
+ * Where sections start: `starts`, indexes into `pages` of the pages that begin one, and `splits`, the pages a
+ * chapter begins partway down, by index, with where (see chapterTitles). A section begins at each chapter page,
+ * and at each chapter title in the text, at the top of its page or partway down. A longer run between them is
+ * cut into near-equal parts (see chooseCuts), between pages: best before a page that starts with a heading or
+ * a scene break, then before any page that starts a paragraph of its own, and before a page that carries on a
+ * paragraph, or follows a heading, only when no other is near.
  */
 function sectionStarts(pages, budget, startsChapter) {
+  const bodies = pages.map(({ blocks }) => blocks.filter((b) => b.type !== 'fn'));
+  const splits = new Map();
+  const titled = new Map(); // page index -> the title of the chapter it begins with
+  for (const t of chapterTitles(bodies)) {
+    const opening = bodies[t.i].findIndex((b) => b.type !== 'img');
+    if (t.k <= Math.max(0, opening)) titled.set(t.i, t.title);
+    else splits.set(t.i, [...(splits.get(t.i) || []), t]);
+  }
   const info = pages.map(({ p, blocks }, i) => {
-    const body = blocks.filter((b) => b.type !== 'fn');
+    const body = bodies[i];
     const firstText = blocks.find((b) => b.type !== 'img');
     const opening = body.find((b) => b.type !== 'img');
     return {
       // The page's text: its body, the first block included when it joins the paragraph before, and its notes.
       chars: blocks.reduce((n, b) => n + b.text.length, 0),
-      chapter: startsChapter(p) || (firstText?.type === 'h' && firstText.level === 1),
+      chapter: startsChapter(p) || (firstText?.type === 'h' && firstText.level === 1) || titled.has(i),
+      title: titled.get(i),
       carriesOn: i > 0 && continues(pages[i - 1].blocks, body),
       // A heading at the foot of the page before belongs with this page.
       afterHeading: i > 0 && pages[i - 1].blocks.filter((b) => b.type !== 'fn').at(-1)?.type === 'h',
@@ -601,56 +634,83 @@ function sectionStarts(pages, budget, startsChapter) {
   let from = 0;
   let chars = 0;
   info.forEach((page, i) => {
-    if (page.chapter && chars > 0) {
+    if ((page.chapter || splits.has(i)) && chars > 0) {
       cutRun(from, i);
-      starts.add(i);
+      if (page.chapter) starts.add(i);
       from = i;
       chars = 0;
     }
     chars += page.chars;
   });
   cutRun(from, pages.length);
-  return { starts, info };
+  return { starts, splits, info };
 }
 
 /**
  * Merge per-page block lists into sections, adding page markers and joining paragraphs that
- * run across page breaks. Returns [{first, last, html}].
+ * run across page breaks. Returns [{first, last, html, title}], `title` for a section that begins with a
+ * chapter's title.
  */
 export function mergePages(pages, { budget = SECTION_BUDGET, startsChapter = () => false } = {}) {
   const sections = [];
   let cur = null;
+  // `lastBlock` is the last paragraph as it went into the section, joined when it began on an earlier page.
+  const open = (p, title) => ({ first: p, last: p, parts: [], notes: [], lastBlock: null, title });
   const flush = () => {
     if (!cur) return;
     const parts = [...cur.parts];
     if (cur.notes.length) parts.push(`<section class="endnotes">${cur.notes.join('\n')}</section>`);
-    sections.push({ first: cur.first, last: cur.last, html: parts.join('\n') });
+    sections.push({ first: cur.first, last: cur.last, html: parts.join('\n'), title: cur.title });
     cur = null;
   };
   const byPage = indexFootnotes(pages);
   for (const { p, blocks } of pages) linkFootnotes(p, blocks, byPage);
   for (const { blocks } of pages) backLinkFootnotes(blocks);
   // Measured once the notes are linked, from the blocks as they go into the sections.
-  const { starts, info } = sectionStarts(pages, budget, startsChapter);
+  const { starts, splits, info } = sectionStarts(pages, budget, startsChapter);
   pages.forEach(({ p, blocks }, i) => {
     if (starts.has(i)) flush();
     const marker = `<span class="pg" id="pg${p}"></span>`;
-    // `lastBlock` is the last paragraph as it went into the section, joined when it began on an earlier page.
-    if (!cur) cur = { first: p, last: p, parts: [], notes: [], lastBlock: null };
+    if (!cur) cur = open(p, info[i].title);
     cur.last = p;
     const body = blocks.filter((b) => b.type !== 'fn');
     const notes = blocks.filter((b) => b.type === 'fn');
+    // A chapter that begins partway down the page ends the section there. Each note goes with the part of the
+    // page its marker is in, and one without a marker on the page with the last part, as before.
+    const here = splits.get(i) || [];
+    const partOf = (k) => here.filter((t) => t.k <= k).length;
+    const noteParts = notes.map((n) => {
+      const k = here.length && n.id ? body.findIndex((b) => b.html?.includes(`#${n.id}"`)) : -1;
+      return k < 0 ? here.length : partOf(k);
+    });
+    let part = 0;
+    const endPart = () => {
+      notes.forEach((n, j) => { if (noteParts[j] === part) cur.notes.push(blockHtml(n)); });
+      part++;
+    };
+    let k = 0;
     if (cur.lastBlock && info[i].carriesOn) {
       // The paragraph that ended the previous page carries on: replace its output with the joined paragraph.
       // It is joined as it went in, so one that runs over a whole page keeps what came before.
       cur.parts.pop();
-      cur.lastBlock = joinAcrossPages(cur.lastBlock, body.shift(), marker);
+      cur.lastBlock = joinAcrossPages(cur.lastBlock, body[0], marker);
       cur.parts.push(blockHtml(cur.lastBlock));
+      k = 1;
     } else {
       cur.parts.push(marker);
     }
-    for (const b of body) { cur.parts.push(blockHtml(b)); cur.lastBlock = b; }
-    for (const n of notes) cur.notes.push(blockHtml(n));
+    for (; k < body.length; k++) {
+      const split = here.find((t) => t.k === k);
+      if (split) {
+        endPart();
+        flush();
+        // The chapter's section begins on this page, whose marker is in the section before.
+        cur = open(p, split.title);
+      }
+      cur.parts.push(blockHtml(body[k]));
+      cur.lastBlock = body[k];
+    }
+    endPart();
   });
   flush();
   return sections;
@@ -894,7 +954,7 @@ export async function convertPdf(buffer) {
       resolveImage: (src) => (images.has(src) ? src : null),
       resolveLink: (href) => (href.startsWith('#') ? `pages${s.first}${href}` : null),
     });
-    return { root, key: `pages${s.first}`, page: s.first, pageStart: s.first, pageEnd: s.last, title: s.first === s.last ? `Page ${s.first}` : `Pages ${s.first}–${s.last}` };
+    return { root, key: `pages${s.first}`, page: s.first, pageStart: s.first, pageEnd: s.last, title: s.title || (s.first === s.last ? `Page ${s.first}` : `Pages ${s.first}-${s.last}`) };
   });
 
   const { sections, toc } = assembleSections(chapters, { toc: outlineToc, budget: Infinity });

@@ -292,7 +292,7 @@ whether to leave them.
 | --- | --- |
 | EPUB 2 and 3 | Chapters, images, table of contents (nav or NCX), footnote links. Publisher CSS is reduced to a few typographic hints so every book follows your settings. |
 | MOBI, PRC, AZW, AZW3/KF8 | PalmDOC and HUFF/CDIC compression, images, table of contents from the NCX index, hybrid MOBI7+KF8 files. DRM-protected files are rejected. |
-| PDF | Text is extracted per page and merged into normal-sized sections, so wide screens fill both columns. Running headers and footers repeated across pages or carrying the page number, page numbers and line-break hyphenation are removed; bulleted lists, italic/bold runs and embedded images are kept, and footnotes are collected at the end of each section with links from the markers and back. Each top-level heading starts a new section. Invisible page markers tie the reflowed text to the *Original pages* view, so both views share the same position, and each PDF opens in the view last used for it on the device. In the dark theme the page view inverts the page, scans included, but leaves photographs and colour plates as printed. See below for scanned books. |
+| PDF | Text is extracted per page and merged into normal-sized sections, so wide screens fill both columns. Running headers and footers repeated across pages or carrying the page number, page numbers and line-break hyphenation are removed; bulleted lists, italic/bold runs and embedded images are kept, and footnotes are collected at the end of each section with links from the markers and back. Each top-level heading starts a new section, and so does a chapter's title, such as "Chapter Eleven", also partway down a page, where the page is split. Invisible page markers tie the reflowed text to the *Original pages* view, so both views share the same position, and each PDF opens in the view last used for it on the device. In the dark theme the page view inverts the page, scans included, but leaves photographs and colour plates as printed. See below for scanned books. |
 | Markdown | CommonMark + GitHub tables, YAML front matter for title/author, headings become the table of contents. A break of asterisks (`* * *` or `***`) is a scene break; one of dashes or underscores (`---`) stays a plain rule. |
 | Text | Paragraph and heading detection, including hard-wrapped Gutenberg-style text; UTF-8, UTF-16 and Latin-1. |
 
@@ -325,18 +325,20 @@ book's contents begins a section, also where one file holds several chapters, an
 part. The sections of a chapter, as in a textbook's contents, don't: an entry under another one begins a
 section only when that one holds more than 150,000 characters. A book without contents, such as a text or
 Markdown file, goes by its headings the same way. A chapter's own title begins a section too, where the
-contents doesn't point at it, as when it lists only files: a heading or a line of its own such as
-"Chapter Eleven", "CHAPTER XI", "Kapitel 11" or "Prologue", a heading that is only a number, or a line of
-the class `chapter`. Titles close together, as on a contents page, don't count, and one that repeats, as a
-scan's running head does, counts once. A section that begins with a title is named by it at the foot of
-the page. Headings just before a chapter, such as a part's title, go with it. A chapter over 150,000
-characters is cut into sections of about equal size. Each cut goes at a heading or a scene break near it
-where there is one, else between paragraphs. In a PDF a cut falls
-between pages, where no paragraph runs over the page. Some EPUBs split a chapter over two files. A file
-that carries on the one before it is joined to it, so the chapter runs on without a half-empty page: it
-starts with ordinary text rather than a heading, a picture or a title line, the contents and the book's
-links don't lead to it, and the file before it holds real text rather than a title or copyright page. A
-book keeps the sections it was converted with until it is converted again.
+contents doesn't point at it, as when it lists only files: a heading or a line of its own such as "Chapter
+Eleven", "CHAPTER XI", "Kapitel 11" or "Prologue", a heading that is only a number, or a line of the class
+`chapter`. A line with a number after its title, as on a contents page or in a scan's running head, isn't
+one. Titles close together, as on a contents page, don't count where the book has them again further on,
+and a title that repeats three times or more, as a running head can, counts only the first time. A section
+that begins with a title is named by it at the foot of the page. Headings just before a chapter, such as a
+part's title, go with it. A chapter over 150,000 characters is cut into sections of about equal size. Each
+cut goes at a heading or a scene break near it where there is one, else between paragraphs. In a PDF a
+chapter's title can begin a section partway down a page, and a cut for size falls between pages, where no
+paragraph runs over the page. Some EPUBs split a chapter over two files. A file that carries on the one
+before it is joined to it, so the chapter runs on without a half-empty page: it starts with ordinary text
+rather than a heading, a picture or a title line, the contents and the book's links don't lead to it, and
+the file before it holds real text rather than a title or copyright page. A book keeps the sections it was
+converted with until it is converted again.
 
 If a book converts badly, choose *Convert again* from its menu, or re-run every book with `npm run
 reprocess` after an update to the converters. Details edited by hand (title, author, series, cover), fixes

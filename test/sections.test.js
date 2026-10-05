@@ -7,6 +7,7 @@ import { mergePages } from '../server/converters/pdf.js';
 import { convertEpub } from '../server/converters/epub.js';
 import { assembleSections, SECTION_BUDGET, isChapterTitle } from '../server/converters/bundle.js';
 import { convert } from '../server/converters/index.js';
+import { makePdf } from './helpers/make-pdf.mjs';
 
 const root = (body) => normalizeDocument(`<body>${body}</body>`).root;
 // A paragraph of exactly `n` characters of text.
@@ -268,7 +269,9 @@ test('a book without contents begins a section at each chapter heading', async (
 test('a heading that names a chapter begins a section where the contents does not point at it', async () => {
   for (const t of ['Chapter Eleven', 'CHAPTER XI', 'Chapter 11: The Road', 'Chapter Twenty-One', 'Part Two', 'Book III', 'Kapitel 11',
     'Kapitel enogtyve', 'Del to', 'Prologue', 'Epilog', 'XI', '11', '11.']) assert.ok(isChapterTitle(t), t);
-  for (const t of ['Part of the problem', 'Part Time Work', 'Chapter and verse', 'CIVIL', 'The Road to Sendar', '1.1', '11 The Road', 'Prologues and Plots']) {
+  // A number after the title is a page number, on a contents page or in a scan's running head.
+  for (const t of ['Part of the problem', 'Part Time Work', 'Chapter and verse', 'CIVIL', 'The Road to Sendar', '1.1', '11 The Road', 'Prologues and Plots',
+    'Chapter One 1', 'CHAPTER ELEVEN 123']) {
     assert.ok(!isChapterTitle(t), t);
   }
 
@@ -311,4 +314,50 @@ test('a line of its own that names a chapter, or of the class chapter, is a titl
   const running = await convertEpub(makeEpub({ chapters: [{ id: 'b', file: 'book.xhtml', title: 'The Book',
     body: `${text}${page.repeat(4)}<p>Chapter Twelve</p>${text}${'<p>Chapter Twelve</p>'.concat(text).repeat(2)}` }] }));
   assert.equal(running.sections.length, 3);
+});
+
+test('pdf: a chapter title begins a section, at the top of a page or partway down, and its notes go with it', () => {
+  const title = (text, level = 2) => ({ type: 'h', level, text, html: text, size: 14 });
+  const long = () => page(`${'x'.repeat(1199)}.`);
+  const marked = (text, n) => ({ type: 'p', text: `${text}${n}`, html: `${text}<sup>${n}</sup>`, bullet: false, cont: false });
+  const note = (n, text) => ({ type: 'fn', text: `${n} ${text}`, html: `<sup>${n}</sup> ${text}` });
+  const pages = [
+    { p: 1, blocks: [title('Chapter Ten'), long(), long()] },
+    // Chapter Ten ends partway down page 2, where Chapter Eleven begins, as in a PDF made from a document.
+    { p: 2, blocks: [marked('The door closed behind him.', 1), title('Chapter Eleven'), marked('They were nine days on the road.', 2), long(), note(1, 'One.'), note(2, 'Two.')] },
+    { p: 3, blocks: [long()] },
+    // Chapter Twelve begins at the top of page 4, after a part's title.
+    { p: 4, blocks: [title('Part Two', 1), title('Chapter Twelve'), long()] },
+  ];
+  const out = mergePages(pages, { budget: 150000 });
+  assert.deepEqual(out.map((s) => [s.first, s.last, s.title]), [[1, 2, 'Chapter Ten'], [2, 3, 'Chapter Eleven'], [4, 4, 'Chapter Twelve']]);
+  assert.match(out[0].html, /The door closed behind him\.<sup><a id="fnref-2-1-1" href="#fn-2-1">1<\/a><\/sup><\/p>\n<section class="endnotes"><p class="footnote" id="fn-2-1">/);
+  assert.doesNotMatch(out[0].html, /fn-2-2/);
+  // The section that begins partway down has no page mark of its own for that page: it is in the section before.
+  assert.match(out[1].html, /^<h2>Chapter Eleven<\/h2>\n<p>They were nine days/);
+  assert.match(out[1].html, /<p class="footnote" id="fn-2-2">/);
+  assert.match(out[2].html, /^<span class="pg" id="pg4"><\/span>\n<h1>Part Two<\/h1>\n<h2>Chapter Twelve<\/h2>/);
+
+  // A part's title just before the chapter on the same page goes with it.
+  const withPart = mergePages([pages[0], { p: 2, blocks: [page('The end.'), title('Part Two', 1), title('Chapter Eleven'), long()] }], { budget: 150000 });
+  assert.match(withPart[1].html, /^<h1>Part Two<\/h1>\n<h2>Chapter Eleven<\/h2>/);
+
+  // Titles close together on a contents page begin nothing; the chapters they list do, further on.
+  const contents = { p: 1, blocks: [title('Contents', 1), page('Chapter One'), page('Chapter Two'), page('Chapter Three'), long()] };
+  const listed = ['One', 'Two', 'Three'].map((n, i) => ({ p: i + 2, blocks: [title(`Chapter ${n}`), long()] }));
+  assert.deepEqual(mergePages([contents, ...listed], { budget: 150000 }).map((s) => [s.first, s.last, s.title]),
+    [[1, 1, undefined], [2, 2, 'Chapter One'], [3, 3, 'Chapter Two'], [4, 4, 'Chapter Three']]);
+});
+
+test('pdf: a book whose chapters begin partway down a page has a section for each, named by it', async () => {
+  const lines = (n, word) => Array.from({ length: n }, (_, i) => `${word} line ${i + 1} of the chapter, with enough words to fill it out.`);
+  const pdf = makePdf([
+    [{ text: 'Chapter Ten', size: 16 }, '', ...lines(20, 'Ten')],
+    [...lines(10, 'Ten'), '', '', { text: 'Chapter Eleven', size: 16 }, '', ...lines(15, 'Eleven')],
+    [...lines(25, 'Eleven')],
+  ]);
+  const book = await convert(pdf, { filename: 'chapters.pdf' });
+  assert.deepEqual(book.sections.map((s) => [s.title, s.pageStart, s.pageEnd]), [['Chapter Ten', 1, 2], ['Chapter Eleven', 2, 3]]);
+  assert.match(serialize(book.sections[1].nodes), /^<h2[^>]*>Chapter Eleven<\/h2>/);
+  assert.deepEqual(book.toc.map((t) => [t.title, t.section]), [['Chapter Ten', 0], ['Chapter Eleven', 1]]);
 });
