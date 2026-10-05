@@ -135,15 +135,49 @@ const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|tw
   + 'femten|seksten|sytten|atten|nitten|tyve|tredive|fyrre|halvtreds|tres|halvfjerds|firs|halvfems|hundrede|'
   + 'første|anden|andet|tredje|fjerde|femte|sjette|syvende|ottende|niende|tiende|sidste';
 const NUMBER = `(?:\\d+|${ROMAN}|(?:${NUMBER_WORDS})(?:-\\p{L}+)?|(?:en|to|tre|fire|fem|seks|syv|otte|ni)og\\p{L}+)(?![\\p{L}\\d])`;
-const CHAPTER_WORDS = `(?:chapter|part|book|kapitel|del|bog)\\s+${NUMBER}|(?:prologue|prolog|epilogue|epilog|interlude|efterskrift)(?![\\p{L}])`;
+const CHAPTER_WORDS = `(?:(?:chapter|part|book|kapitel|del|bog)\\s+${NUMBER}|(?:prologue|prolog|epilogue|epilog|interlude|efterskrift)(?![\\p{L}]))`;
 // A paragraph is a chapter's title by its words; a heading also by a bare number, which in a paragraph may be a
-// page number a scan left in the text.
-const CHAPTER_LINE_RE = new RegExp(`^(?:${CHAPTER_WORDS})`, 'iu');
-const CHAPTER_TITLE_RE = new RegExp(`^(?:${CHAPTER_WORDS}|(?:\\d+|${ROMAN})\\.?$)`, 'iu');
+// page number a scan left in the text. No number may follow the title's own, as a page number does on a contents
+// page ("Chapter One 1") or in a scan's running head ("CHAPTER ELEVEN 123").
+const CHAPTER_LINE_RE = new RegExp(`^${CHAPTER_WORDS}\\D*$`, 'iu');
+const CHAPTER_TITLE_RE = new RegExp(`^(?:${CHAPTER_WORDS}\\D*|(?:\\d+|${ROMAN})\\.?)$`, 'iu');
 export const isChapterTitle = (text) => CHAPTER_TITLE_RE.test(text);
+export const isChapterLine = (text) => CHAPTER_LINE_RE.test(text);
 // So much text, at least, follows a chapter's heading before the next one: headings closer together are a list
 // of chapters, as on a contents page.
-const CHAPTER_MIN = 1000;
+export const CHAPTER_MIN = 1000;
+
+/**
+ * Which of the chapter titles found in a book's text count (see chapterStarts, and chapterTitles in pdf.js).
+ * `titles` are in reading order, each { at, end, key }: where it stands in the text, where the text it may hold
+ * ends (the next title, or the end of its file), and its words in lower case. A title counts when at least
+ * CHAPTER_MIN characters follow it, and it is not one of three or more close together, as on a contents page,
+ * that the book has again further on; a part's title just before a chapter's makes two. One that counts three
+ * times or more is a scan's running head, and counts only the first time. Returns the indexes of those that
+ * count.
+ */
+export function chooseTitles(titles) {
+  const close = (j) => j > 0 && titles[j - 1].end === titles[j].at && titles[j].at - titles[j - 1].at < CHAPTER_MIN;
+  const cluster = [];
+  titles.forEach((t, j) => cluster.push(close(j) ? cluster[j - 1] : j));
+  const size = new Map();
+  for (const c of cluster) size.set(c, (size.get(c) || 0) + 1);
+  // In a list, a title the book has again further on is an entry for that chapter; the last one may be the first
+  // chapter itself, right after the list.
+  const last = new Map();
+  titles.forEach((t, j) => last.set(t.key, j));
+  const counted = titles.map((t, j) => t.end - t.at >= CHAPTER_MIN && (size.get(cluster[j]) < 3 || last.get(t.key) === j));
+  const times = new Map();
+  titles.forEach((t, j) => { if (counted[j]) times.set(t.key, (times.get(t.key) || 0) + 1); });
+  const seen = new Set();
+  const chosen = new Set();
+  titles.forEach((t, j) => {
+    if (!counted[j] || (times.get(t.key) >= 3 && seen.has(t.key))) return;
+    seen.add(t.key);
+    chosen.add(j);
+  });
+  return chosen;
+}
 
 /** The words of an element, with a line break as a space. */
 function wordsOf(el) {
@@ -293,16 +327,11 @@ function chapterStarts(groups, toc, budget, renamed) {
   };
   for (const e of placed) if (e.at.el && counts(e)) add(e.at.gi, e.at.el);
   // A chapter's title is followed by its text, up to the next title or the end of its file.
-  const seen = new Set();
-  titled.forEach((t, i) => {
-    const pos = offsets.get(t.el);
+  const chosen = chooseTitles(titled.map((t, i) => {
     const next = titled[i + 1];
-    const end = Math.min(next?.gi === t.gi ? offsets.get(next.el) : Infinity, bases[t.gi + 1] ?? total);
-    const key = wordsOf(t.el).toLowerCase();
-    if (end - pos < CHAPTER_MIN || seen.has(key)) return;
-    seen.add(key);
-    add(t.gi, t.el, wordsOf(t.el));
-  });
+    return { at: offsets.get(t.el), end: Math.min(next?.gi === t.gi ? offsets.get(next.el) : Infinity, bases[t.gi + 1] ?? total), key: wordsOf(t.el).toLowerCase() };
+  }));
+  titled.forEach((t, i) => { if (chosen.has(i)) add(t.gi, t.el, wordsOf(t.el)); });
   return starts;
 }
 
