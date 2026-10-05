@@ -881,7 +881,8 @@ export function createFixes(db, config, log = console) {
    * After a book is converted (see processing/queue.js, under the book's lock): applies every fix of the
    * book again, in the order they were made, each where its text is found, and marks those not found as
    * not applied. Writes the fixed sections, keeping each as converted in unfixed/ first, and the manifest
-   * with their new lengths. Positions are left as they are: they were counted in the fixed text.
+   * with their new lengths. Positions are left as they are: the processor moves them to the new sections
+   * afterwards (see places.js), as they were counted in the fixed text.
    * Returns { manifest, commit }, `commit` saving the fixes' new places, to run in the same transaction
    * that saves the book.
    */

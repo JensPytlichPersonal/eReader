@@ -1,7 +1,8 @@
 import { buildZip, TINY_PNG } from './zipwriter.mjs';
 
 // `metadata` is extra OPF metadata (e.g. series); `titleXml` replaces the <dc:title> element; `cover` is the
-// cover image ({ href, type, data }); `files` are more files beside the chapters ([{ name, data }]).
+// cover image ({ href, type, data }); `files` are more files beside the chapters ([{ name, data }]). A chapter
+// with `inToc: false` is left out of the nav and the NCX.
 const PNG_COVER = { href: 'images/cover.png', type: 'image/png', data: TINY_PNG };
 export function makeEpub({ title = 'Fixture Book', author = 'Test Author', language = 'en', chapters, withNav = true, withNcx = true, css = '', metadata = '', titleXml, cover = PNG_COVER, files = [] } = {}) {
   chapters ??= [
@@ -28,8 +29,9 @@ ${manifestItems}
 </manifest>
 <spine ${withNcx ? 'toc="ncx"' : ''}>${spine}</spine>
 </package>`;
-  const nav = `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol>${chapters.map((c) => `<li><a href="${c.file}">${c.title}</a></li>`).join('')}</ol></nav></body></html>`;
-  const ncx = `<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap>${chapters.map((c, i) => `<navPoint id="np${i}" playOrder="${i + 1}"><navLabel><text>${c.title}</text></navLabel><content src="${c.file}"/></navPoint>`).join('')}</navMap></ncx>`;
+  const listed = chapters.filter((c) => c.inToc !== false);
+  const nav = `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol>${listed.map((c) => `<li><a href="${c.file}">${c.title}</a></li>`).join('')}</ol></nav></body></html>`;
+  const ncx = `<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap>${listed.map((c, i) => `<navPoint id="np${i}" playOrder="${i + 1}"><navLabel><text>${c.title}</text></navLabel><content src="${c.file}"/></navPoint>`).join('')}</navMap></ncx>`;
   const entries = [
     { name: 'mimetype', data: 'application/epub+zip', store: true },
     { name: 'META-INF/container.xml', data: `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>` },

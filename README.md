@@ -319,10 +319,20 @@ Uploaded "by", or names Demonoid, Z-Library or Library Genesis. Lines such as "T
 by" stay, as does anything further in. The uploaded original is kept as it is, so a PDF's *Original
 pages* view still shows the stamp.
 
-Converted books are stored as small HTML sections under `data/books/<id>/`. If a book converts
-badly, choose *Convert again* from its menu, or re-run every book with `npm run reprocess` after an
-update to the converters. Details edited by hand (title, author, series, cover) and fixes to the text are
-kept when a book is converted again.
+Converted books are stored as HTML sections under `data/books/<id>/`, about one for each chapter, and
+the reader starts each section on a new page. A chapter over 150,000 characters is cut into sections of
+about equal size, and so is a text or Markdown file, which comes as one long chapter. Each cut goes at a
+heading or a scene break near it where there is one, else between paragraphs. In a PDF a cut falls
+between pages, where no paragraph runs over the page. Some EPUBs split a chapter over two files. A file
+that carries on the one before it is joined to it, so the chapter runs on without a half-empty page: it
+starts with ordinary text rather than a heading, a picture or a title line, the contents and the book's
+links don't lead to it, and the file before it holds real text rather than a title or copyright page. A
+book keeps the sections it was converted with until it is converted again.
+
+If a book converts badly, choose *Convert again* from its menu, or re-run every book with `npm run
+reprocess` after an update to the converters. Details edited by hand (title, author, series, cover), fixes
+to the text, and everyone's reading positions and bookmarks are kept when a book is converted again (see
+[How position sync works](#how-position-sync-works)).
 
 ## Fixing the text
 
@@ -367,8 +377,8 @@ read the same as the old title.
 What the box can't do:
 
 - A paragraph in a table is fixed on its own, and line breaks in its box count as spaces.
-- The box can't reach across where the app splits a long chapter into parts, so *Add the paragraph before* or *after*
-  isn't offered there.
+- The box can't reach across where the app cuts a chapter over 150,000 characters into sections (see
+  [Formats](#formats)), so *Add the paragraph before* or *after* isn't offered there.
 - The box can't make a heading.
 
 The fixes are listed under *Fixes to the text* in the book's menu, newest first, for admins: the words taken out and
@@ -379,7 +389,8 @@ was. A later fix to the same text has to be undone first.
 its text is found. A fix whose text is no longer there is marked *Not applied*, with *Remove* to take it off the list.
 
 Reading positions and bookmarks move with the text, so every reader stays where they were. Every device fetches the
-fixed book the next time it opens it.
+fixed book the next time it opens it, and one that has it open reloads it at its place within half a minute (see
+[How position sync works](#how-position-sync-works)).
 
 ## Downloading a book
 
@@ -649,6 +660,12 @@ The server keeps the newest position per user and book. If another device has wr
 position since this device last synced, the server answers with that position and the reader jumps
 there. The reader also checks for a newer position when it comes back to the foreground and every
 30 seconds while open.
+
+When a book is converted again, its sections can change. The server then moves every position and
+bookmark to the same words in the new sections. A reader that has the book open while it converts goes
+on in the sections it has: the server places what it saves by how far into the book it is, and the
+reader reloads the book the next time it checks for a newer position. A fix to the text makes an open
+reader reload the same way.
 
 ## Development
 
