@@ -6,6 +6,7 @@ import { normalizeDocument, chunkNodes, serialize, textLength } from '../server/
 import { mergePages } from '../server/converters/pdf.js';
 import { convertEpub } from '../server/converters/epub.js';
 import { assembleSections, SECTION_BUDGET } from '../server/converters/bundle.js';
+import { convert } from '../server/converters/index.js';
 
 const root = (body) => normalizeDocument(`<body>${body}</body>`).root;
 // A paragraph of exactly `n` characters of text.
@@ -190,4 +191,71 @@ test('a chapter that carries on the one before is chunked with it, and links to 
   const hrefs = DomUtils.findAll((e) => e.name === 'a', sections[1].nodes).map((e) => e.attribs.href);
   assert.deepEqual(hrefs, ['#sec=0&id=rr-join1', '#sec=0&id=x-2', '#sec=0&id=y', '#sec=0&id=x']);
   assert.deepEqual(toc.map((t) => [t.title, t.section, t.id]), [['One', 0, null], ['Joined', 0, 'rr-join1'], ['Two', 1, null]]);
+});
+
+const byId = (r, id) => DomUtils.findOne((e) => e.attribs?.id === id, r.children, true);
+const names = (chunk) => tags(chunk).map((n) => n.name).join(' ');
+
+test('chunker: each chapter the contents points to begins a chunk, with the headings just before it', () => {
+  const r = root(`<h2 id="c1">One</h2>${paras(3)}<h1>Part Two</h1><h2 id="c2">Two</h2>${paras(2)}<h2 id="c3">Three</h2>${paras(2)}`);
+  const chunks = chunkNodes(r, 150000, new Set(['c1', 'c2', 'c3'].map((id) => byId(r, id))));
+  assert.deepEqual(chunks.map(names), ['h2 p p p', 'h1 h2 p p', 'h2 p p']);
+
+  // An entry that points at an empty anchor at the end of the paragraph before: the chapter begins at the text after
+  // it, and the anchor goes there too, so the contents leads to the chapter.
+  const quirk = root(`${paras(2)}<p>The end of one.<a id="c2"></a></p><h2>Two</h2>${paras(2)}`);
+  const two = chunkNodes(quirk, 150000, new Set([byId(quirk, 'c2')]));
+  assert.deepEqual(two.map(names), ['p p p', 'a h2 p p']);
+  assert.match(serialize(two[0]), /<p>The end of one\.<\/p>$/);
+  assert.match(serialize(two[1]), /^<a id="c2"><\/a><h2>Two<\/h2>/);
+
+  // One that starts inside a wrapper, after other text: the wrapper is unwrapped there, its id kept as an anchor.
+  const wrapped = root(`<div id="part">${paras(2)}<h2 id="c2">Two</h2>${paras(2)}</div>`);
+  const three = chunkNodes(wrapped, 150000, new Set([byId(wrapped, 'c2')]));
+  assert.deepEqual(three.map(names), ['span p p', 'h2 p p']);
+  assert.match(serialize(three[0]), /^<span id="part" class="anchor"><\/span>/);
+
+  // A chapter longer than the budget is still cut into near-equal parts; one at the very start makes no cut.
+  const long = root(`<h2 id="c1">One</h2>${paras(22)}<h2 id="c2">Two</h2>${paras(3)}`);
+  const four = chunkNodes(long, 10000, new Set([byId(long, 'c1'), byId(long, 'c2')]));
+  assert.deepEqual(four.map(textLength), [7003, 8000, 7000, 3003]);
+});
+
+test('the chapters in the contents each begin a section, but not the sections of a chapter', () => {
+  // Part One holds more than the budget, so its chapters begin sections. Part Two does not, nor does chapter
+  // Three, so neither Three nor its section is cut from the part.
+  const book = root(`<h1 id="p1">Part One</h1><h2 id="c1">One</h2>${paras(6)}<h2 id="c2">Two</h2>${paras(6)}`
+    + `<h1 id="p2">Part Two</h1><h2 id="c3">Three</h2>${paras(3)}<h3 id="s1">A section</h3>${paras(3)}`);
+  const toc = [
+    { title: 'Part One', key: 'b#p1', children: [{ title: 'One', key: 'b#c1' }, { title: 'Two', key: 'b#c2' }] },
+    { title: 'Part Two', key: 'b#p2', children: [{ title: 'Three', key: 'b#c3', children: [{ title: 'A section', key: 'b#s1' }] }] },
+  ];
+  const { sections, toc: out } = assembleSections([{ root: book, key: 'b' }], { toc, budget: 10000 });
+  assert.deepEqual(sections.map((s) => names(s.nodes)), [`h1 h2 ${'p '.repeat(6).trim()}`, `h2 ${'p '.repeat(6).trim()}`, `h1 h2 p p p h3 p p p`]);
+  const flat = (list) => list.flatMap((t) => [[t.title, t.section], ...flat(t.children || [])]);
+  assert.deepEqual(flat(out), [['Part One', 0], ['One', 0], ['Two', 1], ['Part Two', 2], ['Three', 2], ['A section', 2]]);
+  assert.deepEqual(sections.map((s) => s.title), ['Part One', 'Two', 'Part Two']);
+
+  // A part's name in the contents without a place of its own holds what is under it.
+  const named = [{ title: 'Part One', key: null, children: [{ title: 'One', key: 'c#c1' }, { title: 'Two', key: 'c#c2' }] }];
+  const small = root(`<h2 id="c1">One</h2>${paras(2)}<h2 id="c2">Two</h2>${paras(2)}`);
+  assert.equal(assembleSections([{ root: small, key: 'c' }], { toc: named, budget: 10000 }).sections.length, 2);
+});
+
+test('epub: chapters that share a file each begin a section, where the contents points', async () => {
+  const body = ['One', 'Two', 'Three'].map((t, i) => `<h2 id="ch${i + 1}">Chapter ${t}</h2>${prose(4)}`).join('');
+  const book = await convertEpub(makeEpub({
+    chapters: [{ id: 'b', file: 'book.xhtml', title: 'The Book', body }],
+    toc: ['One', 'Two', 'Three'].map((t, i) => ({ title: `Chapter ${t}`, href: `book.xhtml#ch${i + 1}` })),
+  }));
+  assert.equal(book.sections.length, 3);
+  assert.deepEqual(book.toc.map((t) => [t.title, t.section]), [['Chapter One', 0], ['Chapter Two', 1], ['Chapter Three', 2]]);
+  assert.deepEqual(book.sections.map((s) => s.title), ['Chapter One', 'Chapter Two', 'Chapter Three']);
+});
+
+test('a book without contents begins a section at each chapter heading', async () => {
+  const text = ['CHAPTER I', 'CHAPTER II', 'CHAPTER III'].map((h) => `${h}\n\n${'It was a bright cold day in April, and the clocks were striking thirteen.\n\n'.repeat(5)}`).join('');
+  const book = await convert(Buffer.from(text), { filename: 'b.txt' });
+  assert.deepEqual(book.sections.map((s) => tags(s.nodes)[0]?.name), ['h2', 'h2', 'h2']);
+  assert.deepEqual(book.toc.map((t) => [t.title, t.section]), [['CHAPTER I', 0], ['CHAPTER II', 1], ['CHAPTER III', 2]]);
 });

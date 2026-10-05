@@ -101,8 +101,9 @@ test('markdown conversion with front matter, slugs and internal links', async ()
   const m = await writeBundle(path.join(tmp, 'md'), book);
   assert.equal(m.title, 'The Test Book');
   assert.equal(m.author, 'A. Writer');
-  assert.deepEqual(m.toc.map((t) => [t.title, t.section, t.id]), [['Chapter One', 0, 'chapter-one'], ['Chapter Two', 0, 'chapter-two']]);
-  assert.match(sectionHtml(path.join(tmp, 'md'), 0), /<a href="#sec=0&amp;id=chapter-two" data-sec="0" data-id="chapter-two">two<\/a>/);
+  // Each chapter starts a section, so a new page.
+  assert.deepEqual(m.toc.map((t) => [t.title, t.section, t.id]), [['Chapter One', 0, 'chapter-one'], ['Chapter Two', 1, 'chapter-two']]);
+  assert.match(sectionHtml(path.join(tmp, 'md'), 0), /<a href="#sec=1&amp;id=chapter-two" data-sec="1" data-id="chapter-two">two<\/a>/);
 });
 
 test('epub conversion: metadata, spine, links, images, cover, css, toc', async () => {

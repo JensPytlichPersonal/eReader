@@ -363,25 +363,69 @@ function endsWith(node, test) {
   return false;
 }
 
+/** The first text or picture in a node, in reading order: what a reader sees of it first. */
+function firstContent(node) {
+  if (isText(node)) return node.data.trim() ? node : null;
+  if (!isTag(node)) return null;
+  if (node.name === 'img') return node;
+  for (const c of node.children) {
+    const found = firstContent(c);
+    if (found) return found;
+  }
+  return null;
+}
+
 /**
- * Split the root's children into chunks that fit in `budget` text characters. A chapter that fits stays
- * whole; a longer one is cut into the fewest parts of about equal size (see chooseCuts), best before a
- * heading, then after a rule such as a scene break, then between any two blocks. A cut goes only before a
- * block-level element, never right after a heading, so a heading stays with what follows it. Wrapper
- * elements larger than the budget are unwrapped so a cut can go inside them, their id kept as an anchor.
+ * Where chapters start: the first text or picture at or after each element of `starts`, with the elements
+ * that start there. A contents entry may point at an empty anchor, even one at the end of the paragraph
+ * before the chapter.
+ */
+function chapterLeaves(nodes, starts) {
+  const leaves = new Map();
+  let waiting = [];
+  const visit = (list) => {
+    for (const node of list) {
+      if (isTag(node) && starts.has(node)) waiting.push(node);
+      if (waiting.length && ((isText(node) && node.data.trim()) || (isTag(node) && node.name === 'img'))) {
+        leaves.set(node, waiting);
+        waiting = [];
+      }
+      if (isTag(node)) visit(node.children);
+    }
+  };
+  visit(nodes);
+  return leaves;
+}
+
+const holds = (outer, node) => { for (let n = node; n; n = n.parent) if (n === outer) return true; return false; };
+
+/**
+ * Split the root's children into chunks that fit in `budget` text characters. Each chapter that starts
+ * inside it begins a chunk: `starts` are the elements the book's contents points to (see chapterStarts in
+ * bundle.js), and the headings just before one go with it. A run that fits stays whole; a longer one is cut
+ * into the fewest parts of about equal size (see chooseCuts), best before a heading, then after a rule such
+ * as a scene break, then between any two blocks. A cut goes only before a block-level element, never right
+ * after a heading, so a heading stays with what follows it. Wrapper elements larger than the budget, or
+ * with a chapter starting inside them, are unwrapped so a cut can go there, their id kept as an anchor.
  * Returns arrays of nodes.
  */
-export function chunkNodes(root, budget) {
+export function chunkNodes(root, budget, starts = null) {
   const total = textLength(root.children);
-  if (!(total > budget)) {
+  const leaves = starts?.size ? chapterLeaves(root.children, starts) : new Map();
+  if (!leaves.size && !(total > budget)) {
     const whole = [...root.children];
     for (const n of whole) n.parent = null;
     return [whole];
   }
+  // The wrappers a chapter starts inside of, after other text.
+  const inner = new Set();
+  for (const leaf of leaves.keys()) {
+    for (let n = leaf.parent; n && n !== root; n = n.parent) if (firstContent(n) !== leaf) inner.add(n);
+  }
   const nodes = [];
   const flatten = (list) => {
     for (const node of list) {
-      if (isTag(node) && WRAPPER_TAGS.has(node.name) && textContent(node).length > budget && node.children.some((c) => isTag(c) && BLOCK_TAGS.has(c.name))) {
+      if (isTag(node) && WRAPPER_TAGS.has(node.name) && (textContent(node).length > budget || inner.has(node)) && node.children.some((c) => isTag(c) && BLOCK_TAGS.has(c.name))) {
         if (node.attribs.id) nodes.push(anchorSpan(node.attribs.id));
         if (node.attribs.style && /text-align/.test(node.attribs.style)) {
           for (const c of node.children) if (isTag(c) && !c.attribs.style) c.attribs.style = node.attribs.style;
@@ -391,13 +435,26 @@ export function chunkNodes(root, budget) {
     }
   };
   flatten(root.children);
+  // An empty anchor a chapter starts at, left in the paragraph before it, goes where the chapter begins, so
+  // links and the contents lead there. It holds no text, so no place in the book moves.
+  for (let i = 0; i < nodes.length; i++) {
+    const leaf = firstContent(nodes[i]);
+    for (const s of (leaf && leaves.get(leaf)) || []) {
+      if (!isAnchor(s) || nodes.includes(s) || holds(nodes[i], s)) continue;
+      removeElement(s);
+      nodes.splice(i, 0, s);
+      i++;
+    }
+  }
 
   const isHeading = (name) => HEADING_RE.test(name);
   const places = [];
+  const before = []; // the text before each node
   let pos = 0;
   let last = null; // the last node with content, past white space and anchors
   let anchors = null; // where the anchors just before this node begin: { at, pos }
   nodes.forEach((node, i) => {
+    before.push(pos);
     const len = textContent(node).length;
     if (isBlank(node) || isAnchor(node)) {
       if (!anchors && isAnchor(node)) anchors = { at: i, pos };
@@ -412,10 +469,35 @@ export function chunkNodes(root, budget) {
     anchors = null;
     pos += len;
   });
+  before.push(pos);
+
+  // Each chapter begins a chunk, with the headings and anchors just before it, when there is text before them.
+  const heads = (node) => isBlank(node) || isAnchor(node) || (isTag(node) && isHeading(node.name));
+  const cuts = [];
+  let from = 0;
+  let text = false; // whether the chunk so far holds more than headings
+  nodes.forEach((node, i) => {
+    const leaf = firstContent(node);
+    if (text && leaf && leaves.has(leaf)) {
+      let at = i;
+      while (at > from && heads(nodes[at - 1])) at--;
+      cuts.push(at);
+      from = at;
+      text = false;
+    }
+    if (!heads(node)) text = true;
+  });
+  // Then each run between them that is longer than the budget is cut into near-equal parts.
+  const bounds = [0, ...cuts, nodes.length];
+  for (let j = 0; j + 1 < bounds.length; j++) {
+    const [a, b] = [bounds[j], bounds[j + 1]];
+    const within = places.filter((p) => p.at > a && p.at < b).map((p) => ({ ...p, pos: p.pos - before[a] }));
+    cuts.push(...chooseCuts(within, before[b] - before[a], budget));
+  }
 
   const chunks = [];
   let start = 0;
-  for (const at of [...chooseCuts(places, total, budget), nodes.length]) {
+  for (const at of [...cuts.sort((x, y) => x - y), nodes.length]) {
     chunks.push(nodes.slice(start, at));
     start = at;
   }

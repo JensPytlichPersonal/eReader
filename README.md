@@ -319,10 +319,14 @@ Uploaded "by", or names Demonoid, Z-Library or Library Genesis. Lines such as "T
 by" stay, as does anything further in. The uploaded original is kept as it is, so a PDF's *Original
 pages* view still shows the stamp.
 
-Converted books are stored as HTML sections under `data/books/<id>/`, about one for each chapter, and
-the reader starts each section on a new page. A chapter over 150,000 characters is cut into sections of
-about equal size, and so is a text or Markdown file, which comes as one long chapter. Each cut goes at a
-heading or a scene break near it where there is one, else between paragraphs. In a PDF a cut falls
+Converted books are stored as HTML sections under `data/books/<id>/`, one for each chapter. The reader
+starts each section on a new page, and the page count at the foot is the section's. Every chapter in the
+book's contents begins a section, also where one file holds several chapters, and so do the chapters of a
+part. The sections of a chapter, as in a textbook's contents, don't: an entry under another one begins a
+section only when that one holds more than 150,000 characters. A book without contents, such as a text or
+Markdown file, goes by its headings the same way. Headings just before a chapter, such as a part's title,
+go with it. A chapter over 150,000 characters is cut into sections of about equal size. Each cut goes at
+a heading or a scene break near it where there is one, else between paragraphs. In a PDF a cut falls
 between pages, where no paragraph runs over the page. Some EPUBs split a chapter over two files. A file
 that carries on the one before it is joined to it, so the chapter runs on without a half-empty page: it
 starts with ordinary text rather than a heading, a picture or a title line, the contents and the book's
@@ -377,8 +381,8 @@ read the same as the old title.
 What the box can't do:
 
 - A paragraph in a table is fixed on its own, and line breaks in its box count as spaces.
-- The box can't reach across where the app cuts a chapter over 150,000 characters into sections (see
-  [Formats](#formats)), so *Add the paragraph before* or *after* isn't offered there.
+- The box works within one section: a chapter, or a part of a chapter over 150,000 characters (see
+  [Formats](#formats)). So *Add the paragraph before* or *after* isn't offered where one begins or ends.
 - The box can't make a heading.
 
 The fixes are listed under *Fixes to the text* in the book's menu, newest first, for admins: the words taken out and
