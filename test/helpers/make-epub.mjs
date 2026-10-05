@@ -2,9 +2,10 @@ import { buildZip, TINY_PNG } from './zipwriter.mjs';
 
 // `metadata` is extra OPF metadata (e.g. series); `titleXml` replaces the <dc:title> element; `cover` is the
 // cover image ({ href, type, data }); `files` are more files beside the chapters ([{ name, data }]). A chapter
-// with `inToc: false` is left out of the nav and the NCX.
+// with `inToc: false` is left out of the nav and the NCX. `toc` ([{ title, href }]) is the contents instead of one
+// entry for each chapter, as for chapters that share a file.
 const PNG_COVER = { href: 'images/cover.png', type: 'image/png', data: TINY_PNG };
-export function makeEpub({ title = 'Fixture Book', author = 'Test Author', language = 'en', chapters, withNav = true, withNcx = true, css = '', metadata = '', titleXml, cover = PNG_COVER, files = [] } = {}) {
+export function makeEpub({ title = 'Fixture Book', author = 'Test Author', language = 'en', chapters, withNav = true, withNcx = true, css = '', metadata = '', titleXml, cover = PNG_COVER, files = [], toc } = {}) {
   chapters ??= [
     { id: 'ch1', file: 'ch1.xhtml', title: 'Chapter One', body: '<h1 id="c1">Chapter One</h1><p class="first">Hello <em>world</em>. See <a href="ch2.xhtml#note1">note</a>.</p><p><img src="images/pic.png" alt="pic"/></p>' },
     { id: 'ch2', file: 'ch2.xhtml', title: 'Chapter Two', body: '<h1>Chapter Two</h1><p>Second chapter.</p><aside id="note1" epub:type="footnote"><p>A footnote. <a href="ch1.xhtml">back</a></p></aside><script>alert(1)</script><style>p{color:red}</style>' },
@@ -29,9 +30,9 @@ ${manifestItems}
 </manifest>
 <spine ${withNcx ? 'toc="ncx"' : ''}>${spine}</spine>
 </package>`;
-  const listed = chapters.filter((c) => c.inToc !== false);
-  const nav = `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol>${listed.map((c) => `<li><a href="${c.file}">${c.title}</a></li>`).join('')}</ol></nav></body></html>`;
-  const ncx = `<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap>${listed.map((c, i) => `<navPoint id="np${i}" playOrder="${i + 1}"><navLabel><text>${c.title}</text></navLabel><content src="${c.file}"/></navPoint>`).join('')}</navMap></ncx>`;
+  const listed = toc ?? chapters.filter((c) => c.inToc !== false).map((c) => ({ title: c.title, href: c.file }));
+  const nav = `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol>${listed.map((c) => `<li><a href="${c.href}">${c.title}</a></li>`).join('')}</ol></nav></body></html>`;
+  const ncx = `<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap>${listed.map((c, i) => `<navPoint id="np${i}" playOrder="${i + 1}"><navLabel><text>${c.title}</text></navLabel><content src="${c.href}"/></navPoint>`).join('')}</navMap></ncx>`;
   const entries = [
     { name: 'mimetype', data: 'application/epub+zip', store: true },
     { name: 'META-INF/container.xml', data: `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>` },

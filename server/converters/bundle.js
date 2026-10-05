@@ -2,7 +2,7 @@
 //   <booksDir>/<id>/book.json, sections/N.html, images/*, styles.css, cover.<ext>
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { chunkNodes, collectHeadings, serialize, textLength, isTag, removeCreditLines, anchorSpan } from './html.js';
+import { chunkNodes, collectHeadings, serialize, textLength, isTag, isText, removeCreditLines, anchorSpan } from './html.js';
 import { stripWatermarks } from './watermarks.js';
 import { seriesFromFileTitle } from './series.js';
 import { DomUtils } from 'htmlparser2';
@@ -34,10 +34,13 @@ export function assembleSections(chapters, opts = {}) {
   const keyToSection = new Map(); // chapter key -> first section index
   const idToSection = new Map(); // "key#id" -> section index; also "#id" for global ids
   const { groups, anchors, renamed } = joinContinued(chapters);
+  const budget = opts.budget ?? SECTION_BUDGET;
+  // A PDF comes in sections already, at its chapter pages (see mergePages).
+  const starts = Number.isFinite(budget) ? chapterStarts(groups, opts.toc, budget, renamed) : new Map();
   let counter = 0;
 
-  for (const ch of groups) {
-    const chunks = chunkNodes(ch.root, opts.budget ?? SECTION_BUDGET);
+  for (const [gi, ch] of groups.entries()) {
+    const chunks = chunkNodes(ch.root, budget, starts.get(gi));
     chunks.forEach((nodes, i) => {
       const idx = sections.length;
       if (i === 0 && ch.key != null && !keyToSection.has(ch.key)) keyToSection.set(ch.key, idx);
@@ -116,6 +119,104 @@ export function assembleSections(chapters, opts = {}) {
 }
 
 const withIds = (nodes) => DomUtils.findAll((e) => !!e.attribs?.id, nodes);
+const HEADING_RE = /^h[1-6]$/;
+
+/**
+ * Where chapters start inside the chapters given (`groups`, from joinContinued), so each begins a section and
+ * a new page: the elements of each group, by its index, that an entry of the contents `toc` points to. An
+ * entry under others counts only when each of those holds more than the budget, as the chapters of a part
+ * do, and the sections of a chapter don't. A book without contents goes by its headings, the two most
+ * significant levels, as tocFromHeadings makes its contents. An entry that points at a group's start needs
+ * no cut, as each group begins a section anyway.
+ */
+function chapterStarts(groups, toc, budget, renamed) {
+  // Every element with an id, as resolveKey finds it: by "key#id", and by the id alone for "#id".
+  const byKey = new Map();
+  const byId = new Map();
+  const firstOf = new Map(); // key -> the first group with it
+  groups.forEach((g, gi) => {
+    if (g.key != null && !firstOf.has(g.key)) firstOf.set(g.key, gi);
+    for (const el of withIds(g.root.children)) {
+      const id = el.attribs.id;
+      byKey.set(`${g.idKeys?.get(id) ?? g.key ?? ''}#${id}`, { gi, el });
+      if (!byId.has(id)) byId.set(id, { gi, el });
+    }
+  });
+  const target = (key) => {
+    if (!key) return null;
+    const hash = key.indexOf('#');
+    const file = hash >= 0 ? key.slice(0, hash) : key;
+    let frag = hash >= 0 ? key.slice(hash + 1) : '';
+    if (frag) {
+      frag = renamed.get(`${file}#${frag}`) ?? frag;
+      const hit = byKey.get(`${file}#${frag}`) ?? (file ? null : byId.get(frag));
+      if (hit) return hit;
+    }
+    return firstOf.has(file) ? { gi: firstOf.get(file), el: null } : null;
+  };
+
+  // The entries in the order of the contents, each with its depth and the entry it is under.
+  let entries = [];
+  const walk = (list, depth, parent) => {
+    for (const e of list || []) {
+      const entry = { depth, parent, at: target(e.key) };
+      entries.push(entry);
+      if (e.children?.length) walk(e.children, depth + 1, entry);
+    }
+  };
+  walk(toc, 0, null);
+  if (!entries.some((e) => e.at)) {
+    entries = [];
+    const heads = [];
+    groups.forEach((g, gi) => {
+      for (const el of DomUtils.findAll((e) => HEADING_RE.test(e.name), g.root.children)) heads.push({ gi, el, level: Number(el.name[1]) });
+    });
+    const [top, second] = [...new Set(heads.map((h) => h.level))].sort();
+    let parent = null;
+    for (const h of heads) {
+      if (h.level === top) {
+        parent = { depth: 0, parent: null, at: { gi: h.gi, el: h.el } };
+        entries.push(parent);
+      } else if (h.level === second) entries.push({ depth: parent ? 1 : 0, parent, at: { gi: h.gi, el: h.el } });
+    }
+  }
+
+  // Where each entry points in the whole text, so how much it holds: up to the next entry no deeper than it.
+  const targets = new Set(entries.map((e) => e.at?.el).filter(Boolean));
+  const offsets = new Map();
+  const bases = [];
+  let total = 0;
+  for (const g of groups) {
+    bases.push(total);
+    const visit = (list) => {
+      for (const n of list) {
+        if (isText(n)) total += n.data.length;
+        else if (isTag(n)) {
+          if (targets.has(n)) offsets.set(n, total);
+          visit(n.children);
+        }
+      }
+    };
+    visit(g.root.children);
+  }
+  const placed = entries.filter((e) => e.at).map((e) => Object.assign(e, { pos: e.at.el ? offsets.get(e.at.el) ?? bases[e.at.gi] : bases[e.at.gi] }));
+  placed.sort((a, b) => a.pos - b.pos);
+  for (let i = 0; i < placed.length; i++) {
+    let j = i + 1;
+    while (j < placed.length && placed[j].depth > placed[i].depth) j++;
+    placed[i].holds = (j < placed.length ? placed[j].pos : total) - placed[i].pos;
+  }
+
+  // An entry without a place of its own, such as a part's name in the contents, holds what is under it.
+  const counts = (e) => { for (let p = e.parent; p; p = p.parent) if (p.at && !(p.holds > budget)) return false; return true; };
+  const starts = new Map();
+  for (const e of placed) {
+    if (!e.at.el || !counts(e)) continue;
+    if (!starts.has(e.at.gi)) starts.set(e.at.gi, new Set());
+    starts.get(e.at.gi).add(e.at.el);
+  }
+  return starts;
+}
 
 /**
  * Join each chapter that carries on the one before it (`continues`) to that one, so the two are chunked as one
