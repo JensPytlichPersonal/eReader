@@ -2,7 +2,7 @@
 //   <booksDir>/<id>/book.json, sections/N.html, images/*, styles.css, cover.<ext>
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { chunkNodes, collectHeadings, serialize, textLength, isTag, isText, removeCreditLines, anchorSpan } from './html.js';
+import { chunkNodes, collectHeadings, serialize, textLength, isTag, isText, removeCreditLines, anchorSpan, BLOCK_TAGS } from './html.js';
 import { stripWatermarks } from './watermarks.js';
 import { seriesFromFileTitle } from './series.js';
 import { DomUtils } from 'htmlparser2';
@@ -41,7 +41,12 @@ export function assembleSections(chapters, opts = {}) {
 
   for (const [gi, ch] of groups.entries()) {
     const chunks = chunkNodes(ch.root, budget, starts.get(gi));
+    // A section that begins with a chapter's title found in the text is named by it. In a file of several such
+    // chapters, these names win over the contents' entry for the file.
+    const named = chunks.map((nodes) => leadingTitle(nodes, starts.get(gi)));
+    const several = named.filter(Boolean).length > 1;
     chunks.forEach((nodes, i) => {
+      const title = (i === 0 && !several ? ch.title : undefined) ?? named[i];
       const idx = sections.length;
       if (i === 0 && ch.key != null && !keyToSection.has(ch.key)) keyToSection.set(ch.key, idx);
       const fake = { children: nodes };
@@ -49,7 +54,7 @@ export function assembleSections(chapters, opts = {}) {
       for (const el of DomUtils.findAll((e) => !!e.attribs?.id, nodes)) {
         idToSection.set(`${ch.idKeys?.get(el.attribs.id) ?? ch.key ?? ''}#${el.attribs.id}`, idx);
       }
-      sections.push({ nodes, headings, chars: textLength(nodes), title: i === 0 ? ch.title : undefined, key: ch.key, page: ch.page, pageStart: ch.pageStart, pageEnd: ch.pageEnd });
+      sections.push({ nodes, headings, chars: textLength(nodes), title, several: several && !!named[i], key: ch.key, page: ch.page, pageStart: ch.pageStart, pageEnd: ch.pageEnd });
       counter++;
     });
     // A chapter read as part of the one before is found at the anchor where it begins.
@@ -109,7 +114,7 @@ export function assembleSections(chapters, opts = {}) {
   let lastTitle = sections[0]?.title || '';
   sections.forEach((s, i) => {
     const entry = flat.find((t) => t.section === i);
-    if (entry) lastTitle = entry.title;
+    if (entry && !(s.several && !entry.id)) lastTitle = entry.title;
     else if (s.title) lastTitle = s.title;
     else if (s.headings[0]) lastTitle = s.headings[0].text;
     s.title = lastTitle || s.title || '';
@@ -121,13 +126,68 @@ export function assembleSections(chapters, opts = {}) {
 const withIds = (nodes) => DomUtils.findAll((e) => !!e.attribs?.id, nodes);
 const HEADING_RE = /^h[1-6]$/;
 
+// A heading that names a chapter: "Chapter Eleven", "CHAPTER XI", "Part Two", "Kapitel 11", "Prologue", or a bare
+// number such as "11" or "XI". Numbers count as digits, Roman numerals or words, in English and Danish.
+const ROMAN = '(?=[ivxlcdm])m{0,4}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})';
+const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|'
+  + 'seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|first|second|third|fourth|'
+  + 'fifth|sixth|seventh|eighth|ninth|tenth|last|en|et|to|tre|fire|fem|seks|syv|otte|ni|ti|elleve|tolv|tretten|fjorten|'
+  + 'femten|seksten|sytten|atten|nitten|tyve|tredive|fyrre|halvtreds|tres|halvfjerds|firs|halvfems|hundrede|'
+  + 'første|anden|andet|tredje|fjerde|femte|sjette|syvende|ottende|niende|tiende|sidste';
+const NUMBER = `(?:\\d+|${ROMAN}|(?:${NUMBER_WORDS})(?:-\\p{L}+)?|(?:en|to|tre|fire|fem|seks|syv|otte|ni)og\\p{L}+)(?![\\p{L}\\d])`;
+const CHAPTER_WORDS = `(?:chapter|part|book|kapitel|del|bog)\\s+${NUMBER}|(?:prologue|prolog|epilogue|epilog|interlude|efterskrift)(?![\\p{L}])`;
+// A paragraph is a chapter's title by its words; a heading also by a bare number, which in a paragraph may be a
+// page number a scan left in the text.
+const CHAPTER_LINE_RE = new RegExp(`^(?:${CHAPTER_WORDS})`, 'iu');
+const CHAPTER_TITLE_RE = new RegExp(`^(?:${CHAPTER_WORDS}|(?:\\d+|${ROMAN})\\.?$)`, 'iu');
+export const isChapterTitle = (text) => CHAPTER_TITLE_RE.test(text);
+// So much text, at least, follows a chapter's heading before the next one: headings closer together are a list
+// of chapters, as on a contents page.
+const CHAPTER_MIN = 1000;
+
+/** The words of an element, with a line break as a space. */
+function wordsOf(el) {
+  let s = '';
+  const visit = (list) => {
+    for (const n of list) {
+      if (isText(n)) s += n.data;
+      else if (isTag(n)) {
+        if (n.name === 'br') s += ' ';
+        visit(n.children);
+      }
+    }
+  };
+  visit(el.children);
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+/** The chapter title (from chapterStarts' `titles`) a section's nodes begin with, within their first 200 characters. */
+function leadingTitle(nodes, titles) {
+  if (!titles) return undefined;
+  let seen = 0;
+  let found;
+  const visit = (list) => {
+    for (const n of list) {
+      if (found || seen > 200) return;
+      if (isText(n)) seen += n.data.trim().length;
+      else if (isTag(n)) {
+        if (titles.get(n)) { found = titles.get(n); return; }
+        visit(n.children);
+      }
+    }
+  };
+  visit(nodes);
+  return found;
+}
+
 /**
  * Where chapters start inside the chapters given (`groups`, from joinContinued), so each begins a section and
- * a new page: the elements of each group, by its index, that an entry of the contents `toc` points to. An
- * entry under others counts only when each of those holds more than the budget, as the chapters of a part
- * do, and the sections of a chapter don't. A book without contents goes by its headings, the two most
- * significant levels, as tocFromHeadings makes its contents. An entry that points at a group's start needs
- * no cut, as each group begins a section anyway.
+ * a new page. These are the elements an entry of the contents `toc` points to, and the chapter titles in the
+ * text (see CHAPTER_TITLE_RE). An entry under others counts only when each of those holds more than the
+ * budget, as the chapters of a part do, and the sections of a chapter don't. A book without contents goes by
+ * its headings, the two most significant levels, as tocFromHeadings makes its contents. One at a group's
+ * start makes no cut, as each group begins a section anyway. Returns, for each group by its index, a Map of
+ * those elements to the title the text gives them, '' for none.
  */
 function chapterStarts(groups, toc, budget, renamed) {
   // Every element with an id, as resolveKey finds it: by "key#id", and by the id alone for "#id".
@@ -181,8 +241,24 @@ function chapterStarts(groups, toc, budget, renamed) {
     }
   }
 
+  // Chapter titles begin one too, as the contents may not point at them: some books' contents list only their
+  // files. A title is a heading or a line of its own that names a chapter, or one of the class "chapter", as
+  // calibre finds them. One with a link in it is an entry on a contents page, and a title met again, such as
+  // a scan's running head, counts only the first time.
+  const titled = [];
+  groups.forEach((g, gi) => {
+    const isTitle = (e) => {
+      const heading = HEADING_RE.test(e.name);
+      if (!heading && !((e.name === 'p' || e.name === 'div') && !e.children.some((c) => isTag(c) && BLOCK_TAGS.has(c.name)))) return false;
+      const words = wordsOf(e);
+      if (!words || words.length > 80 || DomUtils.findOne((a) => a.name === 'a' && (a.attribs.href != null || a.attribs['data-link'] != null), e.children, true)) return false;
+      return /(?:^|\s)chapter(?:\s|$)/i.test(e.attribs.class || '') || (heading ? CHAPTER_TITLE_RE : CHAPTER_LINE_RE).test(words);
+    };
+    for (const el of DomUtils.findAll(isTitle, g.root.children)) titled.push({ gi, el });
+  });
+
   // Where each entry points in the whole text, so how much it holds: up to the next entry no deeper than it.
-  const targets = new Set(entries.map((e) => e.at?.el).filter(Boolean));
+  const targets = new Set([...entries.map((e) => e.at?.el).filter(Boolean), ...titled.map((t) => t.el)]);
   const offsets = new Map();
   const bases = [];
   let total = 0;
@@ -210,11 +286,23 @@ function chapterStarts(groups, toc, budget, renamed) {
   // An entry without a place of its own, such as a part's name in the contents, holds what is under it.
   const counts = (e) => { for (let p = e.parent; p; p = p.parent) if (p.at && !(p.holds > budget)) return false; return true; };
   const starts = new Map();
-  for (const e of placed) {
-    if (!e.at.el || !counts(e)) continue;
-    if (!starts.has(e.at.gi)) starts.set(e.at.gi, new Set());
-    starts.get(e.at.gi).add(e.at.el);
-  }
+  // Each group's starts, with the title found in the text for those that begin with one, else ''.
+  const add = (gi, el, title = '') => {
+    if (!starts.has(gi)) starts.set(gi, new Map());
+    if (!starts.get(gi).get(el)) starts.get(gi).set(el, title);
+  };
+  for (const e of placed) if (e.at.el && counts(e)) add(e.at.gi, e.at.el);
+  // A chapter's title is followed by its text, up to the next title or the end of its file.
+  const seen = new Set();
+  titled.forEach((t, i) => {
+    const pos = offsets.get(t.el);
+    const next = titled[i + 1];
+    const end = Math.min(next?.gi === t.gi ? offsets.get(next.el) : Infinity, bases[t.gi + 1] ?? total);
+    const key = wordsOf(t.el).toLowerCase();
+    if (end - pos < CHAPTER_MIN || seen.has(key)) return;
+    seen.add(key);
+    add(t.gi, t.el, wordsOf(t.el));
+  });
   return starts;
 }
 

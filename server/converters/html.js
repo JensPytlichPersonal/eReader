@@ -270,6 +270,8 @@ function cleanAttributes(el, state) {
       out.style = `text-align:${v.toLowerCase()};${out.style || ''}`;
     }
   }
+  // An older book marks its chapters for links and its contents with <a name="...">, which an id does now.
+  if (!out.id && el.name === 'a' && el.attribs?.name) out.id = el.attribs.name;
   if (out.id) {
     if (state.ids.has(out.id)) delete out.id; else state.ids.add(out.id);
   }
@@ -471,8 +473,9 @@ export function chunkNodes(root, budget, starts = null) {
   });
   before.push(pos);
 
-  // Each chapter begins a chunk, with the headings and anchors just before it, when there is text before them.
-  const heads = (node) => isBlank(node) || isAnchor(node) || (isTag(node) && isHeading(node.name));
+  // Each chapter begins a chunk, with the headings, anchors and empty blocks just before it, when there is text
+  // before them.
+  const heads = (node) => !firstContent(node) || (isTag(node) && isHeading(node.name));
   const cuts = [];
   let from = 0;
   let text = false; // whether the chunk so far holds more than headings
