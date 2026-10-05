@@ -324,9 +324,14 @@ starts each section on a new page, and the page count at the foot is the section
 book's contents begins a section, also where one file holds several chapters, and so do the chapters of a
 part. The sections of a chapter, as in a textbook's contents, don't: an entry under another one begins a
 section only when that one holds more than 150,000 characters. A book without contents, such as a text or
-Markdown file, goes by its headings the same way. Headings just before a chapter, such as a part's title,
-go with it. A chapter over 150,000 characters is cut into sections of about equal size. Each cut goes at
-a heading or a scene break near it where there is one, else between paragraphs. In a PDF a cut falls
+Markdown file, goes by its headings the same way. A chapter's own title begins a section too, where the
+contents doesn't point at it, as when it lists only files: a heading or a line of its own such as
+"Chapter Eleven", "CHAPTER XI", "Kapitel 11" or "Prologue", a heading that is only a number, or a line of
+the class `chapter`. Titles close together, as on a contents page, don't count, and one that repeats, as a
+scan's running head does, counts once. A section that begins with a title is named by it at the foot of
+the page. Headings just before a chapter, such as a part's title, go with it. A chapter over 150,000
+characters is cut into sections of about equal size. Each cut goes at a heading or a scene break near it
+where there is one, else between paragraphs. In a PDF a cut falls
 between pages, where no paragraph runs over the page. Some EPUBs split a chapter over two files. A file
 that carries on the one before it is joined to it, so the chapter runs on without a half-empty page: it
 starts with ordinary text rather than a heading, a picture or a title line, the contents and the book's

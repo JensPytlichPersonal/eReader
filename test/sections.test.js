@@ -5,7 +5,7 @@ import { makeEpub } from './helpers/make-epub.mjs';
 import { normalizeDocument, chunkNodes, serialize, textLength } from '../server/converters/html.js';
 import { mergePages } from '../server/converters/pdf.js';
 import { convertEpub } from '../server/converters/epub.js';
-import { assembleSections, SECTION_BUDGET } from '../server/converters/bundle.js';
+import { assembleSections, SECTION_BUDGET, isChapterTitle } from '../server/converters/bundle.js';
 import { convert } from '../server/converters/index.js';
 
 const root = (body) => normalizeDocument(`<body>${body}</body>`).root;
@@ -215,6 +215,11 @@ test('chunker: each chapter the contents points to begins a chunk, with the head
   assert.deepEqual(three.map(names), ['span p p', 'h2 p p']);
   assert.match(serialize(three[0]), /^<span id="part" class="anchor"><\/span>/);
 
+  // An anchor alone in a paragraph before a chapter's heading goes with the chapter, and leaves no empty chunk.
+  const lone = root(`<p><a id="c1"></a></p><h2>One</h2>${paras(2)}<p><a id="c2"></a></p><h2>Two</h2>${paras(2)}`);
+  const alone = chunkNodes(lone, 150000, new Set([byId(lone, 'c1'), byId(lone, 'c2')]));
+  assert.deepEqual(alone.map(names), ['p a h2 p p', 'p a h2 p p']);
+
   // A chapter longer than the budget is still cut into near-equal parts; one at the very start makes no cut.
   const long = root(`<h2 id="c1">One</h2>${paras(22)}<h2 id="c2">Two</h2>${paras(3)}`);
   const four = chunkNodes(long, 10000, new Set([byId(long, 'c1'), byId(long, 'c2')]));
@@ -258,4 +263,52 @@ test('a book without contents begins a section at each chapter heading', async (
   const book = await convert(Buffer.from(text), { filename: 'b.txt' });
   assert.deepEqual(book.sections.map((s) => tags(s.nodes)[0]?.name), ['h2', 'h2', 'h2']);
   assert.deepEqual(book.toc.map((t) => [t.title, t.section]), [['CHAPTER I', 0], ['CHAPTER II', 1], ['CHAPTER III', 2]]);
+});
+
+test('a heading that names a chapter begins a section where the contents does not point at it', async () => {
+  for (const t of ['Chapter Eleven', 'CHAPTER XI', 'Chapter 11: The Road', 'Chapter Twenty-One', 'Part Two', 'Book III', 'Kapitel 11',
+    'Kapitel enogtyve', 'Del to', 'Prologue', 'Epilog', 'XI', '11', '11.']) assert.ok(isChapterTitle(t), t);
+  for (const t of ['Part of the problem', 'Part Time Work', 'Chapter and verse', 'CIVIL', 'The Road to Sendar', '1.1', '11 The Road', 'Prologues and Plots']) {
+    assert.ok(!isChapterTitle(t), t);
+  }
+
+  // The contents names only the file: its chapters are found by their headings. A descriptive heading is not one.
+  const text = prose(6).repeat(3); // about 1,600 characters
+  const body = `<h2>Prologue</h2>${text}<h2>Chapter One</h2>${text}<h3>The Road to Sendar</h3>${text}<h2>Chapter Two</h2>${text}`;
+  const book = await convertEpub(makeEpub({ chapters: [{ id: 'b', file: 'book.xhtml', title: 'The Book', body }] }));
+  // Each is named by its title, not by the file's entry in the contents.
+  assert.deepEqual(book.sections.map((s) => s.title), ['Prologue', 'Chapter One', 'Chapter Two']);
+  assert.equal(names(book.sections[1].nodes), 'h2 p p p h3 p p p');
+
+  // A contents page lists them close together, or as links: those don't begin sections, and the prologue after
+  // it does.
+  const listed = '<h1>Contents</h1><h3>Chapter One</h3><h3>Chapter Two</h3><p><a href="#c1">Chapter One</a></p>';
+  const withList = await convertEpub(makeEpub({ chapters: [{ id: 'b', file: 'book.xhtml', title: 'The Book', body: listed + body }] }));
+  assert.deepEqual(withList.sections.map((s) => names(s.nodes).split(' ')[0]), ['h1', 'h2', 'h2', 'h2']);
+  assert.equal(names(withList.sections[0].nodes), 'h1 h3 h3 p');
+});
+
+test('an older book marks chapters with <a name>, and the contents and links find them', async () => {
+  const { root: r } = normalizeDocument('<body><p><a name="ch2"></a>Two</p></body>');
+  assert.equal(byId(r, 'ch2')?.name, 'a');
+  const body = ['One', 'Two', 'Three'].map((t, i) => `<p class="ct"><a name="ch${i + 1}"></a>${t}</p>${prose(4)}`).join('') + '<p>Back to <a href="#ch2">two</a>.</p>';
+  const book = await convertEpub(makeEpub({
+    chapters: [{ id: 'b', file: 'book.xhtml', title: 'The Book', body }],
+    toc: ['One', 'Two', 'Three'].map((t, i) => ({ title: t, href: `book.xhtml#ch${i + 1}` })),
+  }));
+  assert.deepEqual(book.toc.map((t) => [t.title, t.section, t.id]), [['One', 0, 'ch1'], ['Two', 1, 'ch2'], ['Three', 2, 'ch3']]);
+  assert.match(serialize(book.sections[2].nodes), /<a href="#sec=1&amp;id=ch2" data-sec="1" data-id="ch2">two<\/a>/);
+});
+
+test('a line of its own that names a chapter, or of the class chapter, is a title; a page number or running head is not', async () => {
+  const text = prose(6).repeat(3); // about 1,600 characters
+  const lines = await convertEpub(makeEpub({ chapters: [{ id: 'b', file: 'book.xhtml', title: 'The Book',
+    body: `<p>Prologue</p>${text}<p class="chapter">The Road to Sendar</p>${text}<div>CHAPTER TWO</div>${text}<p>123</p>${text}` }] }));
+  assert.deepEqual(lines.sections.map((s) => serialize(s.nodes).slice(0, 22)), ['<p>Prologue</p><p>She ', '<p class="chapter">The', '<div>CHAPTER TWO</div>']);
+
+  // A scan's running head repeats the chapter's title on every page: it begins the chapter once.
+  const page = `<p>Chapter Eleven</p>${text}`;
+  const running = await convertEpub(makeEpub({ chapters: [{ id: 'b', file: 'book.xhtml', title: 'The Book',
+    body: `${text}${page.repeat(4)}<p>Chapter Twelve</p>${text}${'<p>Chapter Twelve</p>'.concat(text).repeat(2)}` }] }));
+  assert.equal(running.sections.length, 3);
 });
