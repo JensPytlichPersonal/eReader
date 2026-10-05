@@ -1192,6 +1192,7 @@ function bookMenu(b) {
       </section>
       <div class="file-actions">
         <a class="btn small" href="/books/${b.id}/original" download="${escapeHtml(b.originalName)}">Download original file</a>
+        ${b.status === 'ready' ? `<a class="btn small" href="/api/books/${b.id}/epub" download>Download EPUB</a>` : ''}
         ${canEdit ? '<button type="button" class="btn small" data-act="reprocess">Convert again</button>' : ''}
         ${canEdit ? '<button type="button" class="btn small danger" data-act="delete">Delete from library</button>' : ''}
       </div>
