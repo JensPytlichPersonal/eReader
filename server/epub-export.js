@@ -82,7 +82,9 @@ export function bookUuid(id) {
 const NOT_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 /** Text without the characters XML cannot hold. */
 export const xmlSafe = (text) => String(text ?? '').replace(NOT_XML, '');
-const esc = (text) => xmlSafe(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// Text and attribute values escaped for XML by hand, so every other character stays as it is, in UTF-8.
+const escText = (text) => xmlSafe(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = (text) => escText(text).replace(/"/g, '&quot;');
 
 // A language tag such as "en" or "da-DK". Anything else is taken as no language, as reading apps need a tag.
 const languageOf = (value) => (/^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i.test(value || '') ? value : '');
@@ -134,6 +136,10 @@ const inSup = (el) => {
 };
 const OUTSIDE = /^(https?:|mailto:)/i;
 const EMPTY_PAGE = /^\[Page (\d+) has no extractable text - use the page view\]$/;
+const textNode = (data, parent) => ({ type: ElementType.Text, data, parent });
+// What a book said its own elements are (its epub:type, which the converter keeps as data-type), such as its
+// notes and the links to them. A value with a prefix of its own is left out, as the EPUB would have to declare it.
+const ownTypes = (value) => value.split(/\s+/).filter((t) => t && !t.includes(':')).join(' ');
 
 /**
  * Where links in the sections (as parseSection gives them) can lead: `ids`, the ids in each section, and
@@ -149,13 +155,13 @@ export function linkTargets(roots) {
 }
 
 /**
- * Makes the nodes of a section (as parseSection gives them) the text of an EPUB part, in place. `book`:
- * { ids and notes, as linkTargets gives them; images, the pictures there are by bundle path; used, a Set
- * the pictures used are added to }.
+ * Makes the nodes of a section (as parseSection gives them) the text of an EPUB part, in place, escaped
+ * for renderPart. `book`: { ids and notes, as linkTargets gives them; images, the pictures there are by
+ * bundle path; used, a Set the pictures used are added to }.
  */
 export function exportNodes(nodes, book) {
   for (const node of [...nodes]) {
-    if (isText(node)) { node.data = xmlSafe(node.data); continue; }
+    if (isText(node)) { node.data = escText(node.data); continue; }
     if (!isTag(node)) { removeElement(node); continue; }
     const a = node.attribs;
     if (node.name === 'img') {
@@ -177,7 +183,11 @@ export function exportNodes(nodes, book) {
     } else if (node.name === 'span' && hasClass(node, 'pdf-empty')) {
       // The page view is the app's, not the reading app's.
       const page = EMPTY_PAGE.exec(textContent(node).trim())?.[1];
-      if (page) node.children = [{ type: ElementType.Text, data: `[Page ${page} has no text]`, parent: node }];
+      if (page) node.children = [textNode(`[Page ${page} has no text]`, node)];
+    } else if (node.name === 'hr' && hasClass(node, 'scene-break')) {
+      // As text, so apps that draw nothing a stylesheet adds still show the break. The app reads it back as one.
+      node.name = 'p';
+      node.children = [textNode('* * *', node)];
     } else if (isEndnotes(node)) {
       a['epub:type'] = 'footnotes';
       for (const p of node.children.filter(isNote)) {
@@ -187,13 +197,19 @@ export function exportNodes(nodes, book) {
         delete p.attribs.id;
       }
     }
+    // Reading apps that know a book's notes show them over the text.
+    const types = ownTypes(a['data-type'] || '');
+    if (types && !a['epub:type']) a['epub:type'] = types;
     for (const k of Object.keys(a)) {
       if (k.startsWith('data-')) delete a[k];
-      else a[k] = xmlSafe(a[k]);
+      else a[k] = esc(a[k]);
     }
     exportNodes(node.children, book);
   }
 }
+
+/** The nodes exportNodes made as XHTML: already escaped, so written as they are. */
+export const renderPart = (nodes) => render(nodes, { xmlMode: true, encodeEntities: false });
 
 /**
  * The contents as the EPUB links them: [{ title, href, children }], `ids` the ids in each part (see
@@ -217,13 +233,13 @@ function contentsOf(toc, ids) {
 // does in the app, without its themes, fonts or columns, so the reading app's own settings apply. The
 // book's kept styles follow them.
 const BOOK_CSS = `/* A break between scenes: three spaced asterisks, as print sets them */
-.book-content hr.scene-break { border: 0; height: auto; margin: 0.9em 0; overflow: visible; color: inherit; text-align: center; line-height: 1; }
-.book-content hr.scene-break::after { content: "*\\2003*\\2003*"; }
+.book-content p.scene-break { text-align: center; text-indent: 0; margin: 0.9em 0; }
 /* A page break the book asks for */
 .book-content hr.pagebreak { border: 0; margin: 0; page-break-after: always; break-after: page; }
-/* Footnotes smaller, and the notes at the end of a part under a rule */
+/* Footnotes smaller, and the notes at the end of a part set apart. No rule above them: apps that show a
+   note over the text hide the notes, and would draw the rule alone. */
 .book-content p.footnote { font-size: 0.85em; text-indent: 0; }
-.book-content .endnotes { border-top: 1px solid; margin-top: 1.5em; padding-top: 0.6em; }
+.book-content .endnotes { margin-top: 1.5em; padding-top: 0.6em; }
 /* Pictures no wider than the screen */
 .book-content img { max-width: 100%; height: auto; }
 /* The places links lead to, and the hidden page marks of a PDF, take no space */
@@ -380,7 +396,7 @@ export function buildEpub({ book, series = [], files }, now = new Date()) {
   const text = { ...targets, images: files.images, used: new Set() };
   const texts = roots.map((root, i) => {
     exportNodes(root.children, text);
-    const body = `<div class="book-content">${render(root.children, { xmlMode: true, encodeEntities: 'utf8' })}</div>`;
+    const body = `<div class="book-content">${renderPart(root.children)}</div>`;
     return xhtmlDocument({ title: xmlSafe(manifest.sections[i]?.title).trim() || title, lang, body });
   });
   const pictures = [...text.used].map((file, i) => ({ id: `img-${i + 1}`, file, data: files.images.get(file), type: imageType(file, files.images.get(file)) }));

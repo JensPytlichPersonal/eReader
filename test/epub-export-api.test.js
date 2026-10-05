@@ -9,7 +9,8 @@ import { convertEpub } from '../server/converters/epub.js';
 import { serialize } from '../server/converters/html.js';
 import { parseXml, findAllLocal, findFirstLocal, attr, text } from '../server/converters/xml.js';
 import { parseSection } from '../server/fixes.js';
-import { epubFileName, asciiFileName, attachmentHeader, bookUuid, exportNodes, linkTargets } from '../server/epub-export.js';
+import { DomUtils } from 'htmlparser2';
+import { epubFileName, asciiFileName, attachmentHeader, bookUuid, exportNodes, linkTargets, renderPart } from '../server/epub-export.js';
 import { makeEpub } from './helpers/make-epub.mjs';
 import { makePdf } from './helpers/make-pdf.mjs';
 import { TINY_PNG } from './helpers/zipwriter.mjs';
@@ -166,6 +167,38 @@ test('a reader downloads a book as an EPUB with its fixed text and the details a
   assert.match(html[Number(link[1])], /id="note1"/);
 });
 
+test("a book's own footnotes, a scene break and text in any language, written as they are and read back the same", async () => {
+  const DANISH = 'Blåbær &amp; &lt;tag&gt;';
+  const id = await upload('Notes.epub', epub({ chapters: [
+    { id: 'ch1', file: 'ch1.xhtml', title: 'Første kapitel', body: `<h1>Første kapitel</h1><p title="${DANISH}">${DANISH} and a note<a epub:type="noteref" href="#n1">1</a>.</p>`
+      + `<p><img src="images/pic.png" alt="${DANISH}"/></p><p>* * *</p><p>After the break.</p><aside epub:type="footnote" id="n1"><p>The note.</p></aside>` },
+  ] }));
+  const zip = new ZipReader((await download(id)).data);
+  const part = zip.readText('OEBPS/text/part-1.xhtml');
+  assert.ok(part.includes(`<p title="${DANISH}">${DANISH} and a note`), part);
+  assert.ok(part.includes(`alt="${DANISH}"`));
+  for (const name of zip.names().filter((n) => /\.(xhtml|ncx|opf)$/.test(n))) assert.doesNotMatch(zip.readText(name), /&#/, name);
+  assert.match(zip.readText('OEBPS/nav.xhtml'), />Første kapitel</);
+  // The book's notes keep their marking, so apps that know them show the note over the text.
+  assert.match(part, /<a href="part-1\.xhtml#n1" epub:type="noteref">1<\/a>/);
+  assert.match(part, /<aside id="n1" epub:type="footnote"><p>The note\.<\/p><\/aside>/);
+  assert.match(part, /<p class="scene-break">\* \* \*<\/p>/);
+  const css = zip.readText('OEBPS/styles/book.css');
+  assert.match(css, /\.book-content p\.scene-break \{/);
+  assert.doesNotMatch(css, /::after|\.endnotes \{[^}]*border/);
+
+  const back = await convertEpub((await download(id)).data);
+  const nodes = back.sections.flatMap((s) => s.nodes);
+  const p = DomUtils.findOne((e) => e.name === 'p' && e.attribs.title != null, nodes, true);
+  assert.equal(p.attribs.title, 'Blåbær & <tag>');
+  assert.match(DomUtils.textContent(p), /^Blåbær & <tag> and a note1\.$/);
+  assert.equal(DomUtils.findOne((e) => e.name === 'img' && e.attribs.alt === 'Blåbær & <tag>', nodes, true)?.name, 'img');
+  const html = back.sections.map((s) => serialize(s.nodes)).join('');
+  assert.match(html, /<hr class="scene-break" \/>/);
+  assert.match(html, /<aside id="n1" data-type="footnote">/);
+  assert.match(html, /<a data-type="noteref" [^>]*data-id="n1">1<\/a>/);
+});
+
 test('the file name: the title alone without an author, characters a file name cannot hold replaced, Danish letters kept', async () => {
   const id = await upload('Names.epub', epub({ author: '' }));
   await edit(id, { title: 'Lonely Book' });
@@ -206,7 +239,7 @@ test('a section as EPUB text: pictures, links, footnotes, empty PDF pages and ch
     '<span class="pg" id="pg1"></span><h1 id="rr0-h1">One</h1><p>Text<sup><a id="fnref-1-1-1" href="#sec=1&amp;id=fn-1-1" data-sec="1" data-id="fn-1-1">1</a></sup>'
       + ' and <a href="#sec=1" data-sec="1">two</a>, <a href="#sec=1&amp;id=lost" data-sec="1" data-id="lost">lost</a>,'
       + ' <a href="https://example.com" target="_blank" rel="noopener">out</a>, <a href="#nowhere">here</a>.</p>'
-      + '<p data-type="x"><img data-src="images/a.png" alt="" loading="lazy"/><img data-src="images/gone.png" loading="lazy"/>Bell\u0007 and \uD800half</p>'
+      + '<p data-type="ibooks:x" data-other="y"><img data-src="images/a.png" alt="" loading="lazy"/><img data-src="images/gone.png" loading="lazy"/>Bell\u0007 and \uD800half</p>'
       + '<hr class="scene-break"/><span class="anchor" id="keep"></span>',
     '<p><span class="pdf-empty">[Page 2 has no extractable text - use the page view]</span></p>'
       + '<section class="endnotes"><p class="footnote" id="fn-1-1"><sup><a href="#sec=0&amp;id=fnref-1-1-1" data-sec="0" data-id="fnref-1-1-1">1</a></sup> A note.</p></section>',
@@ -215,10 +248,10 @@ test('a section as EPUB text: pictures, links, footnotes, empty PDF pages and ch
   const book = { ...linkTargets(roots), images: new Map([['images/a.png', TINY_PNG]]), used: new Set() };
   assert.deepEqual([...book.notes], ['fn-1-1']);
   assert.deepEqual(book.ids.map((ids) => [...ids]), [['pg1', 'rr0-h1', 'fnref-1-1-1', 'keep'], ['fn-1-1']]);
-  const [one, two] = roots.map((root) => { exportNodes(root.children, book); return serialize(root.children); });
-  assert.equal(one, '<span class="pg" id="pg1"></span><h1 id="rr0-h1">One</h1><p>Text<sup><a id="fnref-1-1-1" href="part-2.xhtml#fn-1-1" epub:type="noteref">1</a></sup>'
+  const [one, two] = roots.map((root) => { exportNodes(root.children, book); return renderPart(root.children); });
+  assert.equal(one, '<span class="pg" id="pg1"/><h1 id="rr0-h1">One</h1><p>Text<sup><a id="fnref-1-1-1" href="part-2.xhtml#fn-1-1" epub:type="noteref">1</a></sup>'
     + ' and <a href="part-2.xhtml">two</a>, <a href="part-2.xhtml">lost</a>, <a href="https://example.com" target="_blank" rel="noopener">out</a>, <a>here</a>.</p>'
-    + '<p><img alt="" src="../images/a.png" />Bell and half</p><hr class="scene-break" /><span class="anchor" id="keep"></span>');
+    + '<p><img alt="" src="../images/a.png"/>Bell and half</p><p class="scene-break">* * *</p><span class="anchor" id="keep"/>');
   assert.equal(two, '<p><span class="pdf-empty">[Page 2 has no text]</span></p>'
     + '<section class="endnotes" epub:type="footnotes"><aside epub:type="footnote" id="fn-1-1"><p class="footnote"><sup><a href="part-1.xhtml#fnref-1-1-1">1</a></sup> A note.</p></aside></section>');
   assert.deepEqual([...book.used], ['images/a.png']);
