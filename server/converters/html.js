@@ -6,7 +6,8 @@ import { hasWatermark, stripWatermarks, isWatermarkLink, isCreditLine, CREDIT_RE
 
 const { isTag, isText, textContent, removeElement, replaceElement, getElementsByTagName, findOne } = DomUtils;
 
-const BLOCK_TAGS = new Set(['p', 'div', 'section', 'article', 'aside', 'header', 'footer', 'main', 'nav',
+// public/js/reader.js keeps a copy of this list to count paragraphs as fixes.js does; the two must stay in step.
+export const BLOCK_TAGS = new Set(['p', 'div', 'section', 'article', 'aside', 'header', 'footer', 'main', 'nav',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'ul', 'ol', 'li', 'dl', 'dt', 'dd',
   'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col', 'figure', 'figcaption',
   'hr', 'br', 'img', 'address', 'details', 'summary', 'hgroup']);
@@ -30,7 +31,7 @@ const SCENE_BREAK_RE = /^(?:[*#~⁂]\s*)+$|^(?:[•·]\s*){3,}$/u;
 export const SCENE_BREAK = '<hr class="scene-break"/>';
 export const isSceneBreak = (text) => SCENE_BREAK_RE.test(text.trim());
 
-function isEmptyNode(node) {
+export function isEmptyNode(node) {
   if (isText(node)) return /^\s*$/.test(node.data);
   if (!isTag(node)) return true;
   if (node.attribs?.id) return false;

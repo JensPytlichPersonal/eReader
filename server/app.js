@@ -12,6 +12,7 @@ import { createDuplicates } from './duplicates.js';
 import { createOpenLibrary } from './openlibrary.js';
 import { createSettingsStore } from './settings.js';
 import { createCatalogues } from './catalogues.js';
+import { createFixes } from './fixes.js';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { bookRoutes, bookFiles } from './routes/books.js';
@@ -29,7 +30,8 @@ export function createApp(overrides = {}) {
   const log = overrides.quiet ? { info() {}, error() {} } : console;
   const series = createSeriesStore(db);
   const genres = createGenreStore(db);
-  const processor = createProcessor(db, config, { series, genres }, log);
+  const fixes = createFixes(db, config, log);
+  const processor = createProcessor(db, config, { series, genres, fixes }, log);
   const duplicates = createDuplicates(db, config, log);
   const settings = createSettingsStore(db);
   // The catalogues books are looked up in, with the Hardcover token an admin saved or the server was
@@ -49,7 +51,7 @@ export function createApp(overrides = {}) {
 
   app.use('/api/auth', authRoutes(db, auth, config));
   app.use('/api/users', userRoutes(db, auth));
-  app.use('/api/books', bookRoutes(db, auth, config, processor, { series, genres }, catalogues.lookups, duplicates));
+  app.use('/api/books', bookRoutes(db, auth, config, processor, { series, genres, fixes }, catalogues.lookups, duplicates));
   app.use('/api/series', seriesRoutes(auth, series, catalogues));
   app.use('/api/settings', settingsRoutes(auth, catalogues));
   app.use('/books', bookFiles(db, auth, config));
@@ -105,5 +107,5 @@ export function createApp(overrides = {}) {
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  return { app, db, auth, config, processor, series, genres, lookups: catalogues.lookups, duplicates, catalogues, settings };
+  return { app, db, auth, config, processor, series, genres, fixes, lookups: catalogues.lookups, duplicates, catalogues, settings };
 }

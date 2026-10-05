@@ -1180,6 +1180,10 @@ function bookMenu(b) {
       ${b.progress ? '<button type="button" class="btn small" data-act="reset">Reset my reading position</button>' : ''}
     </section>
     ${canEdit ? bookFormHtml(b) : ''}
+    ${me.isAdmin && b.status === 'ready' ? `<section class="fixes hidden">
+      <h3 class="area-name">Fixes to the text</h3>
+      <div data-fixes aria-live="polite"></div>
+    </section>` : ''}
     <footer class="book-foot">
       <section class="file">
         <h3 class="area-name">File</h3>
@@ -1197,6 +1201,8 @@ function bookMenu(b) {
   root.classList.toggle('editable', canEdit);
   root.setAttribute('aria-labelledby', 'bk-title');
   showReaders(b, root.querySelector('[data-readers]'));
+  const fixes = root.querySelector('.fixes');
+  if (fixes) showFixes(b, fixes);
   root.addEventListener('click', async (ev) => {
     // Reading the book or going to a series leaves unsaved changes behind too, so they ask first as well.
     if (ev.target.closest('a[data-read]') && !menu.mayLeave()) { ev.preventDefault(); return; }
@@ -1212,6 +1218,19 @@ function bookMenu(b) {
     if (!act) return;
     try {
       if (act === 'duplicates') { compareCopies(b); return; }
+      // A fix is undone, or one not applied removed, and the list shows again in place.
+      if (act === 'undo-fix' || act === 'remove-fix') {
+        if (!confirm(act === 'undo-fix' ? 'Undo this fix? The text goes back to how it was.' : 'Remove this fix from the list?')) return;
+        const button = ev.target.closest('button[data-act]');
+        button.disabled = true;
+        try {
+          await api(`/api/books/${b.id}/fixes/${button.dataset.fix}`, { method: 'DELETE' });
+        } finally {
+          button.disabled = false;
+        }
+        await showFixes(b, fixes);
+        return;
+      }
       if (act === 'delete') {
         if (!confirm(`Delete "${b.title}" for everyone? This cannot be undone.`)) return;
         await api(`/api/books/${b.id}`, { method: 'DELETE' });
@@ -1241,6 +1260,70 @@ async function showReaders(b, box) {
     html = '<p class="muted">The readers could not be loaded.</p>';
   }
   if (box.isConnected) box.innerHTML = html; // unless the menu was closed meanwhile
+}
+
+/**
+ * The fixes made to a book's text, for admins, newest first: what each changed, who made it and when, and Undo, or
+ * Remove for one whose text the last conversion did not find. The part stays hidden while the book has none.
+ */
+async function showFixes(b, part) {
+  let html = '';
+  try {
+    const { fixes } = await api(`/api/books/${b.id}/fixes`);
+    if (fixes.length) html = `<ul class="fix-list">${fixes.map((f) => `<li>
+      <p class="change">${changeHtml(f.before, f.after)}</p>
+      <p class="who">${escapeHtml([f.by, formatDate(f.createdAt)].filter(Boolean).join(', '))}</p>
+      ${f.applied ? '' : '<p class="not-applied">Not applied: its text was not found when the book was last converted.</p>'}
+      <button type="button" class="btn small" data-act="${f.applied ? 'undo-fix' : 'remove-fix'}" data-fix="${f.id}">${f.applied ? 'Undo' : 'Remove'}</button>
+    </li>`).join('')}</ul>`;
+  } catch {
+    html = '<p class="muted">The fixes could not be loaded.</p>';
+  }
+  if (!part.isConnected) return; // the menu was closed meanwhile
+  part.querySelector('[data-fixes]').innerHTML = html;
+  part.classList.toggle('hidden', !html);
+}
+
+// What a fix changed, shown in one line: about this much of the text that stayed on each side, and at most about
+// this much of what was taken out and of what was put in.
+const AROUND = 40;
+const MOST_CHANGED = 200;
+const lastWords = (text) => {
+  if (text.length <= AROUND) return text;
+  const end = text.slice(-AROUND);
+  return `…${end.slice(end.search(/\s/) + 1)}`;
+};
+const firstWords = (text, most = AROUND) => {
+  if (text.length <= most) return text;
+  const start = text.slice(0, most);
+  const space = start.search(/\s\S*$/);
+  return `${space > 0 ? start.slice(0, space) : start}…`;
+};
+// A changed part marked with `tag`, the white space at its ends left outside the mark.
+const marked = (tag, text) => {
+  const core = text.trim();
+  if (!core) return text;
+  return `${text.slice(0, text.indexOf(core))}<${tag}>${escapeHtml(firstWords(core, MOST_CHANGED))}</${tag}>${text.slice(text.indexOf(core) + core.length)}`;
+};
+
+/**
+ * The words a fix took out struck through and those it put in marked, with some of the text around them. The texts
+ * before and after are compared as one each, the paragraphs joined with a pilcrow; the part between where they first
+ * and last differ is the change, widened to whole words.
+ */
+function changeHtml(before, after) {
+  const was = before.join(' ¶ ');
+  const now = after.join(' ¶ ');
+  const edge = (s, i) => i <= 0 || i >= s.length || /\s/.test(s[i - 1]) || /\s/.test(s[i]);
+  let head = 0;
+  while (head < was.length && head < now.length && was[head] === now[head]) head++;
+  while (!(edge(was, head) && edge(now, head))) head--;
+  let tail = 0;
+  while (tail < was.length - head && tail < now.length - head && was[was.length - 1 - tail] === now[now.length - 1 - tail]) tail++;
+  while (!(edge(was, was.length - tail) && edge(now, now.length - tail))) tail--;
+  const out = marked('del', was.slice(head, was.length - tail));
+  const into = marked('ins', now.slice(head, now.length - tail));
+  return `${escapeHtml(lastWords(was.slice(0, head)))}${out}${out.trim() && into.trim() ? ' ' : ''}${into}${escapeHtml(firstWords(was.slice(was.length - tail)))}`;
 }
 
 /**
