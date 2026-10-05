@@ -296,53 +296,132 @@ export function textLength(nodes) {
   return n;
 }
 
+/** An empty span that keeps an id where its element no longer is, as a target for links. */
+export function anchorSpan(id) {
+  return { type: ElementType.Tag, name: 'span', attribs: { id, class: 'anchor' }, children: [], parent: null };
+}
+
 /**
- * Split the root's children into chunks of roughly `budget` text characters,
- * cutting only between block-level nodes. Oversized wrapper elements are unwrapped.
+ * Where to cut a run of `total` text characters into the fewest parts that fit in `budget`, of about equal
+ * size, so no small part is left over. `places` are where a cut may go, in order, as { at, pos, rank }:
+ * `pos` is the text before the place and `rank` how good a place it is, 1 the best. Each cut goes at the
+ * best place within a quarter of a part of its ideal point, the nearest of those equally good. A cut never
+ * makes a part larger than the budget, nor leaves more text than the parts after it can hold; when no place
+ * near the ideal point keeps to that, the nearest place that does is taken, and when none does (one huge
+ * block), the nearest place of all, so a part may run over the budget. Returns the chosen places' `at`.
+ */
+export function chooseCuts(places, total, budget) {
+  if (!(total > budget)) return [];
+  const count = Math.ceil(total / budget);
+  const part = total / count;
+  const cuts = [];
+  let prev = 0;
+  let from = 0;
+  for (let j = 1; j < count; j++) {
+    const ideal = j * part;
+    let best = null;
+    let fitting = null;
+    let nearest = null;
+    for (let i = from; i < places.length; i++) {
+      const place = places[i];
+      // Every part holds some text.
+      if (place.pos <= prev || place.pos >= total) continue;
+      const d = Math.abs(place.pos - ideal);
+      if (!nearest || d < nearest.d) nearest = { i, d };
+      if (place.pos - prev > budget || total - place.pos > (count - j) * budget) continue;
+      if (!fitting || d < fitting.d) fitting = { i, d };
+      if (d <= part / 4 && (!best || place.rank < best.rank || (place.rank === best.rank && d < best.d))) best = { i, d, rank: place.rank };
+    }
+    const pick = best || fitting || nearest;
+    if (!pick) break;
+    cuts.push(places[pick.i].at);
+    prev = places[pick.i].pos;
+    from = pick.i + 1;
+  }
+  return cuts;
+}
+
+const isBlank = (node) => isText(node) && !node.data.trim();
+// An empty element with an id marks a place for links, so it stays with what follows it.
+const isAnchor = (node) => isTag(node) && INLINE_TAGS.has(node.name) && !!node.attribs.id && !textContent(node).trim() && !findOne((e) => e.name === 'img', node.children, true);
+
+/** The first or last child that is more than white space or an anchor. */
+function edgeChild(node, last) {
+  const kids = node.children.filter((c) => !isBlank(c) && !isAnchor(c));
+  return last ? kids[kids.length - 1] : kids[0];
+}
+
+/** Does the node begin with a heading, itself or as the first thing in a wrapper? */
+function startsWithHeading(node) {
+  for (let n = node; n && isTag(n); n = WRAPPER_TAGS.has(n.name) ? edgeChild(n, false) : null) if (HEADING_RE.test(n.name)) return true;
+  return false;
+}
+
+/** Does the node end with an element of this kind, itself or as the last thing in a wrapper? */
+function endsWith(node, test) {
+  for (let n = node; n && isTag(n); n = WRAPPER_TAGS.has(n.name) ? edgeChild(n, true) : null) if (test(n.name)) return true;
+  return false;
+}
+
+/**
+ * Split the root's children into chunks that fit in `budget` text characters. A chapter that fits stays
+ * whole; a longer one is cut into the fewest parts of about equal size (see chooseCuts), best before a
+ * heading, then after a rule such as a scene break, then between any two blocks. A cut goes only before a
+ * block-level element, never right after a heading, so a heading stays with what follows it. Wrapper
+ * elements larger than the budget are unwrapped so a cut can go inside them, their id kept as an anchor.
  * Returns arrays of nodes.
  */
-export function chunkNodes(root, budget = 40000) {
-  const chunks = [];
-  let current = [];
-  let size = 0;
-
-  const flush = () => { if (current.length) { chunks.push(current); current = []; size = 0; } };
-
-  const visit = (nodes) => {
-    for (const node of nodes) {
-      const len = textContent(node).length;
-      if (len > budget * 1.5 && isTag(node) && WRAPPER_TAGS.has(node.name) && node.children.some((c) => isTag(c) && BLOCK_TAGS.has(c.name))) {
-        // Unwrap large containers, preserving their id as an anchor.
-        if (node.attribs.id) {
-          const anchor = { type: ElementType.Tag, name: 'span', attribs: { id: node.attribs.id, class: 'anchor' }, children: [], parent: null };
-          current.push(anchor);
-        }
+export function chunkNodes(root, budget) {
+  const total = textLength(root.children);
+  if (!(total > budget)) {
+    const whole = [...root.children];
+    for (const n of whole) n.parent = null;
+    return [whole];
+  }
+  const nodes = [];
+  const flatten = (list) => {
+    for (const node of list) {
+      if (isTag(node) && WRAPPER_TAGS.has(node.name) && textContent(node).length > budget && node.children.some((c) => isTag(c) && BLOCK_TAGS.has(c.name))) {
+        if (node.attribs.id) nodes.push(anchorSpan(node.attribs.id));
         if (node.attribs.style && /text-align/.test(node.attribs.style)) {
           for (const c of node.children) if (isTag(c) && !c.attribs.style) c.attribs.style = node.attribs.style;
         }
-        visit(node.children);
-        continue;
-      }
-      if (size > 0 && size + len > budget && isTag(node) && !INLINE_TAGS.has(node.name) && !HEADING_RE.test(node.name)) {
-        flush();
-      }
-      current.push(node);
-      size += len;
-      // A heading following a large block should begin a new chunk so chapters start cleanly.
-      if (isTag(node) && HEADING_RE.test(node.name) && size > budget) {
-        // move heading to the next chunk
-        current.pop();
-        flush();
-        current.push(node);
-        size = len;
-      }
+        flatten(node.children);
+      } else nodes.push(node);
     }
   };
-  visit(root.children);
-  flush();
+  flatten(root.children);
+
+  const isHeading = (name) => HEADING_RE.test(name);
+  const places = [];
+  let pos = 0;
+  let last = null; // the last node with content, past white space and anchors
+  let anchors = null; // where the anchors just before this node begin: { at, pos }
+  nodes.forEach((node, i) => {
+    const len = textContent(node).length;
+    if (isBlank(node) || isAnchor(node)) {
+      if (!anchors && isAnchor(node)) anchors = { at: i, pos };
+      pos += len;
+      return;
+    }
+    if (last && isTag(node) && !INLINE_TAGS.has(node.name) && !endsWith(last, isHeading)) {
+      const rank = startsWithHeading(node) ? 1 : endsWith(last, (name) => name === 'hr') ? 2 : 3;
+      places.push(anchors ? { ...anchors, rank } : { at: i, pos, rank });
+    }
+    last = node;
+    anchors = null;
+    pos += len;
+  });
+
+  const chunks = [];
+  let start = 0;
+  for (const at of [...chooseCuts(places, total, budget), nodes.length]) {
+    chunks.push(nodes.slice(start, at));
+    start = at;
+  }
   // Detach nodes from their previous parents to avoid serialising stale structure.
   for (const chunk of chunks) for (const n of chunk) n.parent = null;
-  return chunks.length ? chunks : [[]];
+  return chunks;
 }
 
 export function serialize(nodes) {

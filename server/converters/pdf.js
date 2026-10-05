@@ -2,8 +2,8 @@
 // (<span class="pg" id="pgN">) let the "original pages" view and the reflowed view share positions.
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { normalizeDocument, isSceneBreak, SCENE_BREAK } from './html.js';
-import { assembleSections } from './bundle.js';
+import { normalizeDocument, isSceneBreak, SCENE_BREAK, chooseCuts } from './html.js';
+import { assembleSections, SECTION_BUDGET } from './bundle.js';
 import { encodePng } from './png.js';
 import { isWatermark } from './watermarks.js';
 import { seriesFromXmp } from './series.js';
@@ -20,7 +20,6 @@ const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/
 const BULLET_RE = /^([•·▪◦‣■□●○◆◇➢➤►▸-]|[-–—*]|\(?\d{1,3}[.)]|[a-zA-Z][.)]|[ivxIVX]{1,5}[.)])\s+\S/;
 const BULLET_ONLY_RE = /^([•·▪◦‣■□●○◆◇➢➤►▸]|[-–—])$/; // a lone "*" is a scene break (see isSceneBreak)
 const LEADER_RE = /(\.\s?){4,}\s*[\divxlc]{1,5}\s*$/i; // "Chapter title ........ 123" (printed tables of contents)
-const SECTION_BUDGET = 40000;
 // Words that usually keep their hyphen when a line breaks after it ("self-", "four-", "non-").
 const COMPOUND_PREFIXES = new Set(['self', 'well', 'non', 'anti', 'multi', 'semi', 'half', 'quasi', 'pseudo', 'cross', 'high', 'low', 'long', 'short', 'full', 'part', 'real', 'free', 'open', 'first', 'second', 'third', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'single', 'double', 'triple', 'large', 'small', 'old', 'new', 'left', 'right', 'hand', 'hard', 'soft', 'wide', 'deep', 'best', 'worst', 'vice', 'so', 'ever', 'ill']);
 
@@ -567,6 +566,54 @@ function backLinkFootnotes(blocks) {
 }
 
 /**
+ * Where sections start, as indexes into `pages`: at each chapter page, and where a longer run of pages
+ * between them is cut into near-equal parts (see chooseCuts). Such a cut goes best before a page that
+ * starts with a heading or a scene break, then before any page that starts a paragraph of its own, and
+ * before a page that carries on a paragraph, or follows a heading, only when no other is near.
+ */
+function sectionStarts(pages, budget, startsChapter) {
+  const info = pages.map(({ p, blocks }, i) => {
+    const body = blocks.filter((b) => b.type !== 'fn');
+    const firstText = blocks.find((b) => b.type !== 'img');
+    const opening = body.find((b) => b.type !== 'img');
+    return {
+      // The page's text: its body, the first block included when it joins the paragraph before, and its notes.
+      chars: blocks.reduce((n, b) => n + b.text.length, 0),
+      chapter: startsChapter(p) || (firstText?.type === 'h' && firstText.level === 1),
+      carriesOn: i > 0 && continues(pages[i - 1].blocks, body),
+      // A heading at the foot of the page before belongs with this page.
+      afterHeading: i > 0 && pages[i - 1].blocks.filter((b) => b.type !== 'fn').at(-1)?.type === 'h',
+      opens: opening?.type === 'h' || opening?.type === 'break',
+    };
+  });
+  const starts = new Set();
+  const cutRun = (from, to) => {
+    const places = [];
+    let pos = 0;
+    let total = 0;
+    for (let i = from; i < to; i++) {
+      if (i > from) places.push({ at: i, pos, rank: info[i].carriesOn || info[i].afterHeading ? 3 : info[i].opens ? 1 : 2 });
+      pos += info[i].chars;
+      total += info[i].chars;
+    }
+    for (const at of chooseCuts(places, total, budget)) starts.add(at);
+  };
+  let from = 0;
+  let chars = 0;
+  info.forEach((page, i) => {
+    if (page.chapter && chars > 0) {
+      cutRun(from, i);
+      starts.add(i);
+      from = i;
+      chars = 0;
+    }
+    chars += page.chars;
+  });
+  cutRun(from, pages.length);
+  return { starts, info };
+}
+
+/**
  * Merge per-page block lists into sections, adding page markers and joining paragraphs that
  * run across page breaks. Returns [{first, last, html}].
  */
@@ -583,29 +630,28 @@ export function mergePages(pages, { budget = SECTION_BUDGET, startsChapter = () 
   const byPage = indexFootnotes(pages);
   for (const { p, blocks } of pages) linkFootnotes(p, blocks, byPage);
   for (const { blocks } of pages) backLinkFootnotes(blocks);
-  for (const { p, blocks } of pages) {
-    const firstText = blocks.find((b) => b.type !== 'img');
-    const chapterStart = startsChapter(p) || (firstText?.type === 'h' && firstText.level === 1);
-    if (cur && (cur.chars >= budget || (chapterStart && cur.chars > 0))) flush();
+  // Measured once the notes are linked, from the blocks as they go into the sections.
+  const { starts, info } = sectionStarts(pages, budget, startsChapter);
+  pages.forEach(({ p, blocks }, i) => {
+    if (starts.has(i)) flush();
     const marker = `<span class="pg" id="pg${p}"></span>`;
-    if (!cur) cur = { first: p, last: p, chars: 0, parts: [], notes: [], prevBlocks: null };
+    // `lastBlock` is the last paragraph as it went into the section, joined when it began on an earlier page.
+    if (!cur) cur = { first: p, last: p, parts: [], notes: [], lastBlock: null };
     cur.last = p;
     const body = blocks.filter((b) => b.type !== 'fn');
     const notes = blocks.filter((b) => b.type === 'fn');
-    if (cur.prevBlocks && cur.parts.length && continues(cur.prevBlocks, body)) {
+    if (cur.lastBlock && info[i].carriesOn) {
       // The paragraph that ended the previous page carries on: replace its output with the joined paragraph.
-      const lastBlock = cur.prevBlocks.filter((b) => b.type !== 'fn').pop();
+      // It is joined as it went in, so one that runs over a whole page keeps what came before.
       cur.parts.pop();
-      const first = body.shift();
-      cur.parts.push(blockHtml(joinAcrossPages(lastBlock, first, marker)));
-      cur.chars += first.text.length;
+      cur.lastBlock = joinAcrossPages(cur.lastBlock, body.shift(), marker);
+      cur.parts.push(blockHtml(cur.lastBlock));
     } else {
       cur.parts.push(marker);
     }
-    for (const b of body) { cur.parts.push(blockHtml(b)); cur.chars += b.text.length; }
-    for (const n of notes) { cur.notes.push(blockHtml(n)); cur.chars += n.text.length; }
-    cur.prevBlocks = blocks;
-  }
+    for (const b of body) { cur.parts.push(blockHtml(b)); cur.lastBlock = b; }
+    for (const n of notes) cur.notes.push(blockHtml(n));
+  });
   flush();
   return sections;
 }

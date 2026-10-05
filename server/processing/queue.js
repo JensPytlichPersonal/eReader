@@ -5,6 +5,7 @@ import { convert, readMetadata, readOpfDetails, withOpfDetails, OPF_FILE } from 
 import { writeBundle } from '../converters/bundle.js';
 import { withTitleSeries } from '../converters/series.js';
 import { now, transaction } from '../db.js';
+import { placeMover, readPlaceTexts } from '../places.js';
 
 // Bumped when the converters learn to read more from a book's metadata. Books seen by an older
 // generation are topped up by backfillMetadata() without being converted again.
@@ -27,6 +28,10 @@ export function createProcessor(db, config, { series, genres, fixes }, log = con
     setTitle: db.prepare('UPDATE books SET title = ? WHERE id = ?'),
     setMetadataVersion: db.prepare('UPDATE books SET metadata_version = ? WHERE id = ?'),
     setIsbns: db.prepare('UPDATE books SET isbns = ? WHERE id = ?'),
+    progressOf: db.prepare('SELECT user_id, section, offset FROM progress WHERE book_id = ?'),
+    moveProgress: db.prepare('UPDATE progress SET section = ?, offset = ? WHERE user_id = ? AND book_id = ?'),
+    bookmarksOf: db.prepare('SELECT id, section, offset FROM bookmarks WHERE book_id = ?'),
+    moveBookmark: db.prepare('UPDATE bookmarks SET section = ?, offset = ? WHERE id = ?'),
   };
 
   // The details of an OPF file that came with the book, which win over its file's own, or null.
@@ -41,6 +46,25 @@ export function createProcessor(db, config, { series, genres, fixes }, log = con
     return fs.readFile(path.join(dir, name));
   };
 
+  // Moves every reading place and bookmark of a book with `move` (see places.js). When they were last read
+  // stays as it was, and so do their percent and labels. Returns how many moved.
+  function movePlaces(id, move) {
+    let moved = 0;
+    for (const p of stmts.progressOf.all(id)) {
+      const to = move(p.section, p.offset);
+      if (to.section === p.section && to.offset === p.offset) continue;
+      stmts.moveProgress.run(to.section, to.offset, p.user_id, id);
+      moved++;
+    }
+    for (const b of stmts.bookmarksOf.all(id)) {
+      const to = move(b.section, b.offset);
+      if (to.section === b.section && to.offset === b.offset) continue;
+      stmts.moveBookmark.run(to.section, to.offset, b.id);
+      moved++;
+    }
+    return moved;
+  }
+
   async function processBook(id) {
     const book = stmts.get.get(id);
     if (!book) return;
@@ -54,9 +78,15 @@ export function createProcessor(db, config, { series, genres, fixes }, log = con
       // a delete waits for it (see fixes.js).
       await fixes.withBookLock(id, async () => {
         if (!stmts.get.get(id)) return; // deleted while converting
+        // The book the readers' places were counted in, before the new files replace it. Null when there is
+        // none, as at a first conversion, and then there is nothing to move.
+        const before = await readPlaceTexts(dir);
         // The fixes made to the text are applied again to the new files.
         const fixed = await fixes.reapply(id, dir, await writeBundle(dir, result));
         const { manifest } = fixed;
+        const after = before && await readPlaceTexts(dir);
+        const move = after && placeMover(before, after);
+        let moved = 0;
         transaction(db, () => {
           const current = stmts.get.get(id);
           if (!current) return; // deleted while converting
@@ -68,6 +98,9 @@ export function createProcessor(db, config, { series, genres, fixes }, log = con
             manifest.convertedAt || now(), METADATA_VERSION, (result.meta.isbns || []).join(' '), id,
           );
           fixed.commit();
+          // Each place goes to the same words in the new sections. The places are read here, so one saved while
+          // the book was converting is moved too: no reader opens the new sections before this.
+          if (move) moved = movePlaces(id, move);
           if (!edited) series.setForBook(id, result.meta.series);
           // A book new to the library takes the genre of the other books in its series. Converting again
           // leaves the genre as it is, so a book someone took out of the series' genre stays out.
@@ -77,6 +110,7 @@ export function createProcessor(db, config, { series, genres, fixes }, log = con
           }
         });
         log.info?.(`[convert] ${id} ok: "${manifest.title}" (${manifest.format}, ${manifest.sections.length} sections)`);
+        if (moved) log.info?.(`[convert] ${id}: moved ${moved} reading place(s) and bookmark(s) to the same words in the new sections`);
       });
     } catch (err) {
       log.error?.(`[convert] ${id} failed: ${err.message}`);

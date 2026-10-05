@@ -11,6 +11,7 @@ import { cleanSeriesName, knownSeriesName, parsePlace } from '../converters/seri
 import { LookupError } from '../lookup.js';
 import { fingerprint } from '../duplicates.js';
 import { FixError, parseFixInput } from '../fixes.js';
+import { placeAtPercent } from '../places.js';
 import { readBookFiles, buildEpub, epubFileName, attachmentHeader } from '../epub-export.js';
 
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
@@ -98,6 +99,25 @@ export function bookRoutes(db, auth, config, processor, { series, genres, fixes 
   };
   const readManifest = async (id) => {
     try { return JSON.parse(await fsp.readFile(path.join(bookDir(id), 'book.json'), 'utf8')); } catch { return null; }
+  };
+  // The version of a book that readers open: the convertedAt in its book.json, which converting it again and
+  // every fix to its text change. Not books.converted_at, which is 0 for books converted before that column.
+  // Known only while the book is ready, else null. Returns { book, manifest, version }, the book read after
+  // book.json, so its status holds until the caller next waits.
+  const currentVersion = async (id) => {
+    const manifest = await readManifest(id);
+    const book = stmts.get.get(id);
+    const version = book?.status === 'ready' ? manifest?.convertedAt : null;
+    return { book, manifest, version: Number.isFinite(version) && version > 0 ? version : null };
+  };
+  // Where a place a reader sent, with the `version` of the book it has open, is in the book now (`manifest`
+  // and `current`, from currentVersion). One from another version, as from a reader left open while the book
+  // was converted again or its text fixed, was counted in sections that are gone: it is found again by its
+  // percent, how far into the book it was. Without a version (an older reader), or while the current one is
+  // not known, it is kept as sent.
+  const placeNow = (place, { version, percent }, manifest, current) => {
+    if (!(Number.isFinite(version) && version > 0) || current == null || version === current) return place;
+    return placeAtPercent(manifest, percent) || place;
   };
   const earlierDir = (id) => path.join(bookDir(id), EARLIER_DIR);
   // The covers the book had before, most recently put away first: [{ name, time }]. The time of a file
@@ -452,23 +472,29 @@ export function bookRoutes(db, auth, config, processor, { series, genres, fixes 
   });
 
   // ---- progress ----
-  r.get('/:id/progress', (req, res) => {
+  // `version`: the version of the book on the server (see currentVersion). A reader with another version open
+  // opens the book again.
+  r.get('/:id/progress', async (req, res) => {
     const b = stmts.get.get(req.params.id);
     if (!b) return res.status(404).json({ error: 'No such book' });
-    res.json({ progress: shapeProgress(stmts.progress.get(req.user.id, b.id)) });
+    const { version } = await currentVersion(b.id);
+    res.json({ progress: shapeProgress(stmts.progress.get(req.user.id, b.id)), version });
   });
 
-  r.put('/:id/progress', (req, res) => {
-    const b = stmts.get.get(req.params.id);
-    if (!b) return res.status(404).json({ error: 'No such book' });
-    const { section, offset, percent, device, finished, knownUpdatedAt } = req.body || {};
-    const sec = Number.isInteger(section) && section >= 0 ? section : 0;
-    const off = Number.isInteger(offset) && offset >= 0 ? offset : 0;
+  // The reader sends `version`, the version of the book it has open, with its place (see placeNow).
+  r.put('/:id/progress', async (req, res) => {
+    if (!stmts.get.get(req.params.id)) return res.status(404).json({ error: 'No such book' });
+    const body = req.body || {};
+    const { section, offset, percent, device, finished, knownUpdatedAt } = body;
+    const { book: b, manifest, version } = await currentVersion(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
+    const sent = { section: Number.isInteger(section) && section >= 0 ? section : 0, offset: Number.isInteger(offset) && offset >= 0 ? offset : 0 };
+    const { section: sec, offset: off } = placeNow(sent, body, manifest, version);
     const pct = Number.isFinite(percent) ? Math.min(1, Math.max(0, percent)) : 0;
     const current = stmts.progress.get(req.user.id, b.id);
     // Another device wrote a newer position than the one this client started from: tell it to catch up.
-    if (current && Number.isFinite(knownUpdatedAt) && current.updated_at > knownUpdatedAt && !req.body.force) {
-      return res.status(409).json({ error: 'Newer progress exists', progress: shapeProgress(current) });
+    if (current && Number.isFinite(knownUpdatedAt) && current.updated_at > knownUpdatedAt && !body.force) {
+      return res.status(409).json({ error: 'Newer progress exists', progress: shapeProgress(current), version });
     }
     const t = now();
     stmts.upsertProgress.run(req.user.id, b.id, sec, off, pct, finished ? 1 : 0, String(device || req.device || '').slice(0, 120), t);
@@ -488,11 +514,16 @@ export function bookRoutes(db, auth, config, processor, { series, genres, fixes 
 
   // ---- bookmarks ----
   r.get('/:id/bookmarks', (req, res) => res.json({ bookmarks: stmts.bookmarks.all(req.user.id, req.params.id) }));
-  r.post('/:id/bookmarks', (req, res) => {
-    const b = stmts.get.get(req.params.id);
-    if (!b) return res.status(404).json({ error: 'No such book' });
-    const { section, offset, percent, label } = req.body || {};
-    const info = stmts.insertBookmark.run(req.user.id, b.id, Number.isInteger(section) ? section : 0, Number.isInteger(offset) ? offset : 0,
+  // Like a place, a bookmark comes with the `version` of the book the reader has open (see placeNow).
+  r.post('/:id/bookmarks', async (req, res) => {
+    if (!stmts.get.get(req.params.id)) return res.status(404).json({ error: 'No such book' });
+    const body = req.body || {};
+    const { section, offset, percent, label } = body;
+    const { book: b, manifest, version } = await currentVersion(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
+    const sent = { section: Number.isInteger(section) ? section : 0, offset: Number.isInteger(offset) ? offset : 0 };
+    const place = placeNow(sent, body, manifest, version);
+    const info = stmts.insertBookmark.run(req.user.id, b.id, place.section, place.offset,
       Number.isFinite(percent) ? percent : 0, String(label || '').slice(0, 200), now());
     res.status(201).json({ bookmark: stmts.bookmarks.all(req.user.id, b.id).find((x) => x.id === Number(info.lastInsertRowid)) });
   });

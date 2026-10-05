@@ -389,7 +389,7 @@ function atEnd() {
 function onPositionChanged() {
   const { section, offset } = state.locator;
   state.percent = atEnd() ? 1 : percentOf(section, offset);
-  try { localStorage.setItem(localKey, JSON.stringify({ section, offset, percent: state.percent, updatedAt: Date.now() })); } catch { /* ignore */ }
+  try { localStorage.setItem(localKey, JSON.stringify({ section, offset, percent: state.percent, updatedAt: Date.now(), version: ver() })); } catch { /* ignore */ }
   state.dirty = true;
   scheduleSync();
 }
@@ -696,14 +696,14 @@ async function flushSync({ keepalive = false } = {}) {
   if (!state.dirty || state.syncing || !state.manifest) return;
   state.syncing = true;
   const { section, offset } = state.locator;
-  const body = { section, offset, percent: state.percent ?? percentOf(section, offset), device: settings.device, knownUpdatedAt: state.known };
+  const body = { section, offset, percent: state.percent ?? percentOf(section, offset), device: settings.device, knownUpdatedAt: state.known, version: ver() };
   state.dirty = false;
   try {
     const r = await api(`/api/books/${bookId}/progress`, { method: 'PUT', body, keepalive });
     state.known = r.progress.updatedAt;
   } catch (err) {
     if (err.status === 409 && err.body?.progress) {
-      await adoptRemote(err.body.progress);
+      await adoptRemote(err.body.progress, err.body.version);
     } else if (err.status !== 401) {
       state.dirty = true; // retry later (offline)
       scheduleSync(15000);
@@ -713,14 +713,19 @@ async function flushSync({ keepalive = false } = {}) {
   }
 }
 
-async function adoptRemote(p) {
+async function adoptRemote(p, version) {
   state.known = p.updatedAt;
+  // The book changed under this reader, and the other device's place is in the new book: it opens there.
+  if (changedUnder(version)) {
+    try { localStorage.setItem(localKey, JSON.stringify({ section: p.section, offset: p.offset, percent: p.percent, updatedAt: p.updatedAt, version })); } catch { /* ignore */ }
+    if (reopen(version)) return;
+  }
   const same = p.section === state.locator.section && Math.abs(p.offset - state.locator.offset) < 40;
   if (same) return;
   state.dirty = false;
   await restore({ section: p.section, offset: p.offset });
   state.percent = p.percent;
-  try { localStorage.setItem(localKey, JSON.stringify({ section: p.section, offset: p.offset, percent: p.percent, updatedAt: p.updatedAt })); } catch { /* ignore */ }
+  try { localStorage.setItem(localKey, JSON.stringify({ section: p.section, offset: p.offset, percent: p.percent, updatedAt: p.updatedAt, version: ver() })); } catch { /* ignore */ }
   updateStatus();
   toast(`Moved to your latest position${p.device ? ` from ${p.device}` : ''}`, 3500);
 }
@@ -731,18 +736,45 @@ async function adoptRemote(p) {
  * its own copy is clearly newer, and a position sent on the way out can arrive after the new page has asked.
  */
 async function reloadHere() {
+  await handOver();
+  history.replaceState(null, '', location.pathname); // a #sec link left in the address would open there instead
+  location.reload();
+}
+
+// Sends the reader's place to the server once any sending under way is done, two seconds at most.
+async function handOver() {
   clearTimeout(state.syncTimer);
   const handed = (async () => { while (state.syncing) await new Promise((r) => setTimeout(r, 50)); await flushSync(); })();
   await Promise.race([handed.catch(() => {}), new Promise((r) => setTimeout(r, 2000))]);
+}
+
+// The book changed under the reader when the server's version of it is not the one open: it was converted again, or
+// its text fixed elsewhere. The reader then opens it again rather than move within its old sections, once for each
+// version in a browser session, so versions that never agree cannot reload it over and over.
+const reopenedKey = `ereader.reopened.${bookId}`;
+function changedUnder(version) {
+  if (!(Number.isFinite(version) && version > 0 && ver() > 0 && version !== ver())) return false;
+  try { return sessionStorage.getItem(reopenedKey) !== String(version); } catch { return false; }
+}
+function reopen(version) {
+  try { sessionStorage.setItem(reopenedKey, String(version)); } catch { return false; }
   history.replaceState(null, '', location.pathname); // a #sec link left in the address would open there instead
   location.reload();
+  return true;
 }
 
 async function checkRemote() {
   // Not while a paragraph is open to be fixed: the page under it stays.
   if (document.visibilityState !== 'visible' || !state.manifest || fix.passage) return;
   try {
-    const { progress } = await api(`/api/books/${bookId}/progress`, { noRedirect: true });
+    const { progress, version } = await api(`/api/books/${bookId}/progress`, { noRedirect: true });
+    if (changedUnder(version)) {
+      // Not while a paragraph is open to be fixed, or its fix is being saved, whose answer gives the new version.
+      if (fix.passage) return;
+      await handOver(); // the server finds this reader's place in the new book
+      if (changedUnder(version)) reopen(version); // unless the answer to it opened the book again already
+      return;
+    }
     if (progress && progress.updatedAt > state.known) {
       if (state.dirty) await flushSync(); // our own newer change wins if it was made after
       else await adoptRemote(progress);
@@ -869,7 +901,7 @@ async function addBookmark() {
     const text = node.nodeType === Node.TEXT_NODE ? node.data.slice(offset - state.starts[i], offset - state.starts[i] + 80).trim() : '';
     if (text) label = text.replace(/\s+/g, ' ').slice(0, 60) + (text.length > 60 ? '…' : '');
   }
-  const { bookmark } = await api(`/api/books/${bookId}/bookmarks`, { method: 'POST', body: { section, offset, percent: state.percent ?? percentOf(section, offset), label } });
+  const { bookmark } = await api(`/api/books/${bookId}/bookmarks`, { method: 'POST', body: { section, offset, percent: state.percent ?? percentOf(section, offset), label, version: ver() } });
   state.bookmarks.push(bookmark);
   state.bookmarks.sort((a, b) => a.percent - b.percent);
   renderBookmarks();
@@ -1502,7 +1534,12 @@ async function init() {
   const local = (() => { try { return JSON.parse(localStorage.getItem(localKey) || 'null'); } catch { return null; } })();
   let start = { section: 0, offset: 0 };
   if (progress) { start = { section: progress.section, offset: progress.offset }; state.known = progress.updatedAt; }
-  if (local && (!progress || local.updatedAt > progress.updatedAt + 2000)) { start = { section: local.section, offset: local.offset }; state.dirty = !!progress || local.percent > 0; }
+  if (local && (!progress || local.updatedAt > progress.updatedAt + 2000)) {
+    // A copy kept from another version of the book was counted in its old sections: it is placed by how far in it was.
+    const older = local.version > 0 && local.version !== ver() && Number.isFinite(local.percent);
+    start = older ? positionFromPercent(local.percent) : { section: local.section, offset: local.offset };
+    state.dirty = !!progress || local.percent > 0;
+  }
   const hash = new URLSearchParams(location.hash.slice(1));
   if (hash.has('sec')) start = { section: parseInt(hash.get('sec'), 10) || 0, id: hash.get('id') || undefined, offset: 0 };
 

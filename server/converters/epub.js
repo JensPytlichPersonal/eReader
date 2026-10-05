@@ -1,13 +1,21 @@
 import path from 'node:path/posix';
 import { ZipReader } from './zip.js';
 import { parseXml, findAllLocal, findFirstLocal, attr, text, children, localName } from './xml.js';
-import { normalizeDocument } from './html.js';
+import { DomUtils } from 'htmlparser2';
+import { normalizeDocument, textLength, textContent, isTag, isText, BLOCK_TAGS } from './html.js';
 import { filterStylesheet } from './css.js';
 import { assembleSections, imageExt } from './bundle.js';
 import { opfTitleAndSeries } from './series.js';
 import { uniqueIsbns } from './isbn.js';
 
 const HTML_TYPES = new Set(['application/xhtml+xml', 'text/html', 'application/x-dtbook+xml']);
+const HEADING_RE = /^h[1-6]$/;
+const PICTURES = new Set(['img', 'svg', 'image']);
+// A first paragraph shorter than this that ends in a letter or digit reads as a title ("Chapter Five").
+const TITLE_MAX = 60;
+// The text a file must hold before the next one may carry it on, so title, copyright, dedication and
+// picture pages keep their own pages.
+const CARRIED_ON_MIN = 2000;
 
 function resolvePath(base, href) {
   // base is a zip path of the referencing document; href may be relative and percent-encoded
@@ -182,6 +190,7 @@ export async function convertEpub(buffer) {
     cover = { ext: imageExt(coverItem.path, data), data };
   }
 
+  markCarriedOn(chapters, toc);
   const { sections, toc: finalToc } = assembleSections(chapters, { toc });
   const css = filterStylesheet(cssParts.join('\n'), '.book-content');
   return {
@@ -192,6 +201,67 @@ export async function convertEpub(buffer) {
     cover,
     css,
   };
+}
+
+/**
+ * Mark each chapter whose file carries on the file before it in the spine (`continues`), as when a book splits
+ * a chapter over two files (calibre's "_split_001"), so the two are read as one. Such a file is no destination
+ * of its own: no contents entry points to it, nor a link without a fragment. Both files are linear, they have
+ * the same title or neither has one, the file begins with ordinary text (see opensWithText), and the file
+ * before, with what is already joined to it, holds at least CARRIED_ON_MIN characters.
+ */
+function markCarriedOn(chapters, toc) {
+  const destinations = new Set();
+  const visit = (entries) => {
+    for (const e of entries) {
+      if (e.key) destinations.add(e.key.split('#')[0]);
+      if (e.children) visit(e.children);
+    }
+  };
+  visit(toc);
+  for (const ch of chapters) {
+    for (const a of DomUtils.findAll((e) => e.name === 'a' && e.attribs['data-link'] != null, ch.root.children)) {
+      if (!a.attribs['data-link'].includes('#')) destinations.add(a.attribs['data-link']);
+    }
+  }
+  let size = 0; // the text of the chapter before, with what is joined to it
+  chapters.forEach((ch, i) => {
+    const prev = chapters[i - 1];
+    const carriesOn = !!prev && prev.linear !== false && ch.linear !== false && !destinations.has(ch.key)
+      && (prev.title || '') === (ch.title || '') && size >= CARRIED_ON_MIN && opensWithText(ch.root);
+    if (carriesOn) ch.continues = true;
+    size = (carriesOn ? size : 0) + textLength(ch.root.children);
+  });
+}
+
+/**
+ * Does the chapter begin with ordinary text? The first thing in it with content, past white space, empty
+ * anchors and rules, is text rather than a picture, in a block that is not a heading, and that block does
+ * not read as a title: shorter than TITLE_MAX and ending in a letter or digit, as "THE MERCHANT" does and a
+ * sentence, which ends in punctuation or a closing quote, does not.
+ */
+function opensWithText(root) {
+  const first = (nodes) => {
+    for (const node of nodes) {
+      if (isText(node)) {
+        if (node.data.trim()) return node;
+      } else if (isTag(node) && node.name !== 'hr') {
+        if (PICTURES.has(node.name)) return node;
+        const found = first(node.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  const text = first(root.children);
+  if (!text || !isText(text)) return false;
+  let block = null;
+  for (let n = text.parent; n && n !== root; n = n.parent) {
+    if (HEADING_RE.test(n.name)) return false;
+    if (!block && BLOCK_TAGS.has(n.name)) block = n;
+  }
+  const words = (block ? textContent(block) : text.data).replace(/\s+/g, ' ').trim();
+  return !(words.length < TITLE_MAX && /[\p{L}\p{N}]$/u.test(words));
 }
 
 function parseNav(html, navPath) {

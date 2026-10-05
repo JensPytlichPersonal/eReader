@@ -2,12 +2,15 @@
 //   <booksDir>/<id>/book.json, sections/N.html, images/*, styles.css, cover.<ext>
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { chunkNodes, collectHeadings, serialize, textLength, isTag, removeCreditLines } from './html.js';
+import { chunkNodes, collectHeadings, serialize, textLength, isTag, removeCreditLines, anchorSpan } from './html.js';
 import { stripWatermarks } from './watermarks.js';
 import { seriesFromFileTitle } from './series.js';
 import { DomUtils } from 'htmlparser2';
 
-export const SECTION_BUDGET = 40000;
+// The most text a section holds. A chapter that fits is one section; a longer one is cut into near-equal
+// parts. Measured with a CPU slowed 6x: a section this size opens in about 0.9 s and turns pages as quickly
+// as one of 40,000; at twice this size page turns slow down.
+export const SECTION_BUDGET = 150000;
 
 /**
  * @typedef {object} Chapter
@@ -15,6 +18,7 @@ export const SECTION_BUDGET = 40000;
  * @property {string} [key] identifier links resolve to (e.g. zip path)
  * @property {string} [title]
  * @property {number} [page] source page number (pdf)
+ * @property {boolean} [continues] carries on the chapter before it, as when an EPUB splits a chapter over two files
  */
 
 /**
@@ -29,9 +33,10 @@ export function assembleSections(chapters, opts = {}) {
   const sections = [];
   const keyToSection = new Map(); // chapter key -> first section index
   const idToSection = new Map(); // "key#id" -> section index; also "#id" for global ids
+  const { groups, anchors, renamed } = joinContinued(chapters);
   let counter = 0;
 
-  for (const ch of chapters) {
+  for (const ch of groups) {
     const chunks = chunkNodes(ch.root, opts.budget ?? SECTION_BUDGET);
     chunks.forEach((nodes, i) => {
       const idx = sections.length;
@@ -39,11 +44,16 @@ export function assembleSections(chapters, opts = {}) {
       const fake = { children: nodes };
       const headings = collectHeadings(fake, `rr${idx}`);
       for (const el of DomUtils.findAll((e) => !!e.attribs?.id, nodes)) {
-        idToSection.set(`${ch.key ?? ''}#${el.attribs.id}`, idx);
+        idToSection.set(`${ch.idKeys?.get(el.attribs.id) ?? ch.key ?? ''}#${el.attribs.id}`, idx);
       }
       sections.push({ nodes, headings, chars: textLength(nodes), title: i === 0 ? ch.title : undefined, key: ch.key, page: ch.page, pageStart: ch.pageStart, pageEnd: ch.pageEnd });
       counter++;
     });
+    // A chapter read as part of the one before is found at the anchor where it begins.
+    for (const key of ch.joined || []) {
+      const at = idToSection.get(`${key}#${anchors.get(key)}`);
+      if (at != null && !keyToSection.has(key)) keyToSection.set(key, at);
+    }
   }
 
   const resolveKey = (key) => {
@@ -51,15 +61,16 @@ export function assembleSections(chapters, opts = {}) {
     if (!key) return null;
     const hash = key.indexOf('#');
     const file = hash >= 0 ? key.slice(0, hash) : key;
-    const frag = hash >= 0 ? key.slice(hash + 1) : '';
+    let frag = hash >= 0 ? key.slice(hash + 1) : '';
     if (frag) {
+      frag = renamed.get(`${file}#${frag}`) ?? frag;
       const hit = idToSection.get(`${file}#${frag}`);
       if (hit != null) return { section: hit, id: frag };
       if (!file) {
         for (const [k, v] of idToSection) if (k.endsWith(`#${frag}`)) return { section: v, id: frag };
       }
     }
-    if (keyToSection.has(file)) return { section: keyToSection.get(file), id: frag || undefined };
+    if (keyToSection.has(file)) return { section: keyToSection.get(file), id: frag || anchors.get(file) };
     return null;
   };
 
@@ -102,6 +113,58 @@ export function assembleSections(chapters, opts = {}) {
   });
 
   return { sections, toc };
+}
+
+const withIds = (nodes) => DomUtils.findAll((e) => !!e.attribs?.id, nodes);
+
+/**
+ * Join each chapter that carries on the one before it (`continues`) to that one, so the two are chunked as one
+ * chapter: its nodes go after the other's, behind an anchor where it begins, for links to it as a whole. Its
+ * ids stay its own for links: a group's `idKeys` tells the key each id came from, and an id the group already
+ * has is renamed. Returns the groups, each joined chapter's anchor id by key, and the renamed ids ("key#id" ->
+ * the id it has now).
+ */
+function joinContinued(chapters) {
+  const groups = [];
+  const anchors = new Map();
+  const renamed = new Map();
+  const keys = new Set();
+  let taken = null; // every id in the book, so a new one is unique
+  const fresh = (base, n) => {
+    while (taken.has(`${base}${n}`)) n++;
+    taken.add(`${base}${n}`);
+    return `${base}${n}`;
+  };
+  for (const ch of chapters) {
+    const group = groups[groups.length - 1];
+    // A key an earlier chapter has already leads there.
+    const ownKey = ch.key != null && !keys.has(ch.key);
+    keys.add(ch.key);
+    if (!ch.continues || !group) { groups.push({ ...ch }); continue; }
+    taken ??= new Set(chapters.flatMap((c) => withIds(c.root.children).map((e) => e.attribs.id)));
+    group.idKeys ??= new Map(withIds(group.root.children).map((e) => [e.attribs.id, group.key ?? '']));
+    for (const el of withIds(ch.root.children)) {
+      if (group.idKeys.has(el.attribs.id)) {
+        const id = fresh(`${el.attribs.id}-`, 2);
+        renamed.set(`${ch.key ?? ''}#${el.attribs.id}`, id);
+        el.attribs.id = id;
+      }
+      group.idKeys.set(el.attribs.id, ch.key ?? '');
+    }
+    const nodes = ch.root.children;
+    ch.root.children = [];
+    if (ownKey) {
+      // The id must not be one the book has, nor one collectHeadings makes (rrN-hN).
+      const anchor = anchorSpan(fresh('rr-join', 1));
+      anchors.set(ch.key, anchor.attribs.id);
+      group.idKeys.set(anchor.attribs.id, ch.key);
+      group.joined = [...(group.joined || []), ch.key];
+      nodes.unshift(anchor);
+    }
+    for (const n of nodes) { n.parent = group.root; group.root.children.push(n); }
+    group.pageEnd = ch.pageEnd ?? group.pageEnd;
+  }
+  return { groups, anchors, renamed };
 }
 
 function flattenToc(toc, out = []) {
