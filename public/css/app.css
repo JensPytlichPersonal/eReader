@@ -403,7 +403,7 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .sheet.book { --pad: 18px; padding: 0; }
 .sheet.book.editable { width: min(92vw, 460px); }
 .sheet-bar { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 6px; padding: 12px var(--pad); background: var(--bg); border-bottom: 2px solid var(--fg); }
-/* Read, Save and Close in the columns of the foot's three buttons, each in its own even when another is missing */
+/* Read, Save and Close, each in its own column even when another is missing */
 .sheet-bar .read { grid-column: 1; }
 .sheet-bar .save { grid-column: 2; }
 .sheet-bar .close { grid-column: 3; }
@@ -450,9 +450,11 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 .fix-list .who { font-size: 13px; color: var(--muted); }
 .fix-list .not-applied { font-weight: 600; }
 .fix-list .btn { margin-top: 2px; }
-/* Download on the left, Convert again in the middle, Delete on the right; on a narrow sheet their names wrap */
-.file-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-/* Download alone, for a reader who cannot change the book */
+/* The two downloads side by side, and under them Convert again on the left and Delete on the right for the
+   uploader or an admin; on a narrow sheet their names wrap */
+.file-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.file-actions > button { grid-row: 2; }
+/* Download original file alone, for a reader who cannot change a book that is not ready */
 .sheet.book .file-actions > :only-child { grid-column: 1 / -1; justify-self: start; padding-left: 12px; padding-right: 12px; }
 /* Look up online: the matches found, and what the form takes from them */
 .lookup { margin: -4px 0 14px; }

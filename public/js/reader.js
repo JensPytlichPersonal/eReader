@@ -972,6 +972,8 @@ function bindSettings() {
   }
   $('btn-download').href = `${base}original`;
   $('btn-download').setAttribute('download', state.book.originalName || 'book');
+  // Made by the server from the text as shown here, fixes included, and named by it.
+  $('btn-epub').href = `/api/books/${bookId}/epub`;
   $('btn-reload').addEventListener('click', reloadHere);
   $('btn-readers').addEventListener('click', async () => {
     const { readers } = await api(`/api/books/${bookId}/readers`);

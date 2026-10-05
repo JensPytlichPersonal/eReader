@@ -11,6 +11,7 @@ import { cleanSeriesName, knownSeriesName, parsePlace } from '../converters/seri
 import { LookupError } from '../lookup.js';
 import { fingerprint } from '../duplicates.js';
 import { FixError, parseFixInput } from '../fixes.js';
+import { readBookFiles, buildEpub, epubFileName, attachmentHeader } from '../epub-export.js';
 
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
 const COVER_TYPES = ['jpg', 'png', 'gif', 'webp'];
@@ -300,6 +301,29 @@ export function bookRoutes(db, auth, config, processor, { series, genres, fixes 
     }
     duplicates.markDifferent(b.id, other.id);
     res.json({ ok: true });
+  });
+
+  // The book as an EPUB, made now from the library's copy, with the fixes to its text and the details as
+  // the library shows them (see epub-export.js). For every reader, like the original. Under /api, so the
+  // service worker never keeps one and a download is always current.
+  r.get('/:id/epub', async (req, res) => {
+    const b = stmts.get.get(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' });
+    if (b.status === 'processing') return res.status(409).json({ error: 'The book is being converted. Try again in a moment.' });
+    if (b.status !== 'ready') return res.status(409).json({ error: 'The book could not be converted' });
+    // Read under the book's lock, so a fix or a conversion never changes the files halfway through.
+    const read = await fixes.withBookLock(b.id, async () => {
+      const book = stmts.get.get(b.id);
+      return book && { book, series: series.forBook(book.id), files: await readBookFiles(bookDir(book.id), book) };
+    });
+    if (!read) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
+    const epub = buildEpub(read);
+    res.set({
+      'Content-Type': 'application/epub+zip',
+      'Cache-Control': 'no-store',
+      'Content-Disposition': attachmentHeader(epubFileName(read.book)),
+    });
+    res.send(epub);
   });
 
   r.post('/:id/reprocess', (req, res) => {

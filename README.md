@@ -46,6 +46,9 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   or wrong, look it up online from its details and pick the matching book to fill them in.
 - **Fix the text.** An admin can correct a wrong word or a mixed-up paragraph from the reader, in a book
   of any format, and the fix is kept when the book is converted again.
+- **Download as EPUB.** Any book can be downloaded as an EPUB made from the library's copy, with the fixes
+  to its text and the details as the library shows them, to read in another app or on another e-reader.
+  The original file can be downloaded too.
 - **Covers.** EPUB and MOBI books bring their own. Where one is missing (most PDFs) or wrong, pick an
   image, use a page of the PDF, or show the title instead.
 - **List or cards.** The View menu shows the library as a list or as cards in three sizes. On a phone
@@ -267,7 +270,7 @@ The ⋯ button on a book opens its menu, in four parts, and a fifth for admins:
 | Who is reading | Who is reading the book, how far they are and when they last read, with *Reset my reading position* for your own place. |
 | Details and cover | The title, author, series and collections, and genre, with **Look up online** (see [Looking up details online](#looking-up-details-online)), and the cover with the ways to change it (see [Covers](#covers)). *Save* in the bar keeps all of it. |
 | Fixes to the text | For admins, when the book's text has been fixed: what each fix changed, who made it and when, and *Undo* (see [Fixing the text](#fixing-the-text)). |
-| The foot | The file's format, size and name, and who added it. *Download original file*, *Convert again* and *Delete from library*. |
+| The foot | The file's format, size and name, and who added it. *Download original file* and *Download EPUB* (see [Downloading a book](#downloading-a-book)), *Convert again* and *Delete from library*. |
 
 *Details and cover*, *Convert again* and *Delete from library* are for the uploader of the book or an
 admin, who see the title and author in the form and not again above it. Other readers see the book's
@@ -374,6 +377,35 @@ its text is found. A fix whose text is no longer there is marked *Not applied*, 
 
 Reading positions and bookmarks move with the text, so every reader stays where they were. Every device fetches the
 fixed book the next time it opens it.
+
+## Downloading a book
+
+Every reader can download a book in two ways: *Download original file* and *Download EPUB* at the foot of its menu,
+or *Download original* and *Download EPUB* under **Aa** in the reader. The original is the file as it was uploaded.
+*Download EPUB* is there once the book is ready.
+
+The EPUB is made when the button is pressed, from the library's own copy of the book. It holds the text as the app
+shows it, fixes included (see [Fixing the text](#fixing-the-text)), with its pictures, its links within the book, its
+footnotes and its contents. It carries the details as the library shows them, also those edited by hand: the title,
+each author, the language, the ISBN, the series and its number, the collections, the genre and the cover. The cover
+is also the book's first page.
+
+The file is named after the author and the title, with a hyphen between them, as in `David Eddings-Pawn of
+Prophecy.epub`. A book without an author is named after its title alone. Characters a file name cannot hold, such as
+`/`, `:` and `?`, become spaces. Letters such as æ, ø and å come through as they are, and an app that cannot take
+them gets ae, oe and aa.
+
+A PDF becomes its *Text* view, and a page without text says so in its place. The *Original pages* stay in the
+original file.
+
+The EPUB is plainer than a publisher's own. The app keeps only a few styling hints from a book and none of its fonts,
+so the reading app sets the look. For the book as the publisher made it, download the original.
+
+Nearly every reading app and e-reader opens an EPUB, among them Apple Books, Kobo, Boox, Google Play Books and
+calibre. A Kindle takes it through Amazon's Send to Kindle.
+
+Uploading the EPUB again, to this app or another, brings back the title, author, series and cover. Every download of a
+book has the same identifier, so a reading app can tell it is the same book.
 
 ## Series and collections
 
@@ -624,10 +656,10 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, `genres.js`, which keeps the books' genres, and `fixes.js`, which keeps the fixes to the books' text
-- `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and the patterns for watermarks and credit lines, `series.js`, which finds series in metadata and titles, and `isbn.js`, which reads and checks ISBNs
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, `genres.js`, which keeps the books' genres, `fixes.js`, which keeps the fixes to the books' text, and `epub-export.js`, which makes a book's EPUB download
+- `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and the patterns for watermarks and credit lines, `series.js`, which finds series in metadata and titles, `isbn.js`, which reads and checks ISBNs, and `zip.js`, which reads and writes ZIP files
 - `public/` the web app: library (`js/library.js`, which places the books a series lacks with `js/missing.js` and sorts books into sections by author or genre with `js/groups.js`), reader (`js/reader.js`), settings, users, service worker
-- `test/` tests and fixture builders (a tiny ZIP/EPUB writer, a MOBI writer with PalmDOC compression, a PDF writer)
+- `test/` tests and fixture builders (an EPUB writer on the server's ZIP writer, a MOBI writer with PalmDOC compression, a PDF writer)
 
 ## License
 
