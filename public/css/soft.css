@@ -499,6 +499,8 @@
 :root[data-skin="soft"] #fixbar { border-bottom-width: 1px; }
 :root[data-skin="soft"] #fixbar .title { padding: 0 6px; font-weight: 600; font-size: 14px; }
 :root[data-skin="soft"] #fixbar .buttons { gap: 2px; }
+/* On a phone the hint keeps its room to itself */
+@media (max-width: 600px) { :root[data-skin="soft"] #fixbar .title { padding: 0 2px; } }
 :root[data-skin="soft"] #fix-done { color: var(--accent-ink); }
 :root[data-skin="soft"] .book-content .fix-on { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
 :root[data-skin="soft"] .panel.fix textarea { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background-color: var(--bg); color: var(--fg); }

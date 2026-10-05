@@ -130,12 +130,24 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
 .bookmarks .bm button.del { width: 44px; height: 44px; border: 0; background: none; color: var(--danger); font-size: 20px; }
 
 /* Fixing the text (admins): a bar at the top while fixing, the paragraphs being fixed outlined, and the box in a panel */
-#fixbar { top: 0; padding-top: calc(8px + var(--safe-top)); padding-bottom: 8px; border-bottom-width: 2px; flex-wrap: wrap; row-gap: 6px; font-family: var(--ui-font); }
-#fixbar .title { flex: 1 1 14em; min-width: 0; font-weight: 700; }
-/* The buttons go under the words where the bar is narrow */
-#fixbar .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
-/* The page starts under the bar, whose height reader.js measures */
-body.fixing #viewport { padding-top: calc(var(--fixbar-h, 60px) + var(--margin-y) / 2); }
+/* One slim row, so it fits in the margins above and below the page (see makeFixRoom in reader.js). Where the bar is
+   narrow, its words are shorter, and the hint gives way before the buttons do. */
+#fixbar { top: 0; padding-top: calc(4px + var(--safe-top)); padding-bottom: 4px; border-bottom-width: 2px; font-family: var(--ui-font); }
+#fixbar .title { flex: 1 1 auto; min-width: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#fixbar .buttons { display: flex; flex: none; gap: 6px; margin-left: auto; }
+@media (max-width: 600px) {
+  #fixbar .wide { display: none; }
+  #fixbar .title { font-size: 14px; }
+  #fixbar .btn.small { padding: 0 8px; }
+}
+/* The page moves down under the bar and gives up as much of the margin below it, so it keeps its height and every
+   line stays on its page; only where the margins are too small does the page get shorter (makeFixRoom in reader.js).
+   The chapter and page number below the page give way to it meanwhile. */
+body.fixing #viewport {
+  padding-top: calc(var(--margin-y) + var(--safe-top) + var(--fix-shift, 0px));
+  padding-bottom: calc(var(--margin-y) + var(--safe-bottom) - var(--fix-lend, 0px));
+}
+body.fixing #statusline { visibility: hidden; }
 .book-content .fix-on { outline: 2px solid var(--fg); outline-offset: 3px; }
 /* 16 px at least, or iOS zooms in on the box */
 .panel.fix textarea { display: block; width: 100%; height: 40vh; min-height: 10em; padding: 8px 10px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-size: 16px; line-height: 1.5; resize: vertical; }
