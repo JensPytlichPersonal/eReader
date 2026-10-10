@@ -544,7 +544,8 @@ also written to the server's log, with the title looked up.
 Each match shows its cover and the cover's size in pixels, and the menu says how large the book's
 cover is now, so a sharp cover can be told from a small scan. *Use cover* takes a match's cover and
 leaves the details as they are. The cover taken shows in the cover's place, marked as not saved yet,
-and *Use cover* on another match takes that one instead. Choosing a match for its details afterwards
+and the menu scrolls up to it when it is out of view, as on a phone. *Use cover* on another match takes
+that one instead. Choosing a match for its details afterwards
 leaves the cover taken as it is. On saving, the server fetches the picture and keeps it like a cover
 picked by hand, so *Use the original cover* can still go back to the book's own. On a wide screen the
 menu grows once there are matches, to show them beside the form.
