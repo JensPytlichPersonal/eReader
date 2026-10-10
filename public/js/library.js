@@ -1611,6 +1611,18 @@ function editBook(b, menu) {
   // A match's cover, taken with "Use cover" or from "More covers": the cover the book gets when saved.
   function matchCover(m) {
     setPending({ src: m.cover, source: 'custom', says: `Cover from ${CATALOGUES[m.source]}`, body: { source: m.coverSource, coverId: m.coverId } });
+    revealCover();
+  }
+
+  // Brings the cover's place into view below the bar at the top: on a phone it is scrolled away above the
+  // matches, and the cover taken shows only there. The e-ink look jumps there, as it does not move things.
+  function revealCover() {
+    const place = form.querySelector('.cover-preview').getBoundingClientRect();
+    const top = root.getBoundingClientRect().top + root.clientTop;
+    const below = place.top - top - root.querySelector('.sheet-bar').offsetHeight;
+    if (below >= 0 && place.bottom - top <= root.clientHeight) return;
+    const still = document.documentElement.dataset.skin !== 'soft' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+    root.scrollBy({ top: below - 12, behavior: still ? 'auto' : 'smooth' });
   }
 
   // While a picture is prepared or the book saved, the cover's buttons and Save wait.
