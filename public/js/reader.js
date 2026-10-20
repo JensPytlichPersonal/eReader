@@ -7,12 +7,6 @@ import { PdfPageView } from './pdf-view.js';
 
 registerServiceWorker();
 
-// Back goes to the library view the book was opened from, such as a series.
-try {
-  const from = new URL(document.referrer);
-  if (from.origin === location.origin && from.pathname === '/') document.getElementById('btn-back').href = `/${from.search}`;
-} catch { /* opened directly */ }
-
 const bookId = location.pathname.split('/')[2];
 const base = `/books/${bookId}/`;
 const $ = (id) => document.getElementById(id);

@@ -692,8 +692,8 @@ const openSeriesId = () => { const v = new URLSearchParams(location.search).get(
 let openedHere = false; // the series page was opened from this page, so "back" returns to where we were
 
 // ---- where the library was scrolled to ----
-// Coming back from a book loads the library afresh, and it renders only once the books have come, too late for the
-// browser to put the page back where it was. So this tab keeps the place of each view itself: the Books tab, the
+// The library renders only once the books have come, too late for the browser to put the page back where it was
+// after a reload or the browser's back button. So this tab keeps the place of each view itself: the Books tab, the
 // Series & collections tab, and each series page by its address.
 history.scrollRestoration = 'manual';
 const SCROLL = 'ereader.scroll';
@@ -730,6 +730,17 @@ function restoreFirst() {
   restorePending = false;
   restoreScroll();
 }
+
+// The back arrow in the reader puts you at the top of the Books tab, wherever the book was opened from. Only that
+// link counts: a reload, or the browser's back button, still comes back to the place the view had.
+function backFromBook() {
+  try {
+    if (performance.getEntriesByType('navigation')[0]?.type !== 'navigate') return false;
+    const from = new URL(document.referrer);
+    return from.origin === location.origin && from.pathname.startsWith('/read/');
+  } catch { return false; }
+}
+if (backFromBook()) { view = 'books'; savePrefs(); keepPlace(null); }
 
 function openSeries(id) {
   saveScroll();
