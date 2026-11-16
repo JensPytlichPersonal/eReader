@@ -19,6 +19,7 @@ import { bookRoutes, bookFiles } from './routes/books.js';
 import { seriesRoutes } from './routes/series.js';
 import { settingsRoutes } from './routes/settings.js';
 import { fontsCss, fontsDir, heavierFontCss } from './fonts.js';
+import { kindleScripts } from './kindle-scripts.js';
 
 const require = createRequire(import.meta.url);
 
@@ -91,6 +92,9 @@ export function createApp(overrides = {}) {
   app.get('/users', page('users.html'));
   app.get('/settings', page('settings.html'));
   app.get('/sw.js', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'sw.js'), { headers: { 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/' } }));
+  // The Kindle's browser is too old for the scripts as they are, so it gets converted copies (an
+  // experiment, see kindle-scripts.js). `kindleTransform`: a stand-in for esbuild in tests.
+  app.use(kindleScripts({ publicDir: PUBLIC_DIR, log, transform: overrides.kindleTransform }));
   // Scripts and styles are checked for changes on every load, like the pages, so after an update a device never runs
   // old scripts with a new page and a reload always gets the new version. Unchanged files cost a short "not modified".
   const revalidate = (res, file) => { if (/\.(js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); };

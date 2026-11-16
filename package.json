@@ -27,5 +27,8 @@
     "htmlparser2": "^10.0.0",
     "marked": "^18.0.14",
     "pdfjs-dist": "^6.3.289"
+  },
+  "optionalDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

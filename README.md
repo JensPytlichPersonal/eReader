@@ -197,6 +197,11 @@ Swiping can be turned off there if your device registers accidental swipes.
 **iPhone and iPad.** Open it in Safari, tap Share, then *Add to Home Screen*. It runs full screen
 without browser chrome; the safe areas around the notch and home indicator are respected.
 
+**Kindle.** The browser of a Kindle Paperwhite (10th generation) is too old for the app's scripts, so
+the server sends that browser a converted copy of them. Every other browser gets the scripts as they
+are. This is an experiment: pages can look rough there, and swiping does not turn pages, so tap the
+sides instead. `/check.html` shows what the browser lacks.
+
 **Reloading.** On the home screen the app has no browser button to reload it, so it has its own: in a
 book, *Reload* in the **Aa** panel reopens it where you are, and *Reload the app* in Settings starts
 again from the library. A book that can't be shown offers *Reload* and the way back to the library.
@@ -692,7 +697,7 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, `genres.js`, which keeps the books' genres, `fixes.js`, which keeps the fixes to the books' text, and `epub-export.js`, which makes a book's EPUB download
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, `genres.js`, which keeps the books' genres, `fixes.js`, which keeps the fixes to the books' text, `epub-export.js`, which makes a book's EPUB download, and `kindle-scripts.js`, which sends the Kindle's browser a copy of the scripts in `public/js` converted for it (with esbuild, an optional dependency used only for this)
 - `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and the patterns for watermarks and credit lines, `series.js`, which finds series in metadata and titles, `isbn.js`, which reads and checks ISBNs, and `zip.js`, which reads and writes ZIP files
 - `public/` the web app: library (`js/library.js`, which places the books a series lacks with `js/missing.js` and sorts books into sections by author or genre with `js/groups.js`), reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (an EPUB writer on the server's ZIP writer, a MOBI writer with PalmDOC compression, a PDF writer)
