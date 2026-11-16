@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browser check</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* Old CSS only (no flex, grid or custom properties), so the page shows in any browser it checks. Black on white,
+   for an e-ink screen and a photo of it. */
+html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+body { padding: 12px 16px 24px; font-family: sans-serif; font-size: 16px; line-height: 1.35; }
+h1 { margin: 0 0 4px; font-size: 24px; }
+h2 { margin: 20px 0 4px; padding-bottom: 2px; border-bottom: 2px solid #000; font-size: 20px; }
+h3 { margin: 10px 0 2px; font-size: 16px; }
+p { margin: 4px 0; }
+a { color: #000; }
+table { border-collapse: collapse; }
+td { padding: 1px 16px 1px 0; vertical-align: top; }
+td.answer { padding-right: 0; font-weight: bold; }
+.summary { font-size: 20px; font-weight: bold; }
+.mono { font-family: monospace; font-size: 15px; word-wrap: break-word; }
+</style>
+</head>
+<body>
+<h1>Browser check</h1>
+<p>This page lists what eReader needs from a browser and whether this browser has it.</p>
+<div id="top"><p class="summary">Checking. If this line stays, the checks could not run in this browser.</p></div>
+<div id="results"></div>
+<p class="mono" id="keys"></p>
+<p><a href="/">Back to the library</a></p>
+<script type="module">window.__module = true;</script>
+<script>
+// Written in plain ES5 with old DOM calls, so it runs in browsers far older than the app needs. Every check
+// runs in its own try/catch, and one that throws counts as "no". The modern syntax being checked is only ever
+// inside strings, handed to new Function.
+(function () {
+  'use strict';
+
+  var GROUPS = [['syntax', 'Syntax'], ['js', 'JavaScript'], ['css', 'CSS']];
+  var checks = [];
+  var lab = null;
+  var ran = false;
+
+  // A check: its group, a short stable key, a label, the Chrome version that brought it (only used for the
+  // estimate; null where it is not certain, or where the answer depends on more than the engine, such as https or
+  // a dictionary), the part of the app that needs it, and a test that returns true, false, or null when this
+  // browser cannot tell.
+  function add(group, key, label, version, area, test) {
+    checks.push({ group: group, key: key, label: label, version: version, area: area, test: test });
+  }
+
+  // ---------------------------------------------------------------- helpers
+
+  // new Function throws a SyntaxError for syntax this browser does not support.
+  function parses(src) {
+    return function () {
+      new Function(src);
+      return true;
+    };
+  }
+  function runs(src) {
+    return function () {
+      return new Function(src)() === true;
+    };
+  }
+
+  function fire(el, type) {
+    var e = document.createEvent('Event');
+    e.initEvent(type, false, false);
+    el.dispatchEvent(e);
+  }
+
+  // Made like the formatter in public/js/api.js, which every date and time in the app goes through.
+  function danishClock() {
+    return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Copenhagen', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  }
+  // The hour a moment shows in Danish time: from formatToParts like the app, or from the text where it is missing.
+  function danishHour(ms) {
+    var clock = danishClock();
+    var date = new Date(ms);
+    var i, parts, m;
+    if (typeof clock.formatToParts === 'function') {
+      parts = clock.formatToParts(date);
+      for (i = 0; i < parts.length; i++) if (parts[i].type === 'hour') return parts[i].value;
+      return null;
+    }
+    m = /(\d+):\d\d/.exec(clock.format(date));
+    return m ? m[1] : null;
+  }
+
+  // Service workers and the Cache API exist only on https (or localhost), whatever the browser.
+  function secure() {
+    if (typeof window.isSecureContext === 'boolean') return window.isSecureContext;
+    return location.protocol === 'https:' || location.hostname === 'localhost';
+  }
+
+  // Measured checks lay out boxes in a hidden area off screen.
+  function box(css, parent) {
+    var el = document.createElement('div');
+    el.style.cssText = css;
+    (parent || lab).appendChild(el);
+    return el;
+  }
+  function boxes(css, childCss, n) {
+    var parent = box(css);
+    for (var i = 0; i < n; i++) box(childCss, parent);
+    return parent;
+  }
+  // How far right of the first child a child of a box starts.
+  function leftOf(parent, i) {
+    return Math.round(parent.children[i].getBoundingClientRect().left - parent.children[0].getBoundingClientRect().left);
+  }
+
+  // CSS.supports(property, value) for pairs of arguments, any one of them enough; null without CSS.supports.
+  function supports() {
+    var pairs = arguments;
+    return function () {
+      if (!window.CSS || typeof window.CSS.supports !== 'function') return null;
+      for (var i = 0; i < pairs.length; i += 2) if (window.CSS.supports(pairs[i], pairs[i + 1])) return true;
+      return false;
+    };
+  }
+  // querySelector throws for a selector this browser does not support. CSS.supports('selector(...)') came later
+  // than most of these selectors, so it returns false for them even where they work.
+  function selector(sel) {
+    return function () {
+      document.querySelector(sel);
+      return true;
+    };
+  }
+  // A supported media feature matches one of its values; an unsupported one matches none.
+  function media() {
+    var queries = arguments;
+    return function () {
+      if (typeof window.matchMedia !== 'function') return null;
+      for (var i = 0; i < queries.length; i++) if (window.matchMedia(queries[i]).matches) return true;
+      return false;
+    };
+  }
+
+  // ---------------------------------------------------------------- syntax
+
+  add('syntax', 'modules', 'ES modules (script type=module)', 61, 'All pages', function () {
+    if (window.__module === true) return true;
+    // noModule exists, so modules are supported, but the module script above did not run: something else stopped it.
+    return 'noModule' in document.createElement('script') ? null : false;
+  });
+  add('syntax', 'es2015', 'Classes, let, const, arrows, template strings', 49, 'All pages', runs(
+    '"use strict"; class A { constructor(x = 1) { this.x = x; } } class B extends A {}' +
+    ' let [a] = [1]; const { b } = { b: 2 }; const f = (...r) => r.length; const t = `${a}`;' +
+    ' for (const v of new Set([1])) a += v; return new B().x + b + f(...[1, 2]) + t.length + a === 8;'));
+  add('syntax', 'asyncawait', 'async and await', 55, 'All pages', parses('async function f() { await 0; }'));
+  add('syntax', 'objspread', 'Object spread {...a}', 60, 'All pages', runs('var a = { b: 1 }; var c = { ...a, d: 2 }; return c.b + c.d === 3;'));
+  // Only parsed, not run. The library and the reader load scripts this way, the reader pdf.js too.
+  add('syntax', 'dynimport', 'Dynamic import()', 63, 'Library, Reader', parses('return import("data:text/javascript,");'));
+  add('syntax', 'uniprop', 'Unicode classes in a regex \\p{L}', 64, 'Library', runs('return /^[\\p{L}\\p{N}]+$/u.test("a1\\u00e9") && /\\p{M}/u.test("e\\u0301");'));
+  add('syntax', 'optcatch', 'catch without a binding', 66, 'All pages', runs('try { throw 1; } catch { return true; }'));
+  add('syntax', 'optchain', 'Optional chaining a?.b', 80, 'All pages', runs('var o = null; var p = { q: function () { return 2; } };' +
+    ' return o?.a === undefined && o?.[0] === undefined && o?.() === undefined && p?.q?.() === 2;'));
+  add('syntax', 'nullish', 'Nullish coalescing a ?? b', 80, 'All pages', runs('return (null ?? 1) === 1 && (0 ?? 1) === 0;'));
+  add('syntax', 'logassign', 'Logical assignment a ||= b, a ??= b', 85, 'Library, Reader', runs('var a = 0; a ||= 1; var c = null; c ??= 2; return a === 1 && c === 2;'));
+
+  // ---------------------------------------------------------------- JavaScript
+
+  add('js', 'fetch', 'fetch', 42, 'All pages', function () {
+    return typeof window.fetch === 'function';
+  });
+  add('js', 'promise', 'Promise', 32, 'All pages', function () {
+    return typeof Promise === 'function' && typeof Promise.all === 'function' && typeof Promise.race === 'function';
+  });
+  add('js', 'storage', 'localStorage', null, 'All pages', function () {
+    var key = 'ereader.check';
+    var ok;
+    window.localStorage.setItem(key, '1');
+    ok = window.localStorage.getItem(key) === '1';
+    window.localStorage.removeItem(key);
+    return ok;
+  });
+  add('js', 'closest', 'Element closest()', 41, 'Library, Reader', function () {
+    return typeof Element.prototype.closest === 'function';
+  });
+  add('js', 'cssescape', 'CSS.escape()', 46, 'Reader', function () {
+    return CSS.escape('a b') === 'a\\ b';
+  });
+  add('js', 'foreach', 'NodeList forEach()', 51, 'Library, Reader', function () {
+    return typeof NodeList.prototype.forEach === 'function';
+  });
+  add('js', 'childnode', 'append(), before(), after(), replaceWith()', 54, 'Library, Reader', function () {
+    var p = Element.prototype;
+    return typeof p.append === 'function' && typeof p.before === 'function' && typeof p.after === 'function' && typeof p.replaceWith === 'function';
+  });
+  add('js', 'isconnected', 'Node isConnected', 51, 'Library, Reader', function () {
+    return document.createElement('div').isConnected === false && document.body.isConnected === true;
+  });
+  // In older browsers the options object counts as capture = true, and the listener runs every time.
+  add('js', 'once', 'Event listener option once', 55, 'Library, Reader', function () {
+    var el = document.createElement('div');
+    var count = 0;
+    el.addEventListener('check', function () { count++; }, { once: true });
+    fire(el, 'check');
+    fire(el, 'check');
+    return count === 1;
+  });
+  add('js', 'intlparts', 'Intl formatToParts()', 57, 'All pages', function () {
+    var parts = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(2024, 0, 15, 13, 30));
+    var types = ' ';
+    for (var i = 0; i < parts.length; i++) types += parts[i].type + ' ';
+    return types.indexOf(' hour ') >= 0 && types.indexOf(' minute ') >= 0;
+  });
+  // Throws without time zone data for Denmark. In the app that stops the scripts of every page.
+  add('js', 'intltz', 'Intl date format in Danish time', null, 'All pages', function () {
+    danishClock();
+    return true;
+  });
+  // 12:30 UTC is 13:30 in Denmark in January and 14:30 in July (summer time); 23:05 UTC in January is 00:05, not 24:05.
+  add('js', 'danishhour', 'Danish time on a 24-hour clock', null, 'All pages', function () {
+    return danishHour(Date.UTC(2024, 0, 15, 12, 30)) === '13' && danishHour(Date.UTC(2024, 6, 15, 12, 30)) === '14' &&
+      danishHour(Date.UTC(2024, 0, 14, 23, 5)) === '00';
+  });
+  add('js', 'scrollby', 'Element scrollBy()', 61, 'Library', function () {
+    return typeof Element.prototype.scrollBy === 'function';
+  });
+  add('js', 'abort', 'AbortController', 66, 'Library', function () {
+    var c = new AbortController();
+    c.abort();
+    return c.signal.aborted === true;
+  });
+  // These Requests are made, never sent. The page's full address works wherever the page was opened from.
+  add('js', 'fetchsignal', 'fetch with an abort signal', 66, 'Library', function () {
+    var c = new AbortController();
+    c.abort();
+    var req = new Request(location.href, { signal: c.signal });
+    return !!req.signal && req.signal.aborted === true;
+  });
+  add('js', 'keepalive', 'fetch with keepalive', 66, 'Reader', function () {
+    return new Request(location.href, { keepalive: true }).keepalive === true;
+  });
+  add('js', 'trimstart', 'String trimStart(), trimEnd()', 66, 'Reader', function () {
+    return ' a '.trimStart() === 'a ' && ' a '.trimEnd() === ' a';
+  });
+  add('js', 'flat', 'Array flat(), flatMap()', 69, 'Library', function () {
+    return [[1], [2]].flat().length === 2 && [1].flatMap(function (x) { return [x, x]; }).length === 2;
+  });
+  add('js', 'fromentries', 'Object.fromEntries()', 73, 'All pages', function () {
+    return Object.fromEntries([['a', 1]]).a === 1;
+  });
+  add('js', 'replaceall', 'String replaceAll()', 85, 'Reader', function () {
+    return 'a.b.c'.replaceAll('.', '-') === 'a-b-c';
+  });
+  add('js', 'at', 'Array at()', 92, 'Library', function () {
+    return [1, 2, 3].at(-1) === 3;
+  });
+  add('js', 'searchparams', 'URLSearchParams from an object', 61, 'Library', function () {
+    return new URLSearchParams({ a: 'b' }).get('a') === 'b';
+  });
+  add('js', 'lazyimg', 'Lazy images (loading=lazy)', 77, 'Library', function () {
+    return 'loading' in HTMLImageElement.prototype;
+  });
+  // The reader's quick way to the position on a page; without these it uses a slower search.
+  add('js', 'caret', 'Caret position from a point', null, 'Reader', function () {
+    return typeof document.caretRangeFromPoint === 'function' || typeof document.caretPositionFromPoint === 'function';
+  });
+  add('js', 'touch', 'Touch events', null, 'Reader', function () {
+    return 'ontouchstart' in window;
+  });
+  add('js', 'sw', 'Service worker', null, 'Offline', function () {
+    return secure() ? 'serviceWorker' in navigator : null;
+  });
+  add('js', 'caches', 'Cache API', null, 'Offline', function () {
+    return secure() ? 'caches' in window : null;
+  });
+
+  // ---------------------------------------------------------------- CSS
+
+  add('css', 'customprops', 'Custom properties var(--x)', 49, 'Both looks', function () {
+    return box('position:absolute;--w:12px;width:var(--w);height:1px').offsetWidth === 12;
+  });
+  add('css', 'grid', 'Grid layout', 57, 'Both looks', function () {
+    return leftOf(boxes('display:grid;grid-template-columns:30px 30px', 'height:10px', 2), 1) === 30;
+  });
+  add('css', 'gridgap', 'gap in grid layout', 66, 'Both looks', function () {
+    return leftOf(boxes('display:grid;grid-template-columns:30px 30px;gap:10px', 'height:10px', 2), 1) === 40;
+  });
+  // Measured: CSS.supports('gap', ...) returns true where gap works in grid layout only.
+  add('css', 'flexgap', 'gap in flexbox', 84, 'Both looks', function () {
+    return leftOf(boxes('display:flex;gap:10px', 'width:30px;height:10px;flex:none', 2), 1) === 40;
+  });
+  add('css', 'aspectratio', 'aspect-ratio', 88, 'Both looks', function () {
+    return box('width:40px;aspect-ratio:5 / 8').offsetHeight === 64;
+  });
+  add('css', 'minmax', 'min() and max()', 79, 'Both looks', function () {
+    var el = box('position:absolute;width:50px;width:min(10px, 20px);height:50px;height:max(10px, 20px)');
+    return el.offsetWidth === 10 && el.offsetHeight === 20;
+  });
+  add('css', 'env', 'env() for safe areas', 69, 'Both looks', supports('padding-top', 'env(safe-area-inset-top, 0px)'));
+  add('css', 'sticky', 'position: sticky', 56, 'Both looks', supports('position', 'sticky'));
+  add('css', 'dropshadow', 'filter: drop-shadow()', 53, 'Both looks', supports('filter', 'drop-shadow(2px 0 0 #000)'));
+  add('css', 'objectfit', 'object-fit', 32, 'Both looks', supports('object-fit', 'contain'));
+  add('css', 'focuswithin', ':focus-within', 60, 'Both looks', selector(':focus-within'));
+  add('css', 'focusvisible', ':focus-visible', 86, 'Both looks', selector(':focus-visible'));
+  add('css', 'is', ':is()', 88, 'Both looks', selector(':is(a, b)'));
+  add('css', 'notcomplex', ':not() with a descendant', 88, 'Soft look', selector('p:not(.a *)'));
+  add('css', 'has', ':has()', 105, 'Soft look', selector('div:has(a)'));
+  add('css', 'backdrop', 'backdrop-filter', 76, 'Soft look', supports('backdrop-filter', 'blur(2px)', '-webkit-backdrop-filter', 'blur(2px)'));
+  add('css', 'reducedmotion', 'prefers-reduced-motion', 74, 'Soft look', media('(prefers-reduced-motion: no-preference)', '(prefers-reduced-motion: reduce)'));
+  add('css', 'prefscheme', 'prefers-color-scheme', 76, 'All pages', media('(prefers-color-scheme: light)', '(prefers-color-scheme: dark)', '(prefers-color-scheme: no-preference)'));
+  add('css', 'mqhover', 'Media query hover', null, 'Both looks', media('(hover: hover)', '(hover: none)'));
+  add('css', 'mqpointer', 'Media query pointer', 41, 'Soft look, Library, Reader', media('(pointer: fine)', '(pointer: coarse)', '(pointer: none)'));
+  // Like the reader: a box one column wide whose overflow forms more columns to the right, so the third block
+  // starts the second column.
+  add('css', 'columns', 'Multi-column layout', 50, 'Reader', function () {
+    return leftOf(boxes('width:100px;height:40px;column-width:100px;column-gap:10px;column-fill:auto', 'height:20px', 4), 2) >= 100;
+  });
+  add('css', 'colbreak', 'Column breaks (break-inside, break-after)', 50, 'Reader', function () {
+    if (!window.CSS || typeof window.CSS.supports !== 'function') return null;
+    return window.CSS.supports('break-inside', 'avoid') && window.CSS.supports('break-after', 'column');
+  });
+  // Measured: hyphenation needs a dictionary for the language as well as the property.
+  add('css', 'hyphens', 'Hyphenation (hyphens: auto)', null, 'Reader', function () {
+    var css = 'position:absolute;width:60px;font:16px/20px sans-serif;word-wrap:normal;word-break:normal;';
+    var plain = box(css + '-webkit-hyphens:manual;hyphens:manual');
+    var hyphenated = box(css + '-webkit-hyphens:auto;hyphens:auto');
+    plain.lang = hyphenated.lang = 'en';
+    plain.textContent = hyphenated.textContent = 'incomprehensibilities';
+    return hyphenated.offsetHeight > plain.offsetHeight;
+  });
+  add('css', 'overscroll', 'overscroll-behavior', 63, 'Reader', supports('overscroll-behavior', 'none'));
+  add('css', 'wrapanywhere', 'overflow-wrap: anywhere', 80, 'Reader', supports('overflow-wrap', 'anywhere'));
+  add('css', 'tdthick', 'text-decoration-thickness', null, 'Reader', supports('text-decoration-thickness', '1px'));
+  add('css', 'uloffset', 'text-underline-offset', 87, 'Reader', supports('text-underline-offset', '2px'));
+  add('css', 'accent', 'accent-color', 93, 'Reader', supports('accent-color', '#000'));
+  add('css', 'colorscheme', 'color-scheme', 81, 'Both looks', supports('color-scheme', 'dark'));
+
+  // ---------------------------------------------------------------- results
+
+  function el(tag, text, className) {
+    var e = document.createElement(tag);
+    if (text !== null && text !== undefined) e.textContent = text;
+    if (className) e.className = className;
+    return e;
+  }
+
+  // From the rows with a version: the newest feature that works and the oldest that does not.
+  function estimate() {
+    var newestYes = 0;
+    var oldestNo = 0;
+    for (var i = 0; i < checks.length; i++) {
+      var c = checks[i];
+      if (!c.version) continue;
+      if (c.result === 'yes' && c.version > newestYes) newestYes = c.version;
+      if (c.result === 'no' && (!oldestNo || c.version < oldestNo)) oldestNo = c.version;
+    }
+    if (!newestYes && !oldestNo) return 'Estimate: none.';
+    if (!oldestNo) return 'Estimate: looks like Chrome ' + newestYes + ' or newer.';
+    if (!newestYes) return 'Estimate: looks older than Chrome ' + oldestNo + '.';
+    if (newestYes >= oldestNo) return 'Estimate: unclear. A Chrome ' + newestYes + ' feature works, but a Chrome ' + oldestNo + ' feature does not.';
+    if (newestYes === oldestNo - 1) return 'Estimate: looks like Chrome ' + newestYes + '.';
+    return 'Estimate: looks like Chrome ' + newestYes + ' to ' + (oldestNo - 1) + '.';
+  }
+
+  function keysWith(result) {
+    var keys = [];
+    for (var i = 0; i < checks.length; i++) if (checks[i].result === result) keys.push(checks[i].key);
+    return keys;
+  }
+
+  // One section of rows with the same answer, grouped as Syntax, JavaScript and CSS.
+  function section(parent, title, result, always) {
+    var wrap = el('div');
+    var any = false;
+    var g, i, c, body, row;
+    wrap.appendChild(el('h2', title));
+    for (g = 0; g < GROUPS.length; g++) {
+      body = null;
+      for (i = 0; i < checks.length; i++) {
+        c = checks[i];
+        if (c.group !== GROUPS[g][0] || c.result !== result) continue;
+        if (!body) {
+          wrap.appendChild(el('h3', GROUPS[g][1]));
+          body = el('tbody');
+          wrap.appendChild(el('table')).appendChild(body);
+        }
+        row = el('tr');
+        row.appendChild(el('td', c.label));
+        row.appendChild(el('td', c.result, 'answer'));
+        body.appendChild(row);
+        any = true;
+      }
+    }
+    if (!any) wrap.appendChild(el('p', 'None.'));
+    if (any || always) parent.appendChild(wrap);
+  }
+
+  function render() {
+    var top = document.getElementById('top');
+    var results = document.getElementById('results');
+    var yes = keysWith('yes').length;
+    var no = keysWith('no');
+    var unknown = keysWith('unknown');
+    var line;
+    while (top.firstChild) top.removeChild(top.firstChild);
+    top.appendChild(el('p', yes + ' of ' + checks.length + ' supported' + (unknown.length ? ', ' + unknown.length + ' unknown.' : '.'), 'summary'));
+    top.appendChild(el('p', estimate()));
+    top.appendChild(el('p', navigator.userAgent, 'mono'));
+    top.appendChild(el('p', 'Viewport ' + window.innerWidth + ' x ' + window.innerHeight + '. Screen ' + screen.width + ' x ' + screen.height +
+      '. Pixel ratio ' + (window.devicePixelRatio || 1) + '.'));
+    section(results, 'Not supported', 'no', true);
+    section(results, 'Could not tell', 'unknown', false);
+    section(results, 'Supported', 'yes', true);
+    // The keys of the answers that need work, on one line, so a photo of this line alone is enough.
+    line = 'Not supported: ' + (no.length ? no.join(' ') : 'none') + '.';
+    if (unknown.length) line += ' Unknown: ' + unknown.join(' ') + '.';
+    document.getElementById('keys').textContent = line;
+  }
+
+  // At load, since the module script above runs only after the page is parsed.
+  function run() {
+    var i, c, answer;
+    if (ran) return;
+    ran = true;
+    lab = document.createElement('div');
+    lab.style.cssText = 'position:absolute;left:-10000px;top:0;width:1000px;visibility:hidden';
+    document.body.appendChild(lab);
+    for (i = 0; i < checks.length; i++) {
+      c = checks[i];
+      try {
+        answer = c.test();
+      } catch (e) {
+        answer = false;
+      }
+      c.result = answer === true ? 'yes' : answer === null ? 'unknown' : 'no';
+    }
+    document.body.removeChild(lab);
+    render();
+  }
+
+  window.onload = run;
+})();
+</script>
+</body>
+</html>

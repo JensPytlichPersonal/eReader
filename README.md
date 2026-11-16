@@ -203,6 +203,10 @@ again from the library. A book that can't be shown offers *Reload* and the way b
 After an update, the new version arrives with the next page the app loads: scripts and styles are
 checked for changes every time, like the pages.
 
+**Browser check.** `/check.html` lists what the app needs from a browser and whether this device's
+browser has it. It opens without signing in and works in old browsers. Use it when a page stays
+blank on a device.
+
 **Offline.** Every book you open is kept on the device, with all its chapters and pictures, so it opens
 and reads without a connection (this needs https). Offline, the library shows the books from the last
 time it was online, and fades the ones this device doesn't have. Books opened before this was added are
