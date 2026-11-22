@@ -16,19 +16,21 @@
   <span class="spacer"></span>
   <nav><a class="btn small" href="/">Library</a></nav>
 </header>
-<main class="page narrow">
+<main class="page narrow roomy">
   <h1>Users</h1>
   <p class="muted">Every user can read every book. Reading positions and bookmarks are kept per user.</p>
-  <div id="list"></div>
-  <h2>Add a user</h2>
-  <form id="add-form">
-    <div class="field"><label for="u">Username</label><input id="u" autocapitalize="none" autocorrect="off" required></div>
-    <div class="field"><label for="d">Display name</label><input id="d"></div>
-    <div class="field"><label for="p">Password</label><input id="p" type="text" autocomplete="off" required></div>
-    <div class="field"><label class="row" style="font-weight:600"><input type="checkbox" id="a" style="width:22px;height:22px"> Administrator</label></div>
-    <p class="error hidden" id="error"></p>
-    <button class="btn primary" type="submit">Add user</button>
-  </form>
+  <div class="users-cols">
+    <div id="list"></div>
+    <form id="add-form">
+      <h2>Add a user</h2>
+      <div class="field"><label for="u">Username</label><input id="u" autocapitalize="none" autocorrect="off" required></div>
+      <div class="field"><label for="d">Display name</label><input id="d"></div>
+      <div class="field"><label for="p">Password</label><input id="p" type="text" autocomplete="off" required></div>
+      <div class="field"><label class="row" style="font-weight:600"><input type="checkbox" id="a" style="width:22px;height:22px"> Administrator</label></div>
+      <p class="error hidden" id="error"></p>
+      <button class="btn primary" type="submit">Add user</button>
+    </form>
+  </div>
 </main>
 <div id="dialog-root"></div>
 <script type="module" src="/js/users.js"></script>

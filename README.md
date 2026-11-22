@@ -221,6 +221,9 @@ kept the next time they open online. Reading positions sync when the connection 
 **Laptop.** Arrow keys, space, Page Up/Down turn pages; `t` opens the contents, `b` bookmarks, `s`
 the display settings, `m` the menu, `+`/`-` change the text size, Home/End jump to the start or end.
 Wide windows show two columns; switch to one column in the display settings if you prefer.
+From 900 pixels wide, Settings and Users use the library's width. Settings shows each section as a row,
+its explanation on the left and its fields on the right. Users shows the list with *Add a user* beside it.
+On narrower screens both pages are one column, as on a phone.
 
 ## Adding books
 

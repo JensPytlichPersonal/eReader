@@ -12,11 +12,11 @@ async function load() {
       <td><b>${escapeHtml(u.displayName)}</b><br><span class="muted">${escapeHtml(u.username)}</span></td>
       <td>${u.isAdmin ? 'Admin' : 'Reader'}</td>
       <td>${u.booksStarted} book${u.booksStarted === 1 ? '' : 's'}${u.lastRead ? `<br><span class="muted">last ${formatDate(u.lastRead)}</span>` : ''}</td>
-      <td class="row" style="justify-content:flex-end">
+      <td class="actions"><div class="row">
         <button class="btn small" data-act="password">Reset password</button>
         <button class="btn small" data-act="admin">${u.isAdmin ? 'Make reader' : 'Make admin'}</button>
         ${u.id === me.id ? '' : '<button class="btn small danger" data-act="delete">Delete</button>'}
-      </td>
+      </div></td>
     </tr>`).join('')}</tbody></table>`;
 }
 
