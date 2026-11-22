@@ -16,45 +16,73 @@
   <span class="spacer"></span>
   <nav><a class="btn small" href="/">Library</a></nav>
 </header>
-<main class="page narrow">
+<main class="page narrow roomy">
   <h1>Settings</h1>
-  <h2>This device</h2>
-  <p class="muted">Theme, look, text size and weight, margins and line spacing are stored on each device separately, so your e-reader, phone and laptop can each look the way you want. Soft is the look for phones, tablets and laptops; E-ink is the high-contrast look for e-ink readers, which the app picks by itself on a Boox, Kobo or similar.</p>
-  <div class="field"><label for="device">Device name</label><input id="device"></div>
-  <div class="field"><label for="theme">Theme</label>
-    <select id="theme"><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option><option value="auto">Follow system</option></select></div>
-  <div class="field"><label for="skin">Look</label>
-    <select id="skin"><option value="soft">Soft</option><option value="eink">E-ink</option></select></div>
-  <div class="field"><label class="row" style="font-weight:600"><input type="checkbox" id="eink" style="width:22px;height:22px"> High contrast (e-ink)</label></div>
-  <p class="muted">Text size and weight, margins and line spacing are changed from inside the reader (the <b>Aa</b> button).</p>
-  <h2>Reload</h2>
-  <p class="muted">Added to the home screen, the app has no browser button to reload it. This starts it again from the library, with the newest version of the app. In a book, the <b>Aa</b> button has a Reload too.</p>
-  <button class="btn" id="reload">Reload the app</button>
-  <h2>Account</h2>
-  <p id="who" class="muted"></p>
-  <div class="field"><label for="font">Font</label><select id="font"></select></div>
-  <p class="muted">Your font is used on all your devices. You can also change it from the <b>Aa</b> button in the reader.</p>
-  <form id="pw-form">
-    <div class="field"><label for="cur">Current password</label><input id="cur" type="password" required></div>
-    <div class="field"><label for="new">New password</label><input id="new" type="password" required></div>
-    <p class="error hidden" id="error"></p>
-    <p class="notice hidden" id="ok">Password changed.</p>
-    <button class="btn primary" type="submit">Change password</button>
-  </form>
-  <div id="catalogues" class="hidden">
-    <h2>Catalogues</h2>
-    <p class="muted">Book details and covers come from Open Library, which needs no key, and from Hardcover when the server has a token for it. Hardcover knows series and their order well, and tells the library which books a series lacks. Make a token at <a href="https://hardcover.app/account/api/keys/new?scope=read:catalog" target="_blank" rel="noopener">hardcover.app</a> (read:catalog is enough), paste it here, and it is used at once. It is kept on this server, in the database.</p>
-    <p class="muted" id="hc-status"></p>
-    <form id="hc-form">
-      <div class="field"><label for="hc-token">Hardcover API token</label><input id="hc-token" type="password" autocomplete="off" placeholder="Paste the token, with or without Bearer"></div>
-      <p class="error hidden" id="hc-error"></p>
-      <p class="notice hidden" id="hc-ok"></p>
-      <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="hc-check">Check</button><button class="btn danger hidden" type="button" id="hc-remove">Remove</button></div>
-    </form>
-  </div>
-  <h2>Offline</h2>
-  <p class="muted">Every book you open is kept on this device, so you can read it without a connection. Offline, the library fades the books that aren't here. Reading positions sync when you are back online.</p>
-  <button class="btn" id="clear-cache">Clear cached books on this device</button>
+  <section class="set">
+    <div class="about">
+      <h2>This device</h2>
+      <p class="muted">Theme, look, text size and weight, margins and line spacing are stored on each device separately, so your e-reader, phone and laptop can each look the way you want. Soft is the look for phones, tablets and laptops; E-ink is the high-contrast look for e-ink readers, which the app picks by itself on a Boox, Kobo or similar.</p>
+    </div>
+    <div class="controls">
+      <div class="field"><label for="device">Device name</label><input id="device"></div>
+      <div class="field"><label for="theme">Theme</label>
+        <select id="theme"><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option><option value="auto">Follow system</option></select></div>
+      <div class="field"><label for="skin">Look</label>
+        <select id="skin"><option value="soft">Soft</option><option value="eink">E-ink</option></select></div>
+      <div class="field"><label class="row" style="font-weight:600"><input type="checkbox" id="eink" style="width:22px;height:22px"> High contrast (e-ink)</label></div>
+      <p class="muted">Text size and weight, margins and line spacing are changed from inside the reader (the <b>Aa</b> button).</p>
+    </div>
+  </section>
+  <section class="set">
+    <div class="about">
+      <h2>Reload</h2>
+      <p class="muted">Added to the home screen, the app has no browser button to reload it. This starts it again from the library, with the newest version of the app. In a book, the <b>Aa</b> button has a Reload too.</p>
+    </div>
+    <div class="controls">
+      <button class="btn" id="reload">Reload the app</button>
+    </div>
+  </section>
+  <section class="set">
+    <div class="about">
+      <h2>Account</h2>
+      <p id="who" class="muted"></p>
+    </div>
+    <div class="controls">
+      <div class="field"><label for="font">Font</label><select id="font"></select></div>
+      <p class="muted">Your font is used on all your devices. You can also change it from the <b>Aa</b> button in the reader.</p>
+      <form id="pw-form">
+        <div class="field"><label for="cur">Current password</label><input id="cur" type="password" required></div>
+        <div class="field"><label for="new">New password</label><input id="new" type="password" required></div>
+        <p class="error hidden" id="error"></p>
+        <p class="notice hidden" id="ok">Password changed.</p>
+        <button class="btn primary" type="submit">Change password</button>
+      </form>
+    </div>
+  </section>
+  <section class="set hidden" id="catalogues">
+    <div class="about">
+      <h2>Catalogues</h2>
+      <p class="muted">Book details and covers come from Open Library, which needs no key, and from Hardcover when the server has a token for it. Hardcover knows series and their order well, and tells the library which books a series lacks. Make a token at <a href="https://hardcover.app/account/api/keys/new?scope=read:catalog" target="_blank" rel="noopener">hardcover.app</a> (read:catalog is enough), paste it here, and it is used at once. It is kept on this server, in the database.</p>
+    </div>
+    <div class="controls">
+      <p class="muted" id="hc-status"></p>
+      <form id="hc-form">
+        <div class="field"><label for="hc-token">Hardcover API token</label><input id="hc-token" type="password" autocomplete="off" placeholder="Paste the token, with or without Bearer"></div>
+        <p class="error hidden" id="hc-error"></p>
+        <p class="notice hidden" id="hc-ok"></p>
+        <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="hc-check">Check</button><button class="btn danger hidden" type="button" id="hc-remove">Remove</button></div>
+      </form>
+    </div>
+  </section>
+  <section class="set">
+    <div class="about">
+      <h2>Offline</h2>
+      <p class="muted">Every book you open is kept on this device, so you can read it without a connection. Offline, the library fades the books that aren't here. Reading positions sync when you are back online.</p>
+    </div>
+    <div class="controls">
+      <button class="btn" id="clear-cache">Clear cached books on this device</button>
+    </div>
+  </section>
 </main>
 <script type="module" src="/js/settings-page.js"></script>
 </body>

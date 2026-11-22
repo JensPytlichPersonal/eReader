@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>eReader: Settings and Users on a laptop</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* The board around the mockups. Each frame is an iframe that loads the app's real stylesheets from
+   ../public/css and adds only the proposed rules, so what is shown is what the pages would get. */
+* { box-sizing: border-box; }
+body { margin: 0; background: #E7E4DE; color: #2B2724; font: 15px/1.5 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.board { max-width: 1400px; margin: 0 auto; padding: 36px 28px 120px; }
+.board h1 { font: 600 32px/1.2 Georgia, serif; margin: 0 0 10px; }
+.board .lead { max-width: 76ch; margin: 0 0 10px; color: #6E6862; }
+.bar { display: flex; gap: 10px; align-items: center; margin: 18px 0 44px; font-size: 13px; color: #6E6862; }
+.bar button { border: 0; border-radius: 999px; background: #D8D4CC; color: #6E6862; font: 600 13px/1 inherit; padding: 9px 14px; cursor: pointer; }
+.bar button[aria-pressed="true"] { background: #fff; color: #2B2724; }
+.chapter { margin: 0 0 72px; }
+.chapter h2 { font: 600 24px/1.2 Georgia, serif; margin: 0 0 6px; }
+.chapter h2 small { font: 600 12px/1 ui-monospace, Menlo, monospace; letter-spacing: .1em; color: #6E6862; margin-right: 12px; }
+.chapter h3 { font: 600 13px/1 inherit; text-transform: uppercase; letter-spacing: .08em; color: #6E6862; margin: 26px 0 10px; }
+.chapter p { max-width: 76ch; margin: 0 0 8px; color: #6E6862; }
+.frame { overflow-x: auto; border-radius: 10px; background: #2A2724; padding: 8px; }
+.frame iframe { display: block; width: 1320px; height: 700px; border: 0; border-radius: 6px; background: #fff; }
+pre { background: #2B2724; color: #EDE7DD; border-radius: 10px; padding: 16px 18px; font: 12.5px/1.55 ui-monospace, Menlo, Consolas, monospace; overflow: auto; max-width: 100ch; }
+</style>
+</head>
+<body>
+<div class="board">
+  <h1>Settings and Users on a laptop</h1>
+  <p class="lead">Today both pages sit in the 480 px column of <code>main.narrow</code> at every screen size, so a laptop shows the phone layout. The library uses up to 1200 px. These mockups give Settings and Users the same 1200 px from 900 px up; under 900 px they stay as they are today, and the sign-in page keeps its narrow card.</p>
+  <p class="lead">Two layouts for Settings, A and B, each in the Soft and the E-ink look, and one layout for Users. Each frame is 1320 px wide.</p>
+  <div class="bar">Theme <button data-theme="light">Light</button><button data-theme="dark">Dark</button></div>
+
+  <section class="chapter">
+    <h2><small>A</small>Settings as rows</h2>
+    <p>Each section is a row: its heading and explanation on the left, its fields and buttons on the right, with a line between rows. Fields stay at most 520 px wide. In Soft the whole page is one card, as today.</p>
+    <h3>Soft</h3><div class="frame" data-page="settingsA" data-skin="soft"></div>
+    <h3>E-ink</h3><div class="frame" data-page="settingsA" data-skin="eink"></div>
+  </section>
+
+  <section class="chapter">
+    <h2><small>B</small>Settings as cards</h2>
+    <p>Each section is a card of its own, in two columns. Heading, explanation and fields stay stacked as on the phone. In Soft the cards float on the page background; in E-ink they are boxes with the 2 px line.</p>
+    <h3>Soft</h3><div class="frame" data-page="settingsB" data-skin="soft"></div>
+    <h3>E-ink</h3><div class="frame" data-page="settingsB" data-skin="eink"></div>
+  </section>
+
+  <section class="chapter">
+    <h2><small>C</small>Users</h2>
+    <p>The list takes the width, with each user's buttons on one line at the right. Add a user stands beside it in a 360 px column. The buttons sit in a <code>div.row</code> inside the cell; today the cell itself is the flex row, which is what breaks the lines and columns of the table in Safari.</p>
+    <h3>Soft</h3><div class="frame" data-page="users" data-skin="soft"></div>
+    <h3>E-ink</h3><div class="frame" data-page="users" data-skin="eink"></div>
+  </section>
+
+  <section class="chapter">
+    <h2><small>CSS</small>The proposed rules</h2>
+    <p>Shared by all three, then one block per layout.</p>
+    <pre id="css"></pre>
+  </section>
+</div>
+
+<script>
+// ---- The proposed rules. app.css gets the plain ones, soft.css the ones prefixed with the skin.
+const cssShared = `@media (min-width: 900px) {
+  main.narrow.roomy { max-width: 1200px; }
+}`;
+
+const cssA = `/* A: rows */
+@media (min-width: 900px) {
+  .set { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 0 56px; padding: 24px 0; border-top: 2px solid var(--line); }
+  .set h2 { margin-top: 0; }
+  .set .about p { margin: 0 0 10px; }
+  .set .controls { max-width: 520px; }
+  .set .controls > :last-child, .set .controls form > :last-child { margin-bottom: 0; }
+  :root[data-skin="soft"] .set { border-top-width: 1px; }
+  :root[data-skin="soft"] main.narrow.roomy { padding: 30px 36px 10px; }
+}`;
+
+const cssB = `/* B: cards */
+@media (min-width: 900px) {
+  .cards { columns: 2; column-gap: 24px; }
+  .cards > section { break-inside: avoid; margin: 0 0 24px; padding: 20px 22px; border: 2px solid var(--line); border-radius: var(--radius); }
+  .cards h2 { margin-top: 0; }
+  .cards > section > :last-child, .cards form > :last-child { margin-bottom: 0; }
+  :root[data-skin="soft"] main.narrow.roomy { margin-top: 8px; padding: 0 28px; background: none; box-shadow: none; }
+  :root[data-skin="soft"] .cards > section { padding: 24px 26px; border: 0; border-radius: 18px; background: var(--surface); box-shadow: var(--pop-shadow); }
+}`;
+
+const cssUsers = `/* C: users */
+table.list td.actions .row { justify-content: flex-end; }
+@media (min-width: 900px) {
+  .users-cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 48px; align-items: start; }
+  .users-cols h2 { margin-top: 0; }
+  table.list td.actions { width: 1%; white-space: nowrap; }
+  table.list td.actions .row { flex-wrap: nowrap; }
+  :root[data-skin="soft"] main.narrow.roomy { padding: 30px 36px; }
+}`;
+
+// ---- The pages. The copy is the copy of public/settings.html and public/users.html.
+const header = `<header class="app-header"><a class="brand" href="#">eReader</a><span class="spacer"></span><nav><a class="btn small" href="#">Library</a></nav></header>`;
+
+const sections = [
+  { title: 'This device',
+    about: `<p class="muted">Theme, look, text size and weight, margins and line spacing are stored on each device separately, so your e-reader, phone and laptop can each look the way you want. Soft is the look for phones, tablets and laptops; E-ink is the high-contrast look for e-ink readers, which the app picks by itself on a Boox, Kobo or similar.</p>`,
+    controls: `<div class="field"><label>Device name</label><input value="MacBook Pro M5"></div>
+      <div class="field"><label>Theme</label><select><option>Follow system</option></select></div>
+      <div class="field"><label>Look</label><select><option>SKIN</option></select></div>
+      <p class="muted">Text size and weight, margins and line spacing are changed from inside the reader (the <b>Aa</b> button).</p>` },
+  { title: 'Reload',
+    about: `<p class="muted">Added to the home screen, the app has no browser button to reload it. This starts it again from the library, with the newest version of the app. In a book, the <b>Aa</b> button has a Reload too.</p>`,
+    controls: `<button class="btn">Reload the app</button>` },
+  { title: 'Account',
+    about: `<p class="muted">Signed in as Jens (jens) - administrator</p>`,
+    controls: `<div class="field"><label>Font</label><select><option>Bitter</option></select></div>
+      <p class="muted">Your font is used on all your devices. You can also change it from the <b>Aa</b> button in the reader.</p>
+      <form><div class="field"><label>Current password</label><input type="password"></div>
+      <div class="field"><label>New password</label><input type="password"></div>
+      <button class="btn primary" type="button">Change password</button></form>` },
+  { title: 'Catalogues',
+    about: `<p class="muted">Book details and covers come from Open Library, which needs no key, and from Hardcover when the server has a token for it. Hardcover knows series and their order well, and tells the library which books a series lacks. Make a token at <a href="#">hardcover.app</a> (read:catalog is enough), paste it here, and it is used at once. It is kept on this server, in the database.</p>`,
+    controls: `<p class="muted">A token is set. It was checked today at 14:02.</p>
+      <form><div class="field"><label>Hardcover API token</label><input type="password" placeholder="Paste the token, with or without Bearer"></div>
+      <div class="row"><button class="btn primary" type="button">Save</button><button class="btn" type="button">Check</button><button class="btn danger" type="button">Remove</button></div></form>` },
+  { title: 'Offline',
+    about: `<p class="muted">Every book you open is kept on this device, so you can read it without a connection. Offline, the library fades the books that aren't here. Reading positions sync when you are back online.</p>`,
+    controls: `<button class="btn">Clear cached books on this device</button>` },
+];
+
+const users = [
+  { name: 'Anders', user: 'anders', role: 'Reader', reading: '0 books', me: false },
+  { name: 'Jens', user: 'jens', role: 'Admin', reading: '5 books<br><span class="muted">last 14:07</span>', me: true },
+  { name: 'Maria', user: 'maria', role: 'Reader', reading: '2 books<br><span class="muted">last 12 Nov</span>', me: false },
+];
+
+const pages = {
+  settingsA: { css: cssA, body: `<h1>Settings</h1>${sections.map((s) => `
+    <section class="set"><div class="about"><h2>${s.title}</h2>${s.about}</div><div class="controls">${s.controls}</div></section>`).join('')}` },
+  settingsB: { css: cssB, body: `<h1>Settings</h1><div class="cards">${sections.map((s) => `
+    <section><h2>${s.title}</h2>${s.about}${s.controls}</section>`).join('')}</div>` },
+  users: { css: cssUsers, body: `<h1>Users</h1>
+    <p class="muted">Every user can read every book. Reading positions and bookmarks are kept per user.</p>
+    <div class="users-cols">
+      <table class="list"><thead><tr><th>User</th><th>Role</th><th>Reading</th><th></th></tr></thead><tbody>${users.map((u) => `
+        <tr><td><b>${u.name}</b><br><span class="muted">${u.user}</span></td><td>${u.role}</td><td>${u.reading}</td>
+        <td class="actions"><div class="row"><button class="btn small">Reset password</button><button class="btn small">${u.role === 'Admin' ? 'Make reader' : 'Make admin'}</button>${u.me ? '' : '<button class="btn small danger">Delete</button>'}</div></td></tr>`).join('')}</tbody></table>
+      <form><h2>Add a user</h2>
+        <div class="field"><label>Username</label><input></div>
+        <div class="field"><label>Display name</label><input></div>
+        <div class="field"><label>Password</label><input></div>
+        <div class="field"><label class="row" style="font-weight:600"><input type="checkbox" style="width:22px;height:22px"> Administrator</label></div>
+        <button class="btn primary" type="button">Add user</button></form>
+    </div>` },
+};
+
+let theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+
+function build(frame) {
+  const page = pages[frame.dataset.page];
+  const skin = frame.dataset.skin;
+  const body = page.body.replace('SKIN', skin === 'soft' ? 'Soft' : 'E-ink');
+  const iframe = document.createElement('iframe');
+  iframe.srcdoc = `<!doctype html><html lang="en" data-skin="${skin}" data-theme="${theme}"><head><meta charset="utf-8">
+    <link rel="stylesheet" href="../public/css/fonts.css"><link rel="stylesheet" href="../public/css/app.css"><link rel="stylesheet" href="../public/css/soft.css">
+    <style>${cssShared}\n${page.css}</style></head><body>${header}<main class="page narrow roomy">${body}</main></body></html>`;
+  // Each frame is as tall as its page
+  iframe.addEventListener('load', () => {
+    const fit = () => { try { iframe.style.height = '0'; iframe.style.height = iframe.contentDocument.documentElement.scrollHeight + 24 + 'px'; } catch (e) { /* keeps the height from the stylesheet */ } };
+    fit(); setTimeout(fit, 400);
+  });
+  frame.replaceChildren(iframe);
+}
+
+function setTheme(t) {
+  theme = t;
+  document.querySelectorAll('.bar button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.theme === t)));
+  document.querySelectorAll('.frame').forEach(build);
+}
+document.querySelectorAll('.bar button').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.theme)));
+document.getElementById('css').textContent = [cssShared, cssA, cssB, cssUsers].join('\n\n');
+setTheme(theme);
+</script>
+</body>
+</html>

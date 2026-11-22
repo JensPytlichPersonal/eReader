@@ -116,6 +116,23 @@ main.narrow { max-width: 480px; }
 h1, h2, h3 { line-height: 1.2; }
 h1 { font-size: 24px; margin: 8px 0 16px; }
 h2 { font-size: 20px; margin: 20px 0 10px; }
+/* Settings and Users (main.narrow.roomy) keep the phone's column up to 900 px and take the library's width from
+   there; sign in keeps the column. Settings shows each section as a row, its heading and explanation beside its
+   fields, and Users the list with Add a user beside it. Under 900 px .set, .about, .controls and .users-cols do nothing. */
+@media (min-width: 900px) {
+  main.narrow.roomy { max-width: 1200px; }
+  .set { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 0 56px; padding: 24px 0; border-top: 2px solid var(--line); }
+  /* The page has its own room under the last row */
+  .set:last-child { padding-bottom: 0; }
+  .set h2 { margin-top: 0; }
+  .set .about p { margin: 0 0 10px; }
+  .set .controls { max-width: 520px; }
+  /* The first control starts level with the heading beside it, also where it is a line of text (the token's status) */
+  .set .controls > :first-child { margin-top: 0; }
+  .set .controls > :last-child, .set .controls form > :last-child { margin-bottom: 0; }
+  .users-cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 48px; align-items: start; }
+  .users-cols h2 { margin-top: 0; }
+}
 
 /* Library views: every book, or books grouped into series and collections */
 .tabs { display: flex; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 2px solid var(--line); }
@@ -561,8 +578,25 @@ h2 { font-size: 20px; margin: 20px 0 10px; }
 @media (hover: hover) { .earlier-covers .cover-choice:hover img { filter: var(--cover-ring); } }
 
 /* Tables */
-table.list { width: 100%; border-collapse: collapse; }
+/* display: the library's .list above is a flex column, which would split the head and the body of a table into two that share no columns */
+table.list { display: table; width: 100%; border-top: 0; border-collapse: collapse; }
 table.list th, table.list td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 table.list th { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+/* A user's buttons, at the right end of the row. From 1200 px up they keep to one line and the column is only as wide
+   as they need. Under that, beside Add a user, one line of them would push the table into the form, so they wrap. */
+table.list td.actions .row { justify-content: flex-end; }
+/* On a phone the four columns are wider than the screen: each user is a block, the buttons on a line of their own */
+@media (max-width: 599px) {
+  table.list, table.list tbody { display: block; }
+  table.list thead { display: none; }
+  table.list tr { display: flex; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--line); }
+  table.list td { border-bottom: 0; }
+  table.list td:first-child { flex: 1; }
+  table.list td.actions { flex: 0 0 100%; padding-top: 0; }
+}
+@media (min-width: 1200px) {
+  table.list td.actions { width: 1%; white-space: nowrap; }
+  table.list td.actions .row { flex-wrap: nowrap; }
+}
 
 .toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: var(--radius); z-index: 50; max-width: 90vw; text-align: center; font-weight: 600; }
