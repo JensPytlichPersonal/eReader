@@ -84,8 +84,14 @@ function layout() {
   root.setProperty('--page-h', `${innerH}px`);
   root.setProperty('--gap', `${gap}px`);
   els.content.style.width = `${width}px`;
-  els.content.style.marginLeft = `${Math.floor((innerW - width) / 2)}px`;
+  const side = Math.floor((innerW - width) / 2);
+  els.content.style.marginLeft = `${side}px`;
   els.content.style.columnCount = String(cols);
+  // On a screen wider than the page, the next and previous columns would show beside it, cut off at
+  // the screen's edge. Cut the view at the page's own margins so only whole pages are seen.
+  const clip = side > 0 ? `inset(0 ${innerW - side - width}px 0 ${side}px)` : '';
+  vp.style.webkitClipPath = clip;
+  vp.style.clipPath = clip;
 }
 
 const stride = () => state.width + state.gap;
