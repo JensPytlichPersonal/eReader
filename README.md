@@ -33,8 +33,8 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   and Bitter switch to their own heavier faces, bold text included, up to the heaviest each font has.
   Atkinson Hyperlegible, OpenDyslexic and the fonts installed on a device get a thin outline instead,
   which adds about as much ink.
-- **Any screen size.** Single column on phones and e-readers, two columns on wide screens (or force
-  either). Turn pages by tapping the left/right edge, swiping, or with the keyboard.
+- **Any screen size.** Single column on phones and e-readers, two or more columns on wide screens (or
+  force one or two). Turn pages by tapping the left/right edge, swiping, or with the keyboard.
 - **Series and collections.** In the library a series is one stack of books, topped by the one you're
   on; opening it lists the books in reading order with a button that continues where you are. Series
   are picked up from the books themselves, and any books can be grouped by hand. A book missing from
@@ -220,8 +220,9 @@ kept the next time they open online. Reading positions sync when the connection 
 
 **Laptop.** Arrow keys, space, Page Up/Down turn pages; `t` opens the contents, `b` bookmarks, `s`
 the display settings, `m` the menu, `+`/`-` change the text size, Home/End jump to the start or end.
-Wide windows show two columns; switch to one column in the display settings if you prefer.
-A window wider than two columns shows only those two, centred; the pages before and after stay out of sight.
+Wide windows show two columns, and a very wide window shows three or more when another whole column of
+the same width fits; a column that would only fit in part is not shown. Switch to one or two columns in
+the display settings if you prefer.
 From 900 pixels wide, Settings and Users use the library's width. Settings shows each section as a row,
 its explanation on the left and its fields on the right. Users shows the list with *Add a user* beside it.
 On narrower screens both pages are one column, as on a phone.

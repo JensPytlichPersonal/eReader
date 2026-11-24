@@ -71,11 +71,13 @@ function layout() {
   const padL = parseFloat(cs.paddingLeft), padR = parseFloat(cs.paddingRight), padT = parseFloat(cs.paddingTop), padB = parseFloat(cs.paddingBottom);
   const innerW = Math.max(100, Math.floor(vp.clientWidth - padL - padR));
   const innerH = Math.max(100, Math.floor(vp.clientHeight - padT - padB));
-  let cols = settings.columns === 'auto' ? (innerW >= 900 ? 2 : 1) : parseInt(settings.columns, 10) || 1;
   const gap = Math.max(32, Math.round(padL + padR));
-  let width = innerW;
-  if (cols === 1) width = Math.min(innerW, Math.round(settings.fontSize * 42));
-  if (cols === 2) width = Math.min(innerW, Math.round(settings.fontSize * 42) * 2 + gap);
+  // A column is at most 42 em wide. Auto shows two columns from 900 pixels, and more when the window
+  // has room for another whole column of that width.
+  const maxColW = Math.round(settings.fontSize * 42);
+  let cols = parseInt(settings.columns, 10) || 1;
+  if (settings.columns === 'auto') cols = innerW >= 900 ? Math.max(2, Math.floor((innerW + gap) / (maxColW + gap))) : 1;
+  let width = Math.min(innerW, maxColW * cols + gap * (cols - 1));
   const colW = Math.floor((width - gap * (cols - 1)) / cols);
   width = colW * cols + gap * (cols - 1);
   Object.assign(state, { cols, colW, gap, width, height: innerH });
