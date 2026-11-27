@@ -504,6 +504,29 @@
 :root[data-skin="soft"] .settings .check input:checked { background: var(--accent); }
 :root[data-skin="soft"] .settings .check input:checked::after { transform: translateX(16px); }
 :root[data-skin="soft"] .bookmarks .bm { border-bottom: 1px solid var(--line); }
+/* Searching the book: the box a field with the magnifier, as in the library, the places like the contents under
+   labels for their chapters, and the place chosen tinted on the page. The tint is blended with the page, so the words
+   on it keep their colour in every theme; it stays still, like the page. */
+:root[data-skin="soft"] #topbar svg.icon { width: 19px; height: 19px; stroke-width: 1.8; }
+:root[data-skin="soft"] .search-form { padding: 0 12px; }
+:root[data-skin="soft"] .search-form input {
+  height: var(--ctl); padding: 0 12px 0 36px; border: 1px solid var(--line); border-radius: var(--radius); background-color: var(--bg); color: var(--fg); font-size: 16px;
+  background-image: var(--search-icon); background-repeat: no-repeat; background-position: 12px center; background-size: 18px 18px;
+}
+:root[data-skin="soft"] .search-form input::placeholder { color: var(--muted); opacity: 1; }
+:root[data-skin="soft"] .search-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+:root[data-skin="soft"] .panel .search-status { min-height: 0; padding: 10px 22px 4px; border-bottom: 0; font-size: 13px; }
+:root[data-skin="soft"] .search .hit-title { margin: 0; padding: 16px 10px 6px; border-bottom: 0; font-family: var(--ui-font); font-size: 11.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+:root[data-skin="soft"] .search .hit { padding: 10px; border-bottom: 0; border-radius: 8px; font-size: 14.5px; line-height: 1.4; }
+@media (hover: hover) {
+  :root[data-skin="soft"] .search .hit:hover { background: var(--surface-2); }
+}
+:root[data-skin="soft"] .search .hit.current { padding-left: 10px; border-left: 0; background: var(--accent-soft); color: var(--accent-ink); }
+:root[data-skin="soft"] .search .hit mark { margin: 0 -2px; padding: 0 2px; border-radius: 3px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; text-decoration: none; }
+:root[data-skin="soft"] .search .hit.current mark { background: var(--surface); }
+:root[data-skin="soft"] .search .hit .pct { font-size: 12px; }
+:root[data-skin="soft"] .book-content .hit-mark { box-sizing: border-box; border-bottom: 0; border-radius: 3px; background: var(--accent-soft); mix-blend-mode: multiply; }
+:root[data-skin="soft"][data-theme="dark"] .book-content .hit-mark { mix-blend-mode: screen; }
 /* Fixing the text: the bar like the others with Done in the accent, the paragraphs being fixed ringed in it, the box a field */
 :root[data-skin="soft"] #fixbar { border-bottom-width: 1px; }
 :root[data-skin="soft"] #fixbar .title { padding: 0 6px; font-weight: 600; font-size: 14px; }

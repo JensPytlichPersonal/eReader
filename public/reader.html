@@ -24,6 +24,7 @@
 <header id="topbar" class="bar hidden">
   <a class="btn icon" href="/" id="btn-back" aria-label="Back to library">&#8592;</a>
   <div class="title" id="title"></div>
+  <button class="btn icon" id="btn-search" aria-label="Search"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
   <button class="btn icon" id="btn-bookmark" aria-label="Bookmarks">&#9733;</button>
   <button class="btn icon" id="btn-toc" aria-label="Contents">&#9776;</button>
   <button class="btn icon" id="btn-settings" aria-label="Display settings"><b>Aa</b></button>
@@ -52,6 +53,15 @@
     <button class="btn primary" id="btn-add-bookmark" style="width:100%;margin-bottom:12px">Bookmark this page</button>
     <div id="bookmarks"></div>
   </div>
+</aside>
+<aside id="panel-search" class="panel search hidden" aria-label="Search">
+  <header><span>Search</span><button class="btn small" data-close>Close</button></header>
+  <form class="search-form" id="search-form" role="search">
+    <input type="search" id="search-input" aria-label="Words to find" placeholder="A word or phrase" maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+    <button class="btn" type="submit">Search</button>
+  </form>
+  <p class="search-status" id="search-status" role="status"></p>
+  <div class="body" id="search-hits"></div>
 </aside>
 <aside id="panel-fix" class="panel fix hidden" aria-label="Fix text">
   <header><span>Fix text</span><button class="btn small" data-close>Close</button></header>

@@ -17,6 +17,7 @@ const els = {
   toc: $('toc'), bookmarks: $('bookmarks'), backdrop: $('panel-backdrop'), tapHint: $('tap-hint'),
   fixbar: $('fixbar'), fixText: $('fix-text'), fixHint: $('fix-hint'), fixAdd: $('fix-add'),
   fixBefore: $('fix-add-before'), fixAfter: $('fix-add-after'), fixSave: $('fix-save'),
+  searchForm: $('search-form'), searchInput: $('search-input'), searchStatus: $('search-status'), searchHits: $('search-hits'),
 };
 
 let settings = loadSettings();
@@ -36,6 +37,10 @@ const state = {
 // Fixing the text (see below): whether fix mode is on, the passage open in the fix panel, whether it is being
 // saved, whether a fix was saved since fix mode began, and the paragraphs of the section shown, as last counted.
 const fix = { on: false, passage: null, saving: false, saved: false, counted: null };
+// Searching the book (see below): the words last searched for, the version of the book the places found are in
+// (0 for none), the places and what the status line says of them, the place last chosen, the number of the search
+// last sent, where the list was scrolled to, and the place marked on the page.
+const search = { query: '', version: 0, hits: [], status: '', current: -1, token: 0, scroll: 0, marked: null };
 
 // ---------------------------------------------------------------- utilities
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
@@ -415,6 +420,7 @@ async function restore(locator, { record = false } = {}) {
 }
 
 async function navigateTo(target, { pushHistory = false } = {}) {
+  clearHitMark();
   if (pushHistory) state.history.push({ ...state.locator });
   if (state.mode === 'pages') {
     if (target.section !== state.section || !state.nodes.length) { const ok = await loadSection(target.section); if (!ok) return; }
@@ -437,6 +443,7 @@ async function navigateTo(target, { pushHistory = false } = {}) {
 }
 
 async function next() {
+  clearHitMark();
   if (state.mode === 'pages') return showPdfPage(state.pdfPage + 1, { record: true });
   if (state.page < state.pageCount - 1) showPage(state.page + 1);
   else if (state.section < sections().length - 1) { if (await loadSection(state.section + 1)) showPage(0); }
@@ -444,6 +451,7 @@ async function next() {
 }
 
 async function prev() {
+  clearHitMark();
   if (state.mode === 'pages') return showPdfPage(state.pdfPage - 1, { record: true });
   if (state.page > 0) showPage(state.page - 1);
   else if (state.section > 0) { if (await loadSection(state.section - 1)) showPage(state.pageCount - 1); }
@@ -463,7 +471,9 @@ async function relayout() {
   placeFootnotes();
   measure();
   await restore(loc);
-  if (fix.passage) markFixPassage(); // the page was drawn again
+  // The page was drawn again.
+  if (fix.passage) markFixPassage();
+  drawHitMark();
 }
 
 // ---------------------------------------------------------------- footnotes at the foot of their column
@@ -725,6 +735,7 @@ async function adoptRemote(p, version) {
   const same = p.section === state.locator.section && Math.abs(p.offset - state.locator.offset) < 40;
   if (same) return;
   state.dirty = false;
+  clearHitMark();
   await restore({ section: p.section, offset: p.offset });
   state.percent = p.percent;
   try { localStorage.setItem(localKey, JSON.stringify({ section: p.section, offset: p.offset, percent: p.percent, updatedAt: p.updatedAt, version: ver() })); } catch { /* ignore */ }
@@ -844,6 +855,7 @@ function openPanel(id) {
   els.backdrop.classList.remove('hidden');
   if (id === 'panel-toc') markCurrentToc();
   if (id === 'panel-bookmarks') renderBookmarks();
+  if (id === 'panel-search') showSearch();
   return true;
 }
 /** Closes the panels. A fix not saved is left behind only when the admin says so; false when they did not. */
@@ -921,6 +933,183 @@ function updateReturnButton() {
     document.body.appendChild(returnBtn);
   }
   returnBtn.classList.toggle('hidden', !state.history.length);
+}
+
+// ---------------------------------------------------------------- searching the book
+// The server searches the book (see server/search.js), one request for each search, so a slow device only sends the
+// words and draws the list. The places it answers are counted in the sections of one version of the book, so the list
+// is kept while that version is open and dropped when the book changes under the reader. The place chosen is marked
+// on the page by boxes laid over its words, not by wrapping them in an element, which would split the text nodes
+// places are counted in. The mark stays until the page is turned, and is drawn again when the page is laid out again.
+const SEARCH_MIN = 2; // MIN_QUERY in server/search.js
+
+function foundText(total, shown, query) {
+  if (!total) return `No places found for "${query}".`;
+  if (total > shown) return `Showing the first ${shown} of ${total} places.`;
+  return total === 1 ? '1 place' : `${total} places`;
+}
+
+/** The status line and the places, under the name of the chapter each is in. */
+function renderSearch() {
+  els.searchStatus.textContent = search.status;
+  let title = null;
+  els.searchHits.innerHTML = search.hits.map((h, i) => {
+    const head = h.title !== title ? `<h3 class="hit-title">${escapeHtml(h.title)}</h3>` : '';
+    title = h.title;
+    return `${head}<button class="hit${i === search.current ? ' current' : ''}" data-i="${i}"><span class="snip">${escapeHtml(h.before)}<mark>${escapeHtml(h.match)}</mark>${escapeHtml(h.after)}</span><span class="pct">${Math.round(h.percent * 100)}%</span></button>`;
+  }).join('');
+}
+
+/** The panel as it was left, at the place last chosen, and the box ready for typing. */
+function showSearch() {
+  if (search.version && search.version !== ver()) dropSearch();
+  const current = els.searchHits.querySelector('.hit.current');
+  if (current) current.scrollIntoView({ block: 'center' });
+  else els.searchHits.scrollTop = search.scroll;
+  // On a touch screen this brings up the keyboard, and the browser keeps the box in sight above it.
+  els.searchInput.focus();
+  if (matchMedia('(pointer: fine)').matches) els.searchInput.select();
+}
+
+/** Forgets the places found: the book they were found in has changed under the reader. */
+function dropSearch() {
+  clearHitMark();
+  Object.assign(search, { version: 0, hits: [], current: -1, scroll: 0, status: search.query ? 'The text has changed. Search again.' : '' });
+  renderSearch();
+}
+
+/** Sends the words in the box to the server, and lists the places it finds. A newer search wins over one on its way. */
+async function runSearch() {
+  const query = collapse(els.searchInput.value);
+  if (query.length < SEARCH_MIN) {
+    els.searchStatus.textContent = `Type at least ${SEARCH_MIN} characters.`;
+    return;
+  }
+  const token = ++search.token;
+  clearHitMark();
+  Object.assign(search, { query, version: 0, hits: [], current: -1, scroll: 0, status: 'Searching…' });
+  renderSearch();
+  // On a touch screen the keyboard would cover the list.
+  if (!matchMedia('(pointer: fine)').matches) els.searchInput.blur();
+  let answer;
+  try {
+    answer = await api(`/api/books/${bookId}/search?q=${encodeURIComponent(query)}`);
+  } catch (err) {
+    if (token !== search.token) return;
+    search.status = err instanceof ApiError && err.body?.error ? err.message : 'Search needs a connection.';
+    renderSearch();
+    return;
+  }
+  if (token !== search.token) return;
+  if (answer.version > 0 && ver() > 0 && answer.version !== ver()) {
+    // Found in other sections than those open here.
+    search.status = 'The book has changed since it was opened. Reload it to search it.';
+  } else {
+    Object.assign(search, { version: ver(), hits: answer.hits, status: foundText(answer.total, answer.hits.length, query) });
+  }
+  renderSearch();
+}
+
+/** Goes to a place found, so the return button comes back, and marks its words on the page. */
+async function goToHit(i) {
+  const hit = search.hits[i];
+  if (!hit || !closePanels()) return;
+  toggleBars(false);
+  search.current = i;
+  els.searchHits.querySelectorAll('.hit').forEach((b) => b.classList.toggle('current', b.dataset.i === String(i)));
+  await navigateTo({ section: hit.section, offset: hit.offset }, { pushHistory: true });
+  updateReturnButton();
+  // The pages of a PDF have no text to mark: the page is shown.
+  if (state.mode !== 'text' || state.section !== hit.section) return;
+  const copy = noteCopy(hit.offset);
+  if (copy) showPage(pageForElement(copy.el));
+  search.marked = hit;
+  drawHitMark();
+}
+
+/** The places of the text nodes and pictures in an element, counted as indexNodes() counts them. */
+function placesIn(root) {
+  const nodes = [];
+  const starts = [];
+  let at = 0;
+  const walk = (parent) => {
+    for (const n of parent.childNodes) {
+      if (n.nodeType === Node.TEXT_NODE) {
+        if (n.data.length) { nodes.push(n); starts.push(at); at += n.data.length; }
+      } else if (n.nodeType === Node.ELEMENT_NODE) {
+        if (n.tagName === 'IMG') { nodes.push(n); starts.push(at); at += 1; } else walk(n);
+      }
+    }
+  };
+  walk(root);
+  return { nodes, starts };
+}
+
+/**
+ * Where a footnote at the foot of a page shows a place in the note: with the notes placed by their markers (see
+ * placeFootnotes), the notes at the end of the section are hidden and a copy of each is shown. { el, start }, the copy
+ * and the place where its note starts, or null.
+ */
+function noteCopy(offset) {
+  if (!els.content.classList.contains('fn-inline') || !state.nodes.length) return null;
+  const node = state.nodes[nodeIndexForOffset(offset)];
+  const note = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node)?.closest('.endnotes p.footnote[id]');
+  const el = note && els.content.querySelector(`.fn-area [data-fn="${CSS.escape(note.id)}"]`);
+  return el ? { el, start: offsetOfElement(note) } : null;
+}
+
+/** The text nodes on the page the words of a place found are in, and which of their characters: [{ node, start, end }]. */
+function hitPieces({ offset, length }) {
+  const copy = noteCopy(offset);
+  // A copy of a note holds the same nodes as the note, so its places are counted the same way.
+  const { nodes, starts } = copy ? placesIn(copy.el) : state;
+  const from = copy ? offset - copy.start : offset;
+  const to = from + length;
+  const out = [];
+  for (let i = copy ? 0 : nodeIndexForOffset(from); i < nodes.length && starts[i] < to; i++) {
+    const node = nodes[i];
+    if (node.nodeType !== Node.TEXT_NODE) continue;
+    const a = Math.max(0, from - starts[i]);
+    const b = Math.min(node.data.length, to - starts[i]);
+    if (b > a) out.push({ node, start: a, end: b });
+  }
+  return out;
+}
+
+/**
+ * Marks the place last chosen on the page: a box over each line of its words, in the content, so it moves with the
+ * page. The boxes hold no text and come after the book's own elements, so the places and the paragraphs on the page
+ * are counted as before (see indexNodes and sectionParagraphs).
+ */
+function drawHitMark() {
+  els.content.querySelectorAll('.hit-mark').forEach((e) => e.remove());
+  const hit = search.marked;
+  if (!hit || state.mode !== 'text' || hit.section !== state.section) return;
+  const box = els.content.getBoundingClientRect();
+  const range = document.createRange();
+  const marks = document.createDocumentFragment();
+  for (const { node, start, end } of hitPieces(hit)) {
+    range.setStart(node, start);
+    range.setEnd(node, end);
+    for (const r of range.getClientRects()) {
+      if (r.width < 1 || r.height < 1) continue;
+      const mark = document.createElement('div');
+      mark.className = 'hit-mark';
+      mark.style.left = `${r.left - box.left}px`;
+      mark.style.top = `${r.top - box.top}px`;
+      mark.style.width = `${r.width}px`;
+      mark.style.height = `${r.height}px`;
+      marks.appendChild(mark);
+    }
+  }
+  els.content.appendChild(marks);
+}
+
+/** Takes the mark off the page: the page was turned, or the reader went elsewhere. */
+function clearHitMark() {
+  if (!search.marked) return;
+  search.marked = null;
+  els.content.querySelectorAll('.hit-mark').forEach((e) => e.remove());
 }
 
 // ---------------------------------------------------------------- settings panel
@@ -1282,6 +1471,7 @@ async function saveFix() {
   state.manifest = answer.manifest;
   state.book = answer.book;
   state.cache.clear();
+  dropSearch(); // its places were counted in the text before the fix
   fix.saved = true;
   fix.passage = null; // saved, so closed without asking
   markFixPassage();
@@ -1363,6 +1553,8 @@ function bindInput() {
   document.addEventListener('keydown', (e) => {
     // The fix panel takes no keys but Escape, which asks before leaving a fix behind, also from the box.
     if (fix.passage) { if (e.key === 'Escape') closePanels(); return; }
+    // Escape in the search box closes its panel, which keeps the words, rather than emptying the box.
+    if (e.target === els.searchInput && e.key === 'Escape') { e.preventDefault(); closePanels(); return; }
     if (e.target.matches('input, select, textarea')) return;
     const anyPanel = [...document.querySelectorAll('.panel')].some((p) => !p.classList.contains('hidden'));
     switch (e.key) {
@@ -1374,6 +1566,7 @@ function bindInput() {
       case 't': openPanel('panel-toc'); break;
       case 'b': openPanel('panel-bookmarks'); break;
       case 's': openPanel('panel-settings'); break;
+      case '/': e.preventDefault(); openPanel('panel-search'); break; // not typed into the box it opens
       case 'm': toggleBars(); break;
       case '+': case '=': settings.fontSize = clamp(settings.fontSize + 1, 12, 36); saveSettings(settings); $('size-out').textContent = `${settings.fontSize}px`; relayout(); break;
       case '-': settings.fontSize = clamp(settings.fontSize - 1, 12, 36); saveSettings(settings); $('size-out').textContent = `${settings.fontSize}px`; relayout(); break;
@@ -1384,6 +1577,14 @@ function bindInput() {
   $('btn-toc').addEventListener('click', () => openPanel('panel-toc'));
   $('btn-bookmark').addEventListener('click', () => openPanel('panel-bookmarks'));
   $('btn-settings').addEventListener('click', () => openPanel('panel-settings'));
+  $('btn-search').addEventListener('click', () => openPanel('panel-search'));
+  // Only when the search is sent, not as each letter is typed: an e-ink screen is slow to draw a new list.
+  els.searchForm.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
+  els.searchHits.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-i]');
+    if (b) goToHit(parseInt(b.dataset.i, 10));
+  });
+  els.searchHits.addEventListener('scroll', () => { search.scroll = els.searchHits.scrollTop; }, { passive: true });
   $('btn-add-bookmark').addEventListener('click', () => addBookmark().catch((e) => toast(e.message)));
   document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closePanels));
   els.backdrop.addEventListener('click', closePanels);

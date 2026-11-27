@@ -20,7 +20,9 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
   padding: calc(var(--margin-y) + var(--safe-top)) calc(var(--margin-x) + var(--safe-right)) calc(var(--margin-y) + var(--safe-bottom)) calc(var(--margin-x) + var(--safe-left));
   overflow: hidden;
 }
+/* Relative, so the mark of a place found (.hit-mark) is placed in the content on every page, the first too */
 #content {
+  position: relative;
   width: var(--page-w);
   height: var(--page-h);
   column-width: var(--page-w);
@@ -86,6 +88,7 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
 }
 #topbar { top: 0; padding-top: calc(8px + var(--safe-top)); padding-bottom: 8px; border-bottom-width: 2px; }
 #topbar .title { flex: 1; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
+#topbar svg.icon { display: block; width: 20px; height: 20px; stroke-width: 2.6; }
 #bottombar { bottom: 0; padding-top: 8px; padding-bottom: calc(10px + var(--safe-bottom)); border-top-width: 2px; flex-direction: column; align-items: stretch; gap: 6px; }
 #bottombar .row { display: flex; align-items: center; gap: 10px; }
 #bottombar .row .pos { flex: 1; font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -128,6 +131,23 @@ body.reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; touch-actio
 .bookmarks .bm { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--line); }
 .bookmarks .bm button.go { flex: 1; text-align: left; padding: 10px 8px; border: 0; background: none; color: var(--fg); font-size: 15px; }
 .bookmarks .bm button.del { width: 44px; height: 44px; border: 0; background: none; color: var(--danger); font-size: 20px; }
+
+/* Searching the book: the box and its button above the list, which scrolls, and the places found under the names of
+   their chapters, each with its words in bold. Spacing in a row is margins and grid gaps, which older browsers have. */
+.search-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-gap: 8px; padding: 12px 12px 0; }
+/* 16 px at least, or iOS zooms in on the box */
+.search-form input { width: 100%; height: var(--ctl); padding: 6px 10px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-size: 16px; -webkit-appearance: none; appearance: none; }
+.search-form input:focus { border-color: var(--fg); outline: none; }
+.panel .search-status { min-height: 36px; margin: 0; padding: 8px 12px; border-bottom: 2px solid var(--line); font-size: 14px; line-height: 20px; color: var(--muted); }
+.search .body { padding-top: 0; }
+.search .hit-title { margin: 14px 0 0; padding: 0 8px 6px; border-bottom: 2px solid var(--line); font-size: 14px; font-weight: 700; line-height: 1.3; }
+.search .hit { display: flex; align-items: flex-start; width: 100%; padding: 10px 8px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--fg); font-size: 15px; line-height: 1.35; text-align: left; }
+.search .hit .snip { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }
+.search .hit .pct { flex: none; margin-left: 10px; color: var(--muted); font-size: 13px; }
+.search .hit mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; }
+.search .hit.current { padding-left: 4px; border-left: 4px solid var(--fg); background: var(--panel); }
+/* The place chosen, marked on the page by a thick line under its words. Still, like the rest of the page. */
+.book-content .hit-mark { position: absolute; box-sizing: content-box; margin: 0; padding: 0; border-bottom: 3px solid var(--fg); pointer-events: none; }
 
 /* Fixing the text (admins): a bar at the top while fixing, the paragraphs being fixed outlined, and the box in a panel */
 /* One slim row, so it fits in the margins above and below the page (see makeFixRoom in reader.js). Where the bar is
