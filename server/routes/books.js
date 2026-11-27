@@ -10,8 +10,9 @@ import { sniffImage, detailsFromFilename } from '../converters/bundle.js';
 import { cleanSeriesName, knownSeriesName, parsePlace } from '../converters/series.js';
 import { LookupError } from '../lookup.js';
 import { fingerprint } from '../duplicates.js';
-import { FixError, parseFixInput } from '../fixes.js';
+import { FixError, parseFixInput, collapse } from '../fixes.js';
 import { placeAtPercent } from '../places.js';
+import { searchBook, foldQuery, MIN_QUERY, MAX_QUERY } from '../search.js';
 import { readBookFiles, buildEpub, epubFileName, attachmentHeader } from '../epub-export.js';
 
 // A cover picked by hand. The app scales pictures down before sending them, so this only stops mistakes.
@@ -344,6 +345,34 @@ export function bookRoutes(db, auth, config, processor, { series, genres, fixes 
       'Content-Disposition': attachmentHeader(epubFileName(read.book)),
     });
     res.send(epub);
+  });
+
+  // Finds a word or phrase in the book's text, ?q=, for every reader (see search.js). Answers the places it
+  // occurs in book order, the first MAX_HITS of them in `hits` and how many there are in `total`, with the
+  // `version` of the book they were found in (see currentVersion): a reader with another version open has
+  // other sections, where these places are not.
+  r.get('/:id/search', async (req, res) => {
+    const b = stmts.get.get(req.params.id);
+    if (!b) return res.status(404).json({ error: 'No such book' });
+    const query = typeof req.query.q === 'string' ? req.query.q : '';
+    const size = foldQuery(query).length;
+    if (size < MIN_QUERY) return res.status(400).json({ error: `Type at least ${MIN_QUERY} characters to search for` });
+    if (size > MAX_QUERY) return res.status(400).json({ error: `Search for ${MAX_QUERY} characters at most` });
+    const notReady = (book) => (book.status === 'processing'
+      ? res.status(409).json({ error: 'The book is being converted. Try again in a moment.' })
+      : res.status(409).json({ error: 'The book could not be converted, so it cannot be searched' }));
+    if (b.status !== 'ready') return notReady(b);
+    // Read under the book's lock, so a fix or a conversion never changes the sections halfway through.
+    const found = await fixes.withBookLock(b.id, async () => {
+      const book = stmts.get.get(b.id);
+      const manifest = book?.status === 'ready' ? await readManifest(b.id) : null;
+      if (!manifest) return { book };
+      const version = Number.isFinite(manifest.convertedAt) && manifest.convertedAt > 0 ? manifest.convertedAt : null;
+      return { book, version, ...(await searchBook(bookDir(b.id), manifest, query)) };
+    });
+    if (!found.book) return res.status(404).json({ error: 'No such book' }); // deleted meanwhile
+    if (!found.hits) return notReady(found.book);
+    res.json({ query: collapse(query), version: found.version, total: found.total, hits: found.hits });
   });
 
   r.post('/:id/reprocess', (req, res) => {

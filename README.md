@@ -56,6 +56,8 @@ desktop browser. No animations, big tap targets, high contrast, paginated text.
   the ☰ button so the books fill the screen. The back arrow in a book puts you at the top of the Books
   tab, wherever the book was opened from.
 - **Table of contents, bookmarks, progress slider, chapter titles** and a "who else is reading" peek.
+- **Search a book.** Find a word or a phrase in the book you are reading. The places are listed under their
+  chapters, and choosing one goes there and marks the words on the page.
 - **Upload from the app**: books, or whole folders of them, with a button or by drag and drop.
   Conversion runs in the background. The same file is never added twice, and the same book in another
   file is flagged as a possible duplicate.
@@ -216,10 +218,10 @@ blank on a device.
 and reads without a connection (this needs https). Offline, the library shows the books from the last
 time it was online, and fades the ones this device doesn't have. Books opened before this was added are
 kept the next time they open online. Reading positions sync when the connection is back. A PDF's
-*Original pages* view needs a connection.
+*Original pages* view needs a connection, and so does searching a book.
 
 **Laptop.** Arrow keys, space, Page Up/Down turn pages; `t` opens the contents, `b` bookmarks, `s`
-the display settings, `m` the menu, `+`/`-` change the text size, Home/End jump to the start or end.
+the display settings, `/` the search, `m` the menu, `+`/`-` change the text size, Home/End jump to the start or end.
 Wide windows show two columns, and a very wide window shows three or more when another whole column of
 the same width fits; a column that would only fit in part is not shown. Switch to one or two columns in
 the display settings if you prefer.
@@ -358,6 +360,34 @@ If a book converts badly, choose *Convert again* from its menu, or re-run every 
 reprocess` after an update to the converters. Details edited by hand (title, author, series, cover), fixes
 to the text, and everyone's reading positions and bookmarks are kept when a book is converted again (see
 [How position sync works](#how-position-sync-works)).
+
+## Searching a book
+
+The magnifier in the bar at the top of the reader opens *Search*, and on a laptop `/` does too. Type a word or a
+phrase and press *Search* or Enter. The server looks through the whole book and lists the places where it is found, in
+the order of the book, under the name of the chapter each is in, with some of the text around it and how far into the
+book it is. The list is made when the search is sent, not as you type, so an e-ink screen draws it once.
+
+What counts as found:
+
+- Case does not matter: "whale" finds "Whale" and "WHALE".
+- Curly and straight quotes are the same, so `"it's"` finds “it’s”.
+- Accents and letters such as æ, ø and å count: "gard" does not find "gård".
+- A phrase is found across italics and links, where it runs from one line of the page to the next, and however many
+  spaces stand between its words.
+- A phrase is never found across two paragraphs, headings, list items or table cells, across a line the book ends
+  itself, as in a poem, or across a picture.
+
+The list shows the first 200 places and says how many there are in all. Words in footnotes are found too. Search needs a
+connection, also in a book kept on the device for reading offline.
+
+Choosing a place closes the panel, goes to its page and marks its words there: a thick line under them in the *E-ink*
+look, a tint behind them in the *Soft* look. A footnote shown at the foot of a page is marked there. The mark stays until
+the page is turned. *Back to where I was* goes back to the page you came from. A PDF shown as *Original pages* goes to the
+page, without a mark.
+
+The panel keeps the words and the list while the book is open, with the place last chosen marked in the list. When the
+book's text changes, by a fix or by converting it again, the list goes, as its places belong to the old text.
 
 ## Fixing the text
 
@@ -702,7 +732,7 @@ npm test         # converter unit tests and API integration tests
 
 Layout of the code:
 
-- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, `genres.js`, which keeps the books' genres, `fixes.js`, which keeps the fixes to the books' text, `epub-export.js`, which makes a book's EPUB download, and `kindle-scripts.js`, which sends the Kindle's browser a copy of the scripts in `public/js` converted for it (with esbuild, an optional dependency used only for this)
+- `server/` Express app, SQLite schema (`node:sqlite`), session auth, upload, progress and series API, the lookup online (`lookup.js`, which asks `openlibrary.js` and `hardcover.js`), `duplicates.js`, which finds books that are in the library twice, `missing.js`, which finds the books a series lacks, `genres.js`, which keeps the books' genres, `fixes.js`, which keeps the fixes to the books' text, `search.js`, which finds words in a book's text, `epub-export.js`, which makes a book's EPUB download, and `kindle-scripts.js`, which sends the Kindle's browser a copy of the scripts in `public/js` converted for it (with esbuild, an optional dependency used only for this)
 - `server/converters/` one module per format plus the shared HTML normaliser, chunker, bundle writer and the patterns for watermarks and credit lines, `series.js`, which finds series in metadata and titles, `isbn.js`, which reads and checks ISBNs, and `zip.js`, which reads and writes ZIP files
 - `public/` the web app: library (`js/library.js`, which places the books a series lacks with `js/missing.js` and sorts books into sections by author or genre with `js/groups.js`), reader (`js/reader.js`), settings, users, service worker
 - `test/` tests and fixture builders (an EPUB writer on the server's ZIP writer, a MOBI writer with PalmDOC compression, a PDF writer)
